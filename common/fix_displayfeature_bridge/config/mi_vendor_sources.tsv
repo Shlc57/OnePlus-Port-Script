@@ -1,0 +1,6 @@
+# 操作	小米原包 vendor 相对路径
+replace	bin/hw/vendor.xiaomi.hardware.displayfeature_aidl-service
+replace	etc/init/vendor.xiaomi.hardware.displayfeature_aidl-service.rc
+replace	etc/vintf/manifest/vendor.xiaomi.hardware.displayfeature_aidl-service.xml
+replace	lib64/vendor.xiaomi.hardware.displayfeature@1.0.so
+replace	lib64/vendor.xiaomi.hardware.displayfeature_aidl-V2-ndk.so

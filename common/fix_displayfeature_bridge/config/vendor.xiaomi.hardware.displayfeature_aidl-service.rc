@@ -1,0 +1,9 @@
+# Copyright (c) 2017 Xiaomi, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Xiaomi, Inc.
+
+service vendor.displayfeatureaidl-hal /vendor/bin/hw/vendor.xiaomi.hardware.displayfeature_aidl-service
+    interface aidl vendor.xiaomi.hardware.displayfeature_aidl.IDisplayFeature/default
+    class hal
+    user system
+    group system graphics

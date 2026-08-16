@@ -1,0 +1,41 @@
+# 全局模糊。教程中的两个低内存阈值没有给出数值，按原文保留为空值。
+ro.config.low_ram.threshold_gb=
+ro.config.low_ram.middle.threshold_gb=
+ro.miui.backdrop_sampling_enabled=true
+ro.config.low_ram.support_miuilite_plus=false
+persist.sys.background_blur_supported=true
+
+# 高级材质与转场。
+persist.sys.background_blur_status_default=false
+persist.sys.background_blur_mode=0
+ro.surface_flinger.supports_background_blur=1
+ro.launcher.blur.appLaunch=1
+ro.sf.blurs_are_expensive=0
+persist.sys.add_blurnoise_supported=true
+persist.sys.hyper_transition=true
+persist.sys.hyper_transition_v=2
+persist.sys.element_transition_supported=true
+ro.miui.shell_anim_enable_fcb=true
+
+# 画质增强。
+debug.config.media.video.frc.support=true
+debug.config.media.video.ais.support=true
+debug.config.media.video.aie.support=true
+persist.sys.support_ultra_hdr=true
+
+# 游戏视频与性能。
+debug.game.video.support=true
+debug.game.video.speed=true
+debug.performance.tuning=1
+video.accelerate.hw=1
+
+# 空间音频、游戏音效与场景声效开关。
+ro.vendor.audio.surround.headphone.only=false
+ro.vendor.audio.videobox.switch=true
+ro.vendor.audio.feature.spatial=7
+ro.vendor.audio.game.effect=true
+ro.vendor.audio.sfx.earadj=true
+ro.vendor.audio.sfx.scenario=true
+ro.vendor.audio.sfx.harmankardon=true
+ro.vendor.audio.surround.support=true
+ro.vendor.audio.scenario.support=true

@@ -1,0 +1,21 @@
+# 操作	原包相对路径
+replace	lib64/hw/libEseUtils.so
+replace	lib64/libQSEEComAPI.so
+replace	lib64/libesesbprovision.so
+replace	lib64/libkeymasterdeviceutils.so
+replace	lib64/libkeymasterprovision.so
+replace	lib64/libkeymasterutils.so
+replace	lib64/libkeymint.so
+replace	lib64/libkeymint_remote_prov_support.so
+replace	lib64/libminkdescriptor.so
+replace	lib64/libmisight.so
+replace	lib64/liboemcrypto.so
+replace	lib64/libprovisioner_qti.so
+replace	lib64/libqtikeymaster4.so
+replace	lib64/vendor.xiaomi.hardware.aidl.mtdservice-V1-ndk.so
+replace	lib64/vendor.xiaomi.hardware.aidl.mtkeysoter-V1-ndk.so
+replace	lib64/vendor.xiaomi.hardware.mfidoca-V1-ndk.so
+# idmanager 使用的 libsecid.so 直接依赖该 NDK 接口；仅保留接口库，不移植 MiSys 服务。
+replace	lib64/vendor.xiaomi.hardware.misys.core-V1-ndk.so
+replace	lib64/vendor.xiaomi.hardware.mikeybag-V1-ndk.so
+replace	lib64/vendor.xiaomi.hardware.mlipay-V1-ndk.so

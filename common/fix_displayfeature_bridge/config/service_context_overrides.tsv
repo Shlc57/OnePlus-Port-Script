@@ -1,0 +1,2 @@
+# AIDL 服务名	兼容 service_context
+vendor.xiaomi.hardware.displayfeature_aidl.IDisplayFeature/default	u:object_r:vendor_hal_display_color_aidl_service:s0

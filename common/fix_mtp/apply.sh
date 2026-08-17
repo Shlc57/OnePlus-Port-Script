@@ -12,11 +12,12 @@ std_print
 check_part_exists system
 
 source_file="$patcher_dir/init.usb.configfs.rc"
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
 target_file="$project_dir/system/system/etc/init/hw/init.usb.configfs.rc"
 check_file_exists "$source_file" "底包 init.usb.configfs.rc（请放入 DNA_input）"
-check_file_exists "$target_file"
-if [[ -L "$source_file" || -L "$target_file" ]]; then
-	err_print "MTP 配置源文件和目标文件都必须是普通文件"
+if [[ -L "$source_file" ]]; then
+	err_print "MTP 配置源文件必须是普通文件：$source_file"
 	exit 1
 fi
 
@@ -30,6 +31,18 @@ for trigger in "${required_triggers[@]}"; do
 		exit 1
 	fi
 done
+
+if [[ -L "$target_file" ]]; then
+	err_print "不支持替换符号链接 MTP 配置：$target_file"
+	exit 1
+elif [[ ! -e "$target_file" ]]; then
+	warn_print "待替换的 MTP 配置不存在，跳过：${target_file#"$project_dir"/}"
+	std_print "处理完成"
+	exit 0
+elif [[ ! -f "$target_file" ]]; then
+	err_print "待替换的 MTP 配置不是普通文件：$target_file"
+	exit 1
+fi
 
 temporary_file="$(mktemp "${target_file}.tmp.XXXXXX")"
 cleanup() {

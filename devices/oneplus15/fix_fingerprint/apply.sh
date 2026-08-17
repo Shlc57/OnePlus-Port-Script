@@ -7,14 +7,35 @@ std_print "修复一加 15 超声波指纹"
 std_print "坐标：按一加 15 实机 HAL 的传感器中心与图标尺寸适配 PanelResolution"
 std_print
 
-check_part_exists odm
-
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
 odm_build_prop="$project_dir/odm/build.prop"
 display_resolution_config="$project_dir/odm/etc/sdm_display_resolution_extn.xml"
-check_file_exists "$odm_build_prop"
-check_file_exists "$display_resolution_config"
+prop_patch_ready=1
+if [[ -L "$odm_build_prop" ]]; then
+	err_print "不支持直接修改符号链接：$odm_build_prop"
+	exit 1
+elif [[ ! -e "$odm_build_prop" ]]; then
+	warn_print "指纹属性目标不存在，跳过：${odm_build_prop#"$project_dir"/}"
+	prop_patch_ready=0
+elif [[ ! -f "$odm_build_prop" ]]; then
+	err_print "指纹属性目标不是普通文件：$odm_build_prop"
+	exit 1
+fi
+if [[ -L "$display_resolution_config" ]]; then
+	err_print "指纹属性坐标来源不能是符号链接：$display_resolution_config"
+	exit 1
+elif [[ ! -e "$display_resolution_config" ]]; then
+	warn_print "指纹属性坐标来源不存在，跳过：${display_resolution_config#"$project_dir"/}"
+	prop_patch_ready=0
+elif [[ ! -f "$display_resolution_config" ]]; then
+	err_print "指纹属性坐标来源不是普通文件：$display_resolution_config"
+	exit 1
+fi
+if (( prop_patch_ready == 0 )); then
+	std_print "处理完成"
+	exit 0
+fi
 if ! command -v python3 >/dev/null 2>&1; then
 	err_print "缺少 Python 3，无法解析显示配置并换算指纹坐标"
 	exit 1

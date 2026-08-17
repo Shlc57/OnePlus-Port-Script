@@ -23,30 +23,38 @@ std_print "认证结果、错误与新会话统一释放抬起状态"
 std_print
 
 check_part_exists system_ext
-check_file_exists "$(get_part_contexts_path system_ext)"
-check_file_exists "$(get_part_fsconfig_path system_ext)"
-check_partition_metadata_tool >/dev/null
-
-# project_dir 由 tools.sh 的 init_port_env 设置。
-# shellcheck disable=SC2154
-miui_services_jar="$project_dir/system_ext/framework/miui-services.jar"
-check_file_exists "$miui_services_jar"
-if [[ -L "$miui_services_jar" ]]; then
-	err_print "不支持修改符号链接 JAR：$miui_services_jar"
-	exit 1
-fi
-
-miui_systemui_apk="$project_dir/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk"
-check_file_exists "$miui_systemui_apk"
-if [[ -L "$miui_systemui_apk" ]]; then
-	err_print "不支持修改符号链接 APK：$miui_systemui_apk"
-	exit 1
-fi
 
 jar_patcher="$patcher_dir/patch_jar.sh"
 systemui_patcher="$patcher_dir/patch_systemui.sh"
 check_file_exists "$jar_patcher"
 check_file_exists "$systemui_patcher"
+
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
+miui_services_jar="$project_dir/system_ext/framework/miui-services.jar"
+miui_systemui_apk="$project_dir/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk"
+protocol_patch_ready=1
+for target_file in "$miui_services_jar" "$miui_systemui_apk"; do
+	if [[ -L "$target_file" ]]; then
+		err_print "不支持修改符号链接指纹协议目标：$target_file"
+		exit 1
+	elif [[ ! -e "$target_file" ]]; then
+		warn_print "待修补的指纹协议目标不存在，跳过：${target_file#"$project_dir"/}"
+		protocol_patch_ready=0
+	elif [[ ! -f "$target_file" ]]; then
+		err_print "待修补的指纹协议目标不是普通文件：$target_file"
+		exit 1
+	fi
+done
+if (( protocol_patch_ready == 0 )); then
+	warn_print "miui-services.jar 与 MiuiSystemUI.apk 必须成对更新，已跳过指纹协议补丁"
+	std_print "处理完成"
+	exit 0
+fi
+
+check_file_exists "$(get_part_contexts_path system_ext)"
+check_file_exists "$(get_part_fsconfig_path system_ext)"
+check_partition_metadata_tool >/dev/null
 
 staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/fix-oplus-fingerprint-protocol.apply.XXXXXX")
 staged_miui_services_jar="$staging_dir/miui-services.jar"

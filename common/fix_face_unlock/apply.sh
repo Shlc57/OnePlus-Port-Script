@@ -28,29 +28,44 @@ source_fsconfig="$(get_part_fsconfig_path mi_vendor)"
 vendor_contexts="$(get_part_contexts_path vendor)"
 vendor_fsconfig="$(get_part_fsconfig_path vendor)"
 
-check_file_exists "$device_features"
+face_file_patch_ready=1
+for target_file in "$device_features" "$settings_apk"; do
+	if [[ -L "$target_file" ]]; then
+		err_print "不支持修改符号链接人脸解锁目标：$target_file"
+		exit 1
+	elif [[ ! -e "$target_file" ]]; then
+		warn_print "待修改的人脸解锁目标不存在，跳过：${target_file#"$project_dir"/}"
+		face_file_patch_ready=0
+	elif [[ ! -f "$target_file" ]]; then
+		err_print "待修改的人脸解锁目标不是普通文件：$target_file"
+		exit 1
+	fi
+done
+if (( face_file_patch_ready == 0 )); then
+	warn_print "人脸特性 XML 与 Settings 必须配套更新，已跳过这两个文件子步骤"
+fi
+
 for required_file in \
-	"$settings_patcher" \
-	"$settings_apk" \
 	"$permission_manifest" \
 	"$source_permission" \
 	"$source_contexts" \
 	"$source_fsconfig" \
-	"$(get_part_contexts_path system_ext)" \
-	"$(get_part_fsconfig_path system_ext)" \
 	"$vendor_contexts" \
 	"$vendor_fsconfig"; do
 	check_file_exists "$required_file"
 done
-for regular_file in "$device_features" "$settings_apk" "$source_permission"; do
-	if [[ -L "$regular_file" ]]; then
-		err_print "不支持使用符号链接文件：$regular_file"
+if [[ -L "$source_permission" ]]; then
+	err_print "不支持使用符号链接来源文件：$source_permission"
+	exit 1
+fi
+if (( face_file_patch_ready == 1 )); then
+	check_file_exists "$settings_patcher"
+	check_file_exists "$(get_part_contexts_path system_ext)"
+	check_file_exists "$(get_part_fsconfig_path system_ext)"
+	if ! command -v python3 >/dev/null 2>&1; then
+		err_print "缺少 Python 3，无法安全修改人脸解锁特性配置"
 		exit 1
 	fi
-done
-if ! command -v python3 >/dev/null 2>&1; then
-	err_print "缺少 Python 3，无法安全修改人脸解锁特性配置"
-	exit 1
 fi
 check_partition_metadata_tool >/dev/null
 
@@ -116,6 +131,7 @@ else
 	face_permission_changed=true
 fi
 
+if (( face_file_patch_ready == 1 )); then
 temporary_device_features="$(mktemp "${device_features}.tmp.XXXXXX")"
 cleanup() {
 	rm -f -- "$temporary_device_features"
@@ -318,6 +334,7 @@ tee = unique_feature("bool", "support_tee_face_unlock")
 if (tee.text or "").strip() != "true":
     raise SystemExit("最终 TEE 人脸解锁配置不为 true")
 PY
+fi
 
 apply_source_file_manifest \
 	"$project_dir/mi_vendor" \
@@ -349,17 +366,19 @@ if ! grep -Fqx 'vendor/etc/permissions/android.hardware.biometrics.face.xml 0 0 
 	exit 1
 fi
 
-if [[ "$region_changed" == true ]]; then
-	std_print "✅ support_face_unlock_region_dom 的所有 item 已设为 ALL"
-else
-	skip_print "support_face_unlock_region_dom 已包含 ALL"
+if (( face_file_patch_ready == 1 )); then
+	if [[ "$region_changed" == true ]]; then
+		std_print "✅ support_face_unlock_region_dom 的所有 item 已设为 ALL"
+	else
+		skip_print "support_face_unlock_region_dom 已包含 ALL"
+	fi
+	if [[ "$tee_changed" == true ]]; then
+		std_print "✅ support_tee_face_unlock 已设为 true"
+	else
+		skip_print "support_tee_face_unlock 已为 true"
+	fi
+	std_print "✅ Settings 已同步标准 FaceManager 的录入启动、实时进度与 remaining=0 完成回调"
 fi
-if [[ "$tee_changed" == true ]]; then
-	std_print "✅ support_tee_face_unlock 已设为 true"
-else
-	skip_print "support_tee_face_unlock 已为 true"
-fi
-std_print "✅ Settings 已同步标准 FaceManager 的录入启动、实时进度与 remaining=0 完成回调"
 if [[ "$face_permission_changed" == true ]]; then
 	std_print "✅ 已将人脸硬件特性声明从 mi_vendor 迁移到最终 vendor"
 else

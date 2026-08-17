@@ -1,4 +1,4 @@
-# 每行一个属性名。属性值必须从当前小米原包 mi_vendor/build.prop 动态读取。
+# 每行一个属性名。存在时从当前小米原包 mi_vendor/build.prop 动态读取，缺失项警告后跳过。
 vendor.display.disable_3d_adaptive_tm
 vendor.display.disable_stc_dimming
 vendor.display.disable_sdr_dimming

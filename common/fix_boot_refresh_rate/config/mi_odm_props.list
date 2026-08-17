@@ -1,4 +1,4 @@
-# 每行一个属性名。属性值必须从当前小米原包 mi_odm/etc/build.prop 动态读取。
+# 每行一个属性名。存在时从当前小米原包 mi_odm/etc/build.prop 动态读取，缺失项警告后跳过。
 ro.vendor.fps.switch.default
 ro.vendor.fps.switch.thermal
 ro.vendor.dfps.enable

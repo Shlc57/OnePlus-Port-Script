@@ -23,6 +23,10 @@ err_print() {
 	printf '! %s\n' "$*" >&2
 }
 
+warn_print() {
+	printf '! WARN: %s\n' "$*" >&2
+}
+
 skip_print() {
 	printf '> SKIP: %s\n' "$*"
 }
@@ -231,6 +235,8 @@ read_prop_value() {
 		fi
 	done
 
+	# 属性名通过环境变量传入 awk，单引号脚本中不应做 Shell 展开。
+	# shellcheck disable=SC2016
 	prop_value="$(env PORT_PROP_KEY="$prop_key" awk '
 		BEGIN {
 			key = ENVIRON["PORT_PROP_KEY"]
@@ -439,6 +445,8 @@ ensure_prop() {
 
 	_check_prop_args "$file_path" "$prop_key" || return 1
 	temporary_file="$(mktemp "${file_path}.tmp.XXXXXX")" || return 1
+	# 属性名和值通过环境变量传入 awk，单引号脚本中不应做 Shell 展开。
+	# shellcheck disable=SC2016
 	if ! env PORT_PROP_KEY="$prop_key" PORT_PROP_VALUE="$prop_value" awk '
 		BEGIN {
 			key = ENVIRON["PORT_PROP_KEY"]
@@ -488,6 +496,8 @@ comment_prop() {
 
 	_check_prop_args "$file_path" "$prop_key" || return 1
 	temporary_file="$(mktemp "${file_path}.tmp.XXXXXX")" || return 1
+	# 属性名通过环境变量传入 awk，单引号脚本中不应做 Shell 展开。
+	# shellcheck disable=SC2016
 	if ! env PORT_PROP_KEY="$prop_key" awk '
 		BEGIN {
 			key = ENVIRON["PORT_PROP_KEY"]
@@ -544,6 +554,8 @@ append_unique_lines() {
 	mkdir -p -- "$destination_dir"
 	temporary_file="$(mktemp "${destination_file}.tmp.XXXXXX")" || return 1
 	if [[ -f "$destination_file" ]]; then
+		# 目标路径通过环境变量传入 awk，单引号脚本中不应做 Shell 展开。
+		# shellcheck disable=SC2016
 		if ! env PORT_DESTINATION_FILE="$destination_file" awk '
 			FILENAME == ENVIRON["PORT_DESTINATION_FILE"] {
 				seen[$0] = 1

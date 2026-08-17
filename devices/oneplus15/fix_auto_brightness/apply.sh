@@ -9,10 +9,12 @@ std_print "校准启动默认亮度与物理边界：普通亮度 1400 nit，HBM
 std_print "保留两份原厂亮度 Overlay，仅叠加 135 nit 单资源启动 Overlay"
 std_print
 
-for part_name in odm vendor product; do
+for part_name in vendor product; do
 	check_part_exists "$part_name"
 done
 
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
 odm_build_props=(
 	"$project_dir/odm/build.prop"
 	"$project_dir/odm/etc/build.prop"
@@ -31,8 +33,19 @@ boot_brightness_overlay_target="$project_dir/product/overlay/OnePlus15BootBright
 target_display_id="4630946903293830803"
 target_display_config="$product_displayconfig/display_id_${target_display_id}.xml"
 
+available_odm_build_props=()
 for build_prop in "${odm_build_props[@]}"; do
-	check_file_exists "$build_prop"
+	if [[ -L "$build_prop" ]]; then
+		err_print "不支持直接修改符号链接：$build_prop"
+		exit 1
+	elif [[ ! -e "$build_prop" ]]; then
+		warn_print "自动亮度属性目标不存在，跳过：${build_prop#"$project_dir"/}"
+		continue
+	elif [[ ! -f "$build_prop" ]]; then
+		err_print "自动亮度属性目标不是普通文件：$build_prop"
+		exit 1
+	fi
+	available_odm_build_props+=("$build_prop")
 done
 check_file_exists "$product_contexts"
 check_file_exists "$contexts_patch"
@@ -100,14 +113,14 @@ if [[ -z "$largest_display_config" ]]; then
 fi
 
 prop_key="ro.vendor.oplus.sensor.high_pwm_rgb"
-for build_prop in "${odm_build_props[@]}"; do
+for build_prop in "${available_odm_build_props[@]}"; do
 	if grep -Eq "^[[:space:]]*${prop_key//./\\.}[[:space:]]*=" "$build_prop"; then
 		comment_prop "$build_prop" "$prop_key"
 		std_print "已禁用：${build_prop#"$project_dir/"} 中的 $prop_key"
 	elif grep -Eq "^[[:space:]]*#[[:space:]]*${prop_key//./\\.}[[:space:]]*=" "$build_prop"; then
 		skip_print "${build_prop#"$project_dir/"} 中的 $prop_key 已禁用"
 	else
-		skip_print "${build_prop#"$project_dir/"} 中不存在 $prop_key"
+		warn_print "属性不存在，跳过：${build_prop#"$project_dir/"} 中的 $prop_key"
 	fi
 done
 

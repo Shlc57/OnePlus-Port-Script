@@ -17,6 +17,8 @@ trap cleanup EXIT
 
 # mi_ext 合并后不再是独立属性源和 product 挂载点，需补齐运行时兼容入口。
 ensure_mi_ext_runtime_compat() {
+	# project_dir 由 tools.sh 的 init_port_env 设置。
+	# shellcheck disable=SC2154
 	local mi_ext_build_prop="$project_dir/system/mi_ext/etc/build.prop"
 	local product_build_prop="$project_dir/product/etc/build.prop"
 	local system_fsconfig
@@ -25,16 +27,46 @@ ensure_mi_ext_runtime_compat() {
 	local cust_feature_key="ro.mi.os.custfeatureresolve"
 	local cust_feature_value
 	local contexts_entry
+	local prop_update_ready=1
 
 	system_fsconfig="$(get_part_fsconfig_path system)"
 	system_contexts="$(get_part_contexts_path system)"
-	check_file_exists "$mi_ext_build_prop"
-	check_file_exists "$product_build_prop"
 	check_file_exists "$system_fsconfig"
 	check_file_exists "$system_contexts"
 	check_partition_metadata_tool >/dev/null
 
-	cust_feature_value="$(read_prop_value "$cust_feature_key" "$mi_ext_build_prop")"
+	if [[ -L "$mi_ext_build_prop" ]]; then
+		err_print "不支持从符号链接读取属性：$mi_ext_build_prop"
+		return 1
+	elif [[ ! -e "$mi_ext_build_prop" ]]; then
+		warn_print "CustFeatureResolve 属性来源不存在，跳过属性迁移：${mi_ext_build_prop#"$project_dir"/}"
+		prop_update_ready=0
+	elif [[ ! -f "$mi_ext_build_prop" ]]; then
+		err_print "CustFeatureResolve 属性来源不是普通文件：$mi_ext_build_prop"
+		return 1
+	fi
+	if [[ -L "$product_build_prop" ]]; then
+		err_print "不支持直接修改符号链接：$product_build_prop"
+		return 1
+	elif [[ ! -e "$product_build_prop" ]]; then
+		warn_print "CustFeatureResolve 属性目标不存在，跳过属性迁移：${product_build_prop#"$project_dir"/}"
+		prop_update_ready=0
+	elif [[ ! -f "$product_build_prop" ]]; then
+		err_print "CustFeatureResolve 属性目标不是普通文件：$product_build_prop"
+		return 1
+	fi
+	if (( prop_update_ready == 1 )); then
+		if grep -Eq "^[[:space:]]*${cust_feature_key//./\\.}[[:space:]]*=" "$mi_ext_build_prop"; then
+			cust_feature_value="$(read_prop_value "$cust_feature_key" "$mi_ext_build_prop")"
+			if [[ -z "$cust_feature_value" ]]; then
+				warn_print "CustFeatureResolve 属性值为空，跳过属性迁移：$cust_feature_key"
+				prop_update_ready=0
+			fi
+		else
+			warn_print "CustFeatureResolve 属性不存在，跳过属性迁移：$cust_feature_key"
+			prop_update_ready=0
+		fi
+	fi
 	if [[ -L "$compat_link" ]]; then
 		if [[ "$(readlink -- "$compat_link")" != "/product" ]]; then
 			err_print "mi_ext product 兼容链接目标错误：$compat_link"
@@ -45,8 +77,10 @@ ensure_mi_ext_runtime_compat() {
 		return 1
 	fi
 
-	ensure_prop "$product_build_prop" "$cust_feature_key" "$cust_feature_value"
-	std_print "✅ CustFeatureResolve 启用属性已迁移到 product"
+	if (( prop_update_ready == 1 )); then
+		ensure_prop "$product_build_prop" "$cust_feature_key" "$cust_feature_value"
+		std_print "✅ CustFeatureResolve 启用属性已迁移到 product"
+	fi
 
 	if [[ ! -L "$compat_link" ]]; then
 		mkdir -p -- "$(dirname -- "$compat_link")"
@@ -102,9 +136,6 @@ validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/system system/syst
 validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/etc system/mi_ext/etc
 
 product_build_prop="$project_dir/product/etc/build.prop"
-if [[ -f "$source_part/etc/build.prop" ]]; then
-	check_file_exists "$product_build_prop"
-fi
 
 merge_tree "$source_part/product" "$project_dir/product"
 std_print "✅ product 文件合并完成"
@@ -135,12 +166,29 @@ std_print "✅ mi_ext contexts 与 fsconfig 转换完成"
 
 mi_ext_build_prop="$project_dir/system/mi_ext/etc/build.prop"
 marker_key="ro.miui.support.system.app.uninstall.v2"
-if [[ -f "$mi_ext_build_prop" ]]; then
-	mi_ext_head="$(mktemp "${mi_ext_build_prop}.head.XXXXXX")"
-	temporary_files+=("$mi_ext_head")
-	product_tail="$(mktemp "${product_build_prop}.mi_ext.XXXXXX")"
-	temporary_files+=("$product_tail")
-	if awk -v head="$mi_ext_head" -v tail="$product_tail" -v key="$marker_key" '
+if [[ -L "$mi_ext_build_prop" ]]; then
+	err_print "不支持通过符号链接迁移 mi_ext 属性：$mi_ext_build_prop"
+	exit 1
+elif [[ ! -e "$mi_ext_build_prop" ]]; then
+	warn_print "mi_ext 中没有 etc/build.prop，跳过属性迁移"
+elif [[ ! -f "$mi_ext_build_prop" ]]; then
+	err_print "mi_ext 属性来源不是普通文件：$mi_ext_build_prop"
+	exit 1
+else
+	if [[ -L "$product_build_prop" ]]; then
+		err_print "不支持通过符号链接迁移 mi_ext 属性：$product_build_prop"
+		exit 1
+	elif [[ ! -e "$product_build_prop" ]]; then
+		warn_print "属性目标不存在，跳过卸载属性迁移：${product_build_prop#"$project_dir"/}"
+	elif [[ ! -f "$product_build_prop" ]]; then
+		err_print "mi_ext 属性目标不是普通文件：$product_build_prop"
+		exit 1
+	else
+		mi_ext_head="$(mktemp "${mi_ext_build_prop}.head.XXXXXX")"
+		temporary_files+=("$mi_ext_head")
+		product_tail="$(mktemp "${product_build_prop}.mi_ext.XXXXXX")"
+		temporary_files+=("$product_tail")
+		if awk -v head="$mi_ext_head" -v tail="$product_tail" -v key="$marker_key" '
 		function is_marker(line, candidate) {
 			candidate = line
 			sub(/^[[:space:]]*/, "", candidate)
@@ -162,21 +210,20 @@ if [[ -f "$mi_ext_build_prop" ]]; then
 			}
 		}
 		END { exit(found ? 0 : 3) }
-	' "$mi_ext_build_prop"; then
-		append_unique_lines "$product_tail" "$product_build_prop"
-		chmod --reference="$mi_ext_build_prop" -- "$mi_ext_head"
-		replace_file_if_different "$mi_ext_head" "$mi_ext_build_prop"
-		std_print "✅ 卸载属性标记后的内容已迁移到 product"
-	else
-		awk_status=$?
-		if (( awk_status == 3 )); then
-			skip_print "mi_ext build.prop 中没有卸载属性标记"
+		' "$mi_ext_build_prop"; then
+			append_unique_lines "$product_tail" "$product_build_prop"
+			chmod --reference="$mi_ext_build_prop" -- "$mi_ext_head"
+			replace_file_if_different "$mi_ext_head" "$mi_ext_build_prop"
+			std_print "✅ 卸载属性标记后的内容已迁移到 product"
 		else
-			exit "$awk_status"
+			awk_status=$?
+			if (( awk_status == 3 )); then
+				warn_print "mi_ext build.prop 中没有卸载属性标记，跳过属性迁移"
+			else
+				exit "$awk_status"
+			fi
 		fi
 	fi
-else
-	skip_print "mi_ext 中没有 etc/build.prop"
 fi
 
 ensure_mi_ext_runtime_compat

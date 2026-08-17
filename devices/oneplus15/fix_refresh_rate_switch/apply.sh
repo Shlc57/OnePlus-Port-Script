@@ -8,10 +8,6 @@ std_print "刷新率：60 / 90 / 120 / 144 / 165Hz"
 std_print "分辨率：跟随底包 sdm_display_resolution_extn.xml"
 std_print
 
-for part_name in odm product system_ext; do
-	check_part_exists "$part_name"
-done
-
 # init_port_env 注入当前移植工程根目录。
 # shellcheck disable=SC2154
 display_resolution_config="$project_dir/odm/etc/sdm_display_resolution_extn.xml"
@@ -21,20 +17,6 @@ settings_oat_dir="$project_dir/system_ext/priv-app/Settings/oat"
 # init_port_env 注入补丁仓库根目录。
 # shellcheck disable=SC2154
 settings_patcher="$port_dir/common/settings_apk_patcher.sh"
-check_file_exists "$display_resolution_config"
-check_file_exists "$settings_apk"
-check_file_exists "$settings_patcher"
-check_file_exists "$(get_part_contexts_path system_ext)"
-check_file_exists "$(get_part_fsconfig_path system_ext)"
-check_partition_metadata_tool >/dev/null
-if [[ ! -d "$device_features_dir" || -L "$device_features_dir" ]]; then
-	err_print "device_features 目录不存在或不是普通目录：$device_features_dir"
-	exit 1
-fi
-if ! command -v python3 >/dev/null 2>&1; then
-	err_print "缺少 Python 3，无法安全修改 device_features XML"
-	exit 1
-fi
 
 device_code=""
 device_prop_files=(
@@ -43,36 +25,100 @@ device_prop_files=(
 	"$project_dir/mi_odm/etc/build.prop"
 )
 for prop_file in "${device_prop_files[@]}"; do
-	if [[ ! -f "$prop_file" ]]; then
+	if [[ -L "$prop_file" ]]; then
+		err_print "不支持从符号链接读取属性：$prop_file"
+		exit 1
+	elif [[ ! -e "$prop_file" ]]; then
+		warn_print "设备代号属性来源不存在，跳过：${prop_file#"$project_dir"/}"
 		continue
+	elif [[ ! -f "$prop_file" ]]; then
+		err_print "设备代号属性来源不是普通文件：$prop_file"
+		exit 1
 	fi
 	if grep -Eq '^[[:space:]]*ro\.product\.odm\.device[[:space:]]*=' "$prop_file"; then
 		prop_device_code="$(read_prop_value ro.product.odm.device "$prop_file")"
+		if [[ -z "$prop_device_code" ]]; then
+			warn_print "设备代号属性值为空，跳过：${prop_file#"$project_dir"/}"
+			continue
+		fi
 		if [[ -z "$device_code" ]]; then
 			device_code="$prop_device_code"
 		elif [[ "$device_code" != "$prop_device_code" ]]; then
 			err_print "设备代号来源不一致：$device_code / $prop_device_code"
 			exit 1
 		fi
+	else
+		warn_print "设备代号属性不存在，跳过：${prop_file#"$project_dir"/} 中的 ro.product.odm.device"
 	fi
 done
 
 if [[ -z "$device_code" ]]; then
-	err_print "无法从 odm/mi_odm build.prop 读取 ro.product.odm.device"
-	exit 1
+	warn_print "无法从 odm/mi_odm build.prop 读取 ro.product.odm.device，跳过刷新率与分辨率切换"
+	std_print "处理完成"
+	exit 0
 fi
 if [[ ! "$device_code" =~ ^[A-Za-z0-9_.-]+$ ]]; then
 	err_print "设备代号无效：$device_code"
 	exit 1
 fi
 
+for part_name in odm product system_ext; do
+	check_part_exists "$part_name"
+done
+
 device_feature_xml="$device_features_dir/$device_code.xml"
-check_file_exists "$device_feature_xml"
-if [[ -L "$device_feature_xml" ]]; then
+feature_patch_ready=1
+if [[ -L "$device_features_dir" ]]; then
+	err_print "device_features 目录不能是符号链接：$device_features_dir"
+	exit 1
+elif [[ ! -e "$device_features_dir" ]]; then
+	warn_print "device_features 目录不存在，跳过机型 XML 子步骤：${device_features_dir#"$project_dir"/}"
+	feature_patch_ready=0
+elif [[ ! -d "$device_features_dir" ]]; then
+	err_print "device_features 路径不是普通目录：$device_features_dir"
+	exit 1
+elif [[ -L "$device_feature_xml" ]]; then
 	err_print "不支持直接修改符号链接：$device_feature_xml"
+	exit 1
+elif [[ ! -e "$device_feature_xml" ]]; then
+	warn_print "待修改的刷新率机型配置不存在，跳过：${device_feature_xml#"$project_dir"/}"
+	feature_patch_ready=0
+elif [[ ! -f "$device_feature_xml" ]]; then
+	err_print "待修改的刷新率机型配置不是普通文件：$device_feature_xml"
 	exit 1
 fi
 
+settings_patch_ready=1
+if [[ -L "$settings_apk" ]]; then
+	err_print "不支持修改符号链接 APK：$settings_apk"
+	exit 1
+elif [[ ! -e "$settings_apk" ]]; then
+	warn_print "待修补的 Settings.apk 不存在，跳过分辨率高度子步骤：${settings_apk#"$project_dir"/}"
+	settings_patch_ready=0
+elif [[ ! -f "$settings_apk" ]]; then
+	err_print "待修补的 Settings.apk 不是普通文件：$settings_apk"
+	exit 1
+fi
+
+if (( feature_patch_ready == 1 )); then
+	check_file_exists "$display_resolution_config"
+	if ! command -v python3 >/dev/null 2>&1; then
+		err_print "缺少 Python 3，无法安全修改 device_features XML"
+		exit 1
+	fi
+fi
+if (( settings_patch_ready == 1 )); then
+	check_file_exists "$settings_patcher"
+	check_file_exists "$(get_part_contexts_path system_ext)"
+	check_file_exists "$(get_part_fsconfig_path system_ext)"
+	check_partition_metadata_tool >/dev/null
+fi
+if (( feature_patch_ready == 0 && settings_patch_ready == 0 )); then
+	std_print "处理完成"
+	exit 0
+fi
+
+if (( feature_patch_ready == 1 )); then
 temporary_xml="$(mktemp "${device_feature_xml}.tmp.XXXXXX")"
 cleanup() {
 	rm -f -- "$temporary_xml"
@@ -226,14 +272,23 @@ width_text = ", ".join(str(width) for width in supported_widths)
 print(f"面板 {panel_text}；可切换宽度 {width_text}")
 PY
 )"
+fi
 
-bash "$settings_patcher" screen-resolution "$settings_apk"
-_install_generated_file "$temporary_xml" "$device_feature_xml"
-remove_path_if_exists "$settings_oat_dir"
-remove_part_metadata_prefix system_ext priv-app/Settings/oat
+if (( settings_patch_ready == 1 )); then
+	bash "$settings_patcher" screen-resolution "$settings_apk"
+	remove_path_if_exists "$settings_oat_dir"
+	remove_part_metadata_prefix system_ext priv-app/Settings/oat
+fi
+if (( feature_patch_ready == 1 )); then
+	_install_generated_file "$temporary_xml" "$device_feature_xml"
+fi
 
-std_print "✅ 已更新：product/etc/device_features/$device_code.xml"
-std_print "✅ 刷新率列表：165、144、120、90、60Hz"
-std_print "✅ 分辨率来源：${display_resolution_config#"$project_dir/"}（$resolution_summary）"
-std_print "✅ Settings 高度计算：优先匹配显示 supported mode 的真实宽高，1080 宽不再截断为 2353"
+if (( feature_patch_ready == 1 )); then
+	std_print "✅ 已更新：product/etc/device_features/$device_code.xml"
+	std_print "✅ 刷新率列表：165、144、120、90、60Hz"
+	std_print "✅ 分辨率来源：${display_resolution_config#"$project_dir/"}（$resolution_summary）"
+fi
+if (( settings_patch_ready == 1 )); then
+	std_print "✅ Settings 高度计算：优先匹配显示 supported mode 的真实宽高，1080 宽不再截断为 2353"
+fi
 std_print "处理完成"

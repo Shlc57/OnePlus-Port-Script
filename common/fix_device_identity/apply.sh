@@ -6,26 +6,50 @@ init_port_env "${1:-}"
 std_print "从小米原包 mi_odm 写入设备标识"
 std_print
 
-for part_name in mi_odm odm system; do
-	check_part_exists "$part_name"
-done
-
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
 source_build_prop="$project_dir/mi_odm/etc/build.prop"
-check_file_exists "$source_build_prop"
-
 override_prop_name="${DEVICE_IDENTITY_PROP:-}"
 override_prop_file=""
-source_prop_files=("$source_build_prop")
+source_prop_files=()
+if [[ -L "$source_build_prop" ]]; then
+	err_print "不支持从符号链接读取属性：$source_build_prop"
+	exit 1
+elif [[ ! -e "$source_build_prop" ]]; then
+	warn_print "属性来源不存在，跳过：${source_build_prop#"$project_dir"/}"
+elif [[ ! -f "$source_build_prop" ]]; then
+	err_print "属性来源不是普通文件：$source_build_prop"
+	exit 1
+else
+	source_prop_files+=("$source_build_prop")
+fi
+
 if [[ -n "$override_prop_name" ]]; then
 	if [[ ! "$override_prop_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*\.prop$ ]]; then
 		err_print "无效的设备标识覆盖文件名：$override_prop_name"
 		exit 1
 	fi
-	override_prop_file="$project_dir/mi_odm/etc/$override_prop_name"
-	validate_prop_file "$override_prop_file"
-	source_prop_files+=("$override_prop_file")
+	override_prop_candidate="$project_dir/mi_odm/etc/$override_prop_name"
+	if [[ -L "$override_prop_candidate" ]]; then
+		err_print "设备标识覆盖属性不能是符号链接：$override_prop_candidate"
+		exit 1
+	elif [[ ! -e "$override_prop_candidate" ]]; then
+		warn_print "设备标识覆盖属性不存在，跳过：mi_odm/etc/$override_prop_name"
+	elif [[ ! -f "$override_prop_candidate" ]]; then
+		err_print "设备标识覆盖属性不是普通文件：$override_prop_candidate"
+		exit 1
+	else
+		validate_prop_file "$override_prop_candidate"
+		override_prop_file="$override_prop_candidate"
+		source_prop_files+=("$override_prop_file")
+	fi
+fi
+
+if [[ -n "$override_prop_file" && -f "$source_build_prop" ]]; then
 	std_print "身份来源：mi_odm/build.prop + mi_odm/etc/$override_prop_name"
-else
+elif [[ -n "$override_prop_file" ]]; then
+	std_print "身份来源：mi_odm/etc/$override_prop_name"
+elif [[ -f "$source_build_prop" ]]; then
 	std_print "身份来源：mi_odm/build.prop"
 fi
 
@@ -35,13 +59,31 @@ odm_build_props=(
 )
 system_build_prop="$project_dir/system/system/build.prop"
 
-for build_prop in "${odm_build_props[@]}" "$system_build_prop"; do
-	check_file_exists "$build_prop"
+available_odm_build_props=()
+for build_prop in "${odm_build_props[@]}"; do
 	if [[ -L "$build_prop" ]]; then
 		err_print "不支持直接修改符号链接：$build_prop"
 		exit 1
+	elif [[ ! -e "$build_prop" ]]; then
+		warn_print "属性目标不存在，跳过：${build_prop#"$project_dir"/}"
+		continue
+	elif [[ ! -f "$build_prop" ]]; then
+		err_print "属性目标不是普通文件：$build_prop"
+		exit 1
 	fi
+	available_odm_build_props+=("$build_prop")
 done
+system_target_ready=1
+if [[ -L "$system_build_prop" ]]; then
+	err_print "不支持直接修改符号链接：$system_build_prop"
+	exit 1
+elif [[ ! -e "$system_build_prop" ]]; then
+	warn_print "属性目标不存在，跳过：${system_build_prop#"$project_dir"/}"
+	system_target_ready=0
+elif [[ ! -f "$system_build_prop" ]]; then
+	err_print "属性目标不是普通文件：$system_build_prop"
+	exit 1
+fi
 
 identity_keys=(
 	ro.product.odm.brand
@@ -58,25 +100,45 @@ identity_keys=(
 	ro.odm.build.version.incremental
 )
 declare -A identity_values=()
-for prop_key in "${identity_keys[@]}"; do
-	prop_value="$(read_prop_value "$prop_key" "${source_prop_files[@]}")"
-	if [[ -z "$prop_value" ]]; then
-		err_print "来源属性值不能为空：$prop_key"
-		exit 1
-	fi
-	identity_values["$prop_key"]="$prop_value"
-done
-
-if [[ -n "$override_prop_file" ]]; then
-	for build_prop in "${odm_build_props[@]}"; do
-		merge_prop_file "$override_prop_file" "$build_prop"
+if (( ${#source_prop_files[@]} > 0 )); then
+	for prop_key in "${identity_keys[@]}"; do
+		prop_found=0
+		for source_prop_file in "${source_prop_files[@]}"; do
+			if grep -Eq "^[[:space:]]*${prop_key//./\\.}[[:space:]]*=" "$source_prop_file"; then
+				prop_found=1
+				break
+			fi
+		done
+		if (( prop_found == 0 )); then
+			warn_print "来源属性不存在，跳过：$prop_key"
+			continue
+		fi
+		prop_value="$(read_prop_value "$prop_key" "${source_prop_files[@]}")"
+		if [[ -z "$prop_value" ]]; then
+			warn_print "来源属性值为空，跳过：$prop_key"
+			continue
+		fi
+		identity_values["$prop_key"]="$prop_value"
 	done
-	std_print "✅ 指定 prop 的全部有效属性已合并到 odm"
 fi
 
-for build_prop in "${odm_build_props[@]}"; do
+prop_write_performed=0
+if [[ -n "$override_prop_file" ]]; then
+	for build_prop in "${available_odm_build_props[@]}"; do
+		merge_prop_file "$override_prop_file" "$build_prop"
+		prop_write_performed=1
+	done
+	if (( ${#available_odm_build_props[@]} > 0 )); then
+		std_print "✅ 指定 prop 的全部有效属性已合并到 odm"
+	fi
+fi
+
+for build_prop in "${available_odm_build_props[@]}"; do
 	for prop_key in "${identity_keys[@]}"; do
-		ensure_prop "$build_prop" "$prop_key" "${identity_values[$prop_key]}"
+		if [[ -n "${identity_values[$prop_key]+x}" ]]; then
+			ensure_prop "$build_prop" "$prop_key" "${identity_values[$prop_key]}"
+			prop_write_performed=1
+		fi
 	done
 done
 
@@ -92,11 +154,23 @@ system_target_keys=(
 	ro.product.model
 	ro.product.name
 )
-for index in "${!system_source_keys[@]}"; do
-	source_key="${system_source_keys[$index]}"
-	target_key="${system_target_keys[$index]}"
-	ensure_prop "$system_build_prop" "$target_key" "${identity_values[$source_key]}"
-done
+if (( system_target_ready == 1 )); then
+	for index in "${!system_source_keys[@]}"; do
+		source_key="${system_source_keys[$index]}"
+		target_key="${system_target_keys[$index]}"
+		if [[ -n "${identity_values[$source_key]+x}" ]]; then
+			ensure_prop "$system_build_prop" "$target_key" "${identity_values[$source_key]}"
+			prop_write_performed=1
+		fi
+	done
+fi
 
-std_print "✅ 已写入：${identity_values[ro.product.odm.marketname]}（${identity_values[ro.product.odm.model]}）"
+if (( prop_write_performed == 1 )) && \
+	[[ -n "${identity_values[ro.product.odm.marketname]+x}" && -n "${identity_values[ro.product.odm.model]+x}" ]]; then
+	std_print "✅ 已写入：${identity_values[ro.product.odm.marketname]}（${identity_values[ro.product.odm.model]}）"
+elif (( prop_write_performed == 1 )); then
+	std_print "✅ 已完成可用设备标识属性写入"
+elif (( ${#source_prop_files[@]} > 0 || ${#available_odm_build_props[@]} > 0 || system_target_ready == 1 )); then
+	warn_print "没有可写入的设备标识属性，本补丁未修改 prop"
+fi
 std_print "处理完成"

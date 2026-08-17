@@ -8,9 +8,6 @@ init_port_env "${1:-}"
 std_print "修复一加 15 基带不兼容的小米 OEM Hook"
 std_print "保留小米 qcrilmsgtunnel，跳过 XTS 版本查询与屏幕状态通知"
 check_part_exists system
-check_file_exists "$(get_part_contexts_path system)"
-check_file_exists "$(get_part_fsconfig_path system)"
-check_partition_metadata_tool >/dev/null
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
@@ -18,10 +15,21 @@ teleservice_dir="$project_dir/system/system/priv-app/TeleService"
 teleservice_apk="$teleservice_dir/TeleService.apk"
 oat_dir="$teleservice_dir/oat"
 
-if [[ ! -f "$teleservice_apk" ]]; then
-	err_print "找不到 TeleService.apk：$teleservice_apk"
+if [[ -L "$teleservice_apk" ]]; then
+	err_print "不支持修改符号链接 APK：$teleservice_apk"
+	exit 1
+elif [[ ! -e "$teleservice_apk" ]]; then
+	warn_print "待修补的 TeleService.apk 不存在，跳过：${teleservice_apk#"$project_dir"/}"
+	std_print "处理完成"
+	exit 0
+elif [[ ! -f "$teleservice_apk" ]]; then
+	err_print "待修补的 TeleService.apk 不是普通文件：$teleservice_apk"
 	exit 1
 fi
+
+check_file_exists "$(get_part_contexts_path system)"
+check_file_exists "$(get_part_fsconfig_path system)"
+check_partition_metadata_tool >/dev/null
 
 bash "$patcher_dir/patch_apk.sh" "$teleservice_apk"
 

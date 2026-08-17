@@ -14,13 +14,24 @@ check_part_exists product
 device_features="$project_dir/product/etc/cust_features/device_features.xml"
 settings_features="$project_dir/product/etc/cust_features/cust_features.xml"
 
+camera_mr_patch_ready=1
 for feature_file in "$device_features" "$settings_features"; do
-	check_file_exists "$feature_file"
 	if [[ -L "$feature_file" ]]; then
 		err_print "不支持直接修改符号链接：$feature_file"
 		exit 1
+	elif [[ ! -e "$feature_file" ]]; then
+		warn_print "待修改的 CameraMR 特性文件不存在，跳过：${feature_file#"$project_dir"/}"
+		camera_mr_patch_ready=0
+	elif [[ ! -f "$feature_file" ]]; then
+		err_print "待修改的 CameraMR 特性路径不是普通文件：$feature_file"
+		exit 1
 	fi
 done
+if (( camera_mr_patch_ready == 0 )); then
+	warn_print "CameraMR 两项特性需要同步修改，已跳过本补丁"
+	std_print "处理完成"
+	exit 0
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
 	err_print "缺少 Python 3，无法安全修改 CameraMR 特性配置"

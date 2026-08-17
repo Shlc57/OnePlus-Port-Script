@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-CLASS_PATH='com/android/phone/XtsApp.smali'
+XTS_CLASS_PATH='com/android/phone/XtsApp.smali'
+SCREEN_STATUS_CLASS_PATH='com/xiaomi/mirilhook/MiRilHook.smali'
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PORT_ROOT=$(cd -- "$PATCHER_DIR/../.." && pwd)
 SIGNING_BLOCK_TOOL="$PORT_ROOT/common/fix_settings_haptic/apk_signing_block.py"
@@ -140,8 +141,9 @@ signature_snapshot() {
 smali_patch_state() {
     local smali_file=$1
     local mode=$2
+    local profile=$3
 
-    python3 - "$smali_file" "$mode" <<'PY'
+    python3 - "$smali_file" "$mode" "$profile" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -153,34 +155,60 @@ class PatchError(Exception):
 
 path = Path(sys.argv[1])
 mode = sys.argv[2]
+profile = sys.argv[3]
 if mode not in {"check", "patch"}:
     raise SystemExit("[!] 无效的 Smali 操作模式")
 
-specs = {
-    "ver": {
-        "descriptor": "onInitVerInfo(Lcom/xiaomi/modem/OemHookAgent;)V",
-        "markers": (
-            "->getModemHalChipId(Lcom/xiaomi/modem/OemHookAgent;)I",
-            "->getModemChipId(Lcom/xiaomi/modem/OemHookAgent;)I",
-            "->getBuildProfile(Lcom/xiaomi/modem/OemHookAgent;)Ljava/lang/String;",
-            "->getManufacturerId(Lcom/xiaomi/modem/OemHookAgent;)I",
-            "->getOemProductFlag(Lcom/xiaomi/modem/OemHookAgent;)I",
-            "->isHalDecoupled(Lcom/xiaomi/modem/OemHookAgent;)Z",
-        ),
-        "payload": ("return-void",),
-    },
+spec_groups = {
     "xts": {
-        "descriptor": "isXtsSupported()Z",
-        "markers": (
-            '"isXtsSupported"',
-            "Lcom/android/phone/XtsApp;->mIsHalDecoupled:Z",
-            "Lcom/android/phone/XtsApp;->mManufacturerId:I",
-            "Lcom/android/phone/XtsApp;->mHalChipId:I",
-            "Lcom/android/phone/XtsApp;->mOemProjectFlag:I",
-        ),
-        "payload": ("const/4 v0, 0x0", "return v0"),
+        "ver": {
+            "descriptor": "onInitVerInfo(Lcom/xiaomi/modem/OemHookAgent;)V",
+            "markers": (
+                "->getModemHalChipId(Lcom/xiaomi/modem/OemHookAgent;)I",
+                "->getModemChipId(Lcom/xiaomi/modem/OemHookAgent;)I",
+                "->getBuildProfile(Lcom/xiaomi/modem/OemHookAgent;)Ljava/lang/String;",
+                "->getManufacturerId(Lcom/xiaomi/modem/OemHookAgent;)I",
+                "->getOemProductFlag(Lcom/xiaomi/modem/OemHookAgent;)I",
+                "->isHalDecoupled(Lcom/xiaomi/modem/OemHookAgent;)Z",
+            ),
+            "payload": ("return-void",),
+            "patched_patterns": (r"return-void",),
+        },
+        "xts": {
+            "descriptor": "isXtsSupported()Z",
+            "markers": (
+                '"isXtsSupported"',
+                "Lcom/android/phone/XtsApp;->mIsHalDecoupled:Z",
+                "Lcom/android/phone/XtsApp;->mManufacturerId:I",
+                "Lcom/android/phone/XtsApp;->mHalChipId:I",
+                "Lcom/android/phone/XtsApp;->mOemProjectFlag:I",
+            ),
+            "payload": ("const/4 v0, 0x0", "return v0"),
+            "patched_patterns": (
+                r"const/4\s+v0,\s+0x0",
+                r"return\s+v0",
+            ),
+        },
+    },
+    "screen_status": {
+        "screen_status": {
+            "descriptor": "onHookNotifyScreenStatusSync(I)Ljava/nio/ByteBuffer;",
+            "markers": (
+                "->onHookPkNotifyScreenStatus(I)[B",
+                "->onHookSendSync([BI)Ljava/nio/ByteBuffer;",
+            ),
+            "payload": ("const/4 v0, 0x0", "return-object v0"),
+            "patched_patterns": (
+                r"const/4\s+v0,\s+0x0",
+                r"return-object\s+v0",
+            ),
+        },
     },
 }
+
+if profile not in spec_groups:
+    raise SystemExit("[!] 无效的 Smali 补丁 profile")
+specs = spec_groups[profile]
 
 
 def normalize_instruction(line):
@@ -227,14 +255,14 @@ def inspect(lines, sections):
             if instruction is not None:
                 instructions.append(instruction)
 
-        if key == "ver":
-            patched = bool(instructions and instructions[0] == "return-void")
-        else:
-            patched = bool(
-                len(instructions) >= 2
-                and re.fullmatch(r"const/4\s+v0,\s+0x0", instructions[0])
-                and re.fullmatch(r"return\s+v0", instructions[1])
+        patterns = spec["patched_patterns"]
+        patched = bool(
+            len(instructions) >= len(patterns)
+            and all(
+                re.fullmatch(pattern, instructions[index])
+                for index, pattern in enumerate(patterns)
             )
+        )
 
         if not patched:
             missing = [marker for marker in spec["markers"] if marker not in block]
@@ -288,7 +316,12 @@ try:
         if not all(states.values()):
             raise PatchError("写入后的目标方法校验失败")
 
-    print("{} {} {}".format(int(states["ver"]), int(states["xts"]), changed))
+    print(
+        " ".join(
+            [str(int(states[key])) for key in specs]
+            + [str(changed)]
+        )
+    )
 except (OSError, PatchError) as error:
     print("[!] {}".format(error), file=sys.stderr)
     raise SystemExit(1)
@@ -386,51 +419,84 @@ log "已保存原 APK Signing Block Pair IDs：$SIGNING_BLOCK_PAIR_IDS"
 log "反编译 TeleService.apk"
 "${APKTOOL_COMMAND[@]}" d -f -r "$APK_PATH" -o "$DECODE_DIR"
 
-mapfile -d '' -t CLASS_FILES < <(
-    find "$DECODE_DIR" -type f -path "*/$CLASS_PATH" -print0
+mapfile -d '' -t XTS_CLASS_FILES < <(
+    find "$DECODE_DIR" -type f -path "*/$XTS_CLASS_PATH" -print0
 )
 
-(( ${#CLASS_FILES[@]} == 1 )) ||
-    fail "目标类数量异常：期望 1 个，实际 ${#CLASS_FILES[@]} 个"
+(( ${#XTS_CLASS_FILES[@]} == 1 )) ||
+    fail "XtsApp 类数量异常：期望 1 个，实际 ${#XTS_CLASS_FILES[@]} 个"
 
-SMALI_FILE=${CLASS_FILES[0]}
-RELATIVE_SMALI_PATH=${SMALI_FILE#"$DECODE_DIR"/}
-SMALI_ROOT=${RELATIVE_SMALI_PATH%%/*}
+mapfile -d '' -t SCREEN_STATUS_CLASS_FILES < <(
+    find "$DECODE_DIR" -type f -path "*/$SCREEN_STATUS_CLASS_PATH" -print0
+)
 
-case "$SMALI_ROOT" in
-    smali)
-        DEX_ENTRY='classes.dex'
-        ;;
-    smali_classes[0-9]*)
-        DEX_NUMBER=${SMALI_ROOT#smali_classes}
-        [[ "$DEX_NUMBER" =~ ^[0-9]+$ ]] || fail "无法识别 DEX 目录：$SMALI_ROOT"
-        DEX_ENTRY="classes${DEX_NUMBER}.dex"
-        ;;
-    *)
-        fail "无法从目录识别目标 DEX：$SMALI_ROOT"
-        ;;
-esac
+(( ${#SCREEN_STATUS_CLASS_FILES[@]} == 1 )) ||
+    fail "MiRilHook 类数量异常：期望 1 个，实际 ${#SCREEN_STATUS_CLASS_FILES[@]} 个"
+
+XTS_SMALI_FILE=${XTS_CLASS_FILES[0]}
+SCREEN_STATUS_SMALI_FILE=${SCREEN_STATUS_CLASS_FILES[0]}
+
+resolve_dex_entry() {
+    local smali_file=$1
+    local relative_smali_path=${smali_file#"$DECODE_DIR"/}
+    local smali_root=${relative_smali_path%%/*}
+    local dex_number
+
+    case "$smali_root" in
+        smali)
+            printf '%s\n' 'classes.dex'
+            ;;
+        smali_classes[0-9]*)
+            dex_number=${smali_root#smali_classes}
+            [[ "$dex_number" =~ ^[0-9]+$ ]] || fail "无法识别 DEX 目录：$smali_root"
+            printf 'classes%s.dex\n' "$dex_number"
+            ;;
+        *)
+            fail "无法从目录识别目标 DEX：$smali_root"
+            ;;
+    esac
+}
+
+XTS_DEX_ENTRY=$(resolve_dex_entry "$XTS_SMALI_FILE")
+SCREEN_STATUS_DEX_ENTRY=$(resolve_dex_entry "$SCREEN_STATUS_SMALI_FILE")
+[[ "$XTS_DEX_ENTRY" == "$SCREEN_STATUS_DEX_ENTRY" ]] ||
+    fail "XtsApp 与 MiRilHook 不在同一 DEX：$XTS_DEX_ENTRY / $SCREEN_STATUS_DEX_ENTRY"
+DEX_ENTRY=$XTS_DEX_ENTRY
 
 DEX_ENTRY_COUNT=$(awk -v entry="$DEX_ENTRY" '$0 == entry { count++ } END { print count + 0 }' "$ARCHIVE_ENTRIES_BEFORE")
 (( DEX_ENTRY_COUNT == 1 )) ||
     fail "原 APK 中 $DEX_ENTRY 数量异常：期望 1 个，实际 $DEX_ENTRY_COUNT 个"
 archive_content_snapshot "$APK_PATH" "$DEX_ENTRY" "$NON_TARGET_CONTENT_BEFORE"
 
-SMALI_STATE=$(smali_patch_state "$SMALI_FILE" check) || fail "目标 Smali 校验失败"
-read -r VER_PATCHED XTS_PATCHED _ <<< "$SMALI_STATE"
+XTS_SMALI_STATE=$(smali_patch_state "$XTS_SMALI_FILE" check xts) ||
+    fail "XtsApp Smali 校验失败"
+read -r VER_PATCHED XTS_PATCHED _ <<< "$XTS_SMALI_STATE"
 
-if (( VER_PATCHED == 1 && XTS_PATCHED == 1 )); then
+SCREEN_STATUS_SMALI_STATE=$(
+    smali_patch_state "$SCREEN_STATUS_SMALI_FILE" check screen_status
+) || fail "MiRilHook Smali 校验失败"
+read -r SCREEN_STATUS_PATCHED _ <<< "$SCREEN_STATUS_SMALI_STATE"
+
+if (( VER_PATCHED == 1 && XTS_PATCHED == 1 && SCREEN_STATUS_PATCHED == 1 )); then
     "$ZIPALIGN_COMMAND" -c -P 16 4 "$APK_PATH" >/dev/null 2>&1 ||
-        fail "两个目标方法已补丁，但 APK 未对齐，拒绝静默改写"
-    log "SKIP：XTS modem 查询与支持判断均已补丁，APK 对齐正常"
+        fail "三个目标方法已补丁，但 APK 未对齐，拒绝静默改写"
+    log "SKIP：XTS 查询、支持判断与屏幕状态 OEM Hook 均已补丁，APK 对齐正常"
     exit 0
 fi
 
-log "修改 XtsApp 两个目标方法（目标 DEX：$DEX_ENTRY）"
-SMALI_STATE=$(smali_patch_state "$SMALI_FILE" patch) || fail "修改目标 Smali 失败"
-read -r VER_PATCHED XTS_PATCHED CHANGED_COUNT <<< "$SMALI_STATE"
-(( VER_PATCHED == 1 && XTS_PATCHED == 1 && CHANGED_COUNT > 0 )) ||
-    fail "修改后的 Smali 状态异常：ver=$VER_PATCHED xts=$XTS_PATCHED changed=$CHANGED_COUNT"
+log "修改 XtsApp 与 MiRilHook 的三个目标方法（目标 DEX：$DEX_ENTRY）"
+XTS_SMALI_STATE=$(smali_patch_state "$XTS_SMALI_FILE" patch xts) ||
+    fail "修改 XtsApp Smali 失败"
+read -r VER_PATCHED XTS_PATCHED XTS_CHANGED_COUNT <<< "$XTS_SMALI_STATE"
+
+SCREEN_STATUS_SMALI_STATE=$(
+    smali_patch_state "$SCREEN_STATUS_SMALI_FILE" patch screen_status
+) || fail "修改 MiRilHook Smali 失败"
+read -r SCREEN_STATUS_PATCHED SCREEN_STATUS_CHANGED_COUNT <<< "$SCREEN_STATUS_SMALI_STATE"
+
+CHANGED_COUNT=$((XTS_CHANGED_COUNT + SCREEN_STATUS_CHANGED_COUNT))
+(( VER_PATCHED == 1 && XTS_PATCHED == 1 && SCREEN_STATUS_PATCHED == 1 && CHANGED_COUNT > 0 )) ||
+    fail "修改后的 Smali 状态异常：ver=$VER_PATCHED xts=$XTS_PATCHED screen=$SCREEN_STATUS_PATCHED changed=$CHANGED_COUNT"
 
 log "回编译 APK 以生成新的 $DEX_ENTRY"
 "${APKTOOL_COMMAND[@]}" b "$DECODE_DIR" -o "$REBUILT_APK"

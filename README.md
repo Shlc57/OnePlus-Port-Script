@@ -129,4 +129,35 @@ bash auto_port.sh common/enable_hyperos_features
 
 ## 鸣谢
 
-- TODO
+本仓库的移植思路、问题定位和补丁实现参考了以下公开资料。感谢各位作者与贡献者分享经验；鸣谢不代表原样采用帖子中的全部做法，实际行为仍以当前仓库实现为准。对于没有独立标题的动态，下表采用正文开头的主题句作为名称。
+
+### 主要参考帖子
+
+| 作者 | 帖子 |
+| --- | --- |
+| Zephiel | [一键移植澎湃脚本](https://www.coolapk.com/feed/71545727?s=MDVjNTk4YjZlNTZiMmFnNmE4MmI1Yzl6a1651) |
+| TUSB_5834 | [一加移植澎湃bugs修复教程](https://www.coolapk.com/feed/71466817?s=MTZhNmJhMjNlNTZiMmFnNmE4MmI2ODZ6a1651) |
+| 青芜ovo | [黑厂移植澎湃bug修复大全](https://www.coolapk.com/feed/72525211?s=OWZmNjc1ZTZlNTZiMmFnNmE4MmI1Yzl6a1651) |
+| 青芜ovo | [欧加移植HyperOS3](https://www.coolapk.com/feed/72977558?s=MmYxOTRiNjVlNTZiMmFnNmE4MmI1Yzl6a1651) |
+| 区尼x的 | [第三方机型优雅地开澎湃OS](https://www.coolapk.com/feed/70763978?s=YWRiZmFlZTFlNTZiMmFnNmE4MmI1Yzl6a1651) |
+| 区尼x的 | [第三方澎湃OS开机教程](https://www.coolapk.com/feed/71825854?s=OWQyOWNiNTllNTZiMmFnNmE4MmI1Yzl6a1651) |
+| 梦想说电脑 | [一加开澎湃修复教程](https://www.coolapk.com/feed/72686563?s=N2JmYTVkY2RlNTZiMmFnNmE4MmI1Yzl6a1651) |
+| 默认头像神秘入 | [#ProjectTreble# 黑厂开澎湃保姆级教程，我奶奶看完都会移植了😱](https://www.coolapk.com/feed/72796234?s=ZGY5ZGZkOTBlNTZiMmFnNmE4MmI1Yzl6a1651) |
+
+### 原帖进一步引用的资料
+
+| 作者 | 帖子或资料 |
+| --- | --- |
+| 荒古圣体迪莫 | [准备0.5w粉了，写个关于怎么补小米账号的图文教程吧](https://www.coolapk.com/feed/66153059?s=OGVhOTE0M2MyMGVjNDE1ZzZhMGFjMmYyega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+| TUSB_5834 | [一加移植澎湃自动亮度修复](https://www.coolapk.com/feed/70984502?s=MWE3ZjcxNGIyMGVjNDE1ZzZhMGFjMmZjega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+| Zephiel | [Android Vendor SELinux 策略合并工具包 / Android Vendor SELinux Policy Merge Toolkit](https://www.coolapk.com/feed/70240015?s=YjZiNGIwYzgxOWEwM2ZjZzY5ZjBjMzU5ega1620) |
+| Enmmmmmm | [SELinux audit allow - SELinux 规则生成工具](https://www.coolapk.com/feed/57292580?s=N2ZjN2JjYjAxOWEwM2ZjZzY5ZjBjMzM2ega1620) |
+| 东边的何某 | [屏幕分辨率切换添加与修改](https://www.coolapk.com/feed/66835894?s=OTQ5OWJkOTMxOWEwM2ZjZzY5ZjBjNDRlega1620) |
+| d2u8_S6h3e | [公开在OS3.0.300使用K70 LyraSdkApp导致信号不定时掉问题](https://www.coolapk.com/feed/69927473?s=YzE3NzAxZDMyMGVjNDE1ZzZhMGFjMjliega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+| d2u8_S6h3e | [公开免去除Lyra（小米互联）修复OS3解锁掉信号方案](https://www.coolapk.com/feed/67009567?s=YTViNWI5OGEyMGVjNDE1ZzZhMGFjMmMwega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+| Enmmmmmm | [如何修改 MIUI / HyperOS 的设备分级](https://www.coolapk.com/feed/68768870?s=OWQ3ZTVkYzAyMGVjNDE1ZzZhMGFjMmQ1ega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+| 秋詞 | [澎湃本地参数仅测试了澎湃3……](https://www.coolapk.com/feed/67021882?s=YWE3N2ZhODcyMGVjNDE1ZzZhMGFjMzEzega1454&shareUid=34522133&shareFrom=com.coolapk.market_14.5.4) |
+
+最后一条动态当前受作者“仅半年内动态可见”设置限制，标题按引用页显示的片段保留，作者根据引用帖正文中对“秋詞的本地参数”的标注整理。
+
+各原帖还明确致谢或注明方案来源于：相见即是缘、已跑路_勿扰、曾晨曦（用户157816783）、江月、孩子i、玫瑰之忆、空白2032、Synecdoche、machruis、AX陳某染、mytiantian_是天天吖、Snownights、閃電Flashh。感谢以上贡献者以及原帖中未能逐一署名的参与者。

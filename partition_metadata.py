@@ -27,8 +27,29 @@ def read_lines(path: Path) -> list[str]:
         return [line.rstrip("\r\n") for line in stream]
 
 
-def write_lines(path: Path, lines: Iterable[str], *, preserve_from: Path | None = None) -> None:
-    rendered_lines = list(lines)
+def normalize_lines_for_write(
+    path: Path, lines: Iterable[str], kind: MetadataKind
+) -> list[str]:
+    normalized_lines: list[str] = []
+    for line_number, line in enumerate(lines, start=1):
+        if kind != "contexts" or is_ignored_line(line):
+            normalized_lines.append(line)
+            continue
+        fields = line.split()
+        if len(fields) < 2:
+            raise MetadataError(f"contexts 条目缺少上下文字段：{path}:{line_number}")
+        normalized_lines.append(" ".join(fields))
+    return normalized_lines
+
+
+def write_lines(
+    path: Path,
+    lines: Iterable[str],
+    kind: MetadataKind,
+    *,
+    preserve_from: Path | None = None,
+) -> None:
+    rendered_lines = normalize_lines_for_write(path, lines, kind)
     rendered = "\n".join(rendered_lines)
     if rendered_lines:
         rendered += "\n"
@@ -286,14 +307,14 @@ def command_merge(args: argparse.Namespace) -> None:
     merged = merge_metadata(
         read_lines(patch), read_lines(target), args.kind, args.patch_prefix
     )
-    write_lines(target, merged, preserve_from=target)
+    write_lines(target, merged, args.kind, preserve_from=target)
 
 
 def command_remove_prefix(args: argparse.Namespace) -> None:
     target = Path(args.target)
     validate_prefix(args.kind, args.prefix)
     filtered = remove_prefix(read_lines(target), args.kind, args.prefix)
-    write_lines(target, filtered, preserve_from=target)
+    write_lines(target, filtered, args.kind, preserve_from=target)
 
 
 def command_translate_manifest(args: argparse.Namespace) -> None:
@@ -304,7 +325,7 @@ def command_translate_manifest(args: argparse.Namespace) -> None:
         args.source_prefix,
         args.target_prefix,
     )
-    write_lines(Path(args.output), translated)
+    write_lines(Path(args.output), translated, args.kind)
 
 
 def command_translate_prefix(args: argparse.Namespace) -> None:
@@ -314,7 +335,7 @@ def command_translate_prefix(args: argparse.Namespace) -> None:
         args.source_prefix,
         args.target_prefix,
     )
-    write_lines(Path(args.output), translated)
+    write_lines(Path(args.output), translated, args.kind)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -69,10 +69,10 @@ bash 1+15_port.sh
 
 | 配置目录 | contexts 模板 | fsconfig 模板 |
 | --- | --- | --- |
-| `DNA_config` | `{part}_file_contexts` | `{part}_fsconfig.txt` |
-| `config` | `{part}_contexts.txt` | `{part}_fs_config` |
+| `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
+| `config` | `{part}_file_contexts` | `{part}_fs_config` |
 
-模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `partition_metadata.py` 完成：补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，任一补丁失败后立即停止；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
+模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `partition_metadata.py` 完成：补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，任一补丁失败后立即停止；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
 
 ## 共享补丁（`common`）
 

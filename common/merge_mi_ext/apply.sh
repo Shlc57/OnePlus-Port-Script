@@ -24,7 +24,6 @@ ensure_mi_ext_runtime_compat() {
 	local compat_link="$project_dir/system/mi_ext/product"
 	local cust_feature_key="ro.mi.os.custfeatureresolve"
 	local cust_feature_value
-	local fsconfig_entry
 	local contexts_entry
 
 	system_fsconfig="$(get_part_fsconfig_path system)"
@@ -33,6 +32,7 @@ ensure_mi_ext_runtime_compat() {
 	check_file_exists "$product_build_prop"
 	check_file_exists "$system_fsconfig"
 	check_file_exists "$system_contexts"
+	check_partition_metadata_tool >/dev/null
 
 	cust_feature_value="$(read_prop_value "$cust_feature_key" "$mi_ext_build_prop")"
 	if [[ -L "$compat_link" ]]; then
@@ -54,15 +54,12 @@ ensure_mi_ext_runtime_compat() {
 	fi
 	std_print "✅ 已建立 /mi_ext/product -> /product 兼容路径"
 
-	fsconfig_entry="$(mktemp "$(get_dna_config_path '.mi_ext_product_fsconfig.XXXXXX')")"
-	temporary_files+=("$fsconfig_entry")
-	printf '%s\n' 'system/mi_ext/product 0 0 0644' > "$fsconfig_entry"
-	append_unique_lines "$fsconfig_entry" "$system_fsconfig"
+	ensure_part_fsconfig_entry system mi_ext/product 0 0 0644
 
-	contexts_entry="$(mktemp "$(get_dna_config_path '.mi_ext_product_contexts.XXXXXX')")"
+	contexts_entry="$(mktemp "$(get_config_path '.mi_ext_product_contexts.XXXXXX')")"
 	temporary_files+=("$contexts_entry")
 	printf '%s\n' '/system/mi_ext/product u:object_r:system_file:s0' > "$contexts_entry"
-	append_unique_lines "$contexts_entry" "$system_contexts"
+	merge_contexts_file "$contexts_entry" "$system_contexts"
 	std_print "✅ mi_ext product 兼容路径元数据已同步"
 }
 
@@ -80,46 +77,13 @@ fi
 for part_name in product system_ext system; do
 	check_part_exists "$part_name"
 	check_file_exists "$(get_part_contexts_path "$part_name")"
+	check_file_exists "$(get_part_fsconfig_path "$part_name")"
 done
 
 mi_ext_contexts="$(get_part_contexts_path mi_ext)"
+mi_ext_fsconfig="$(get_part_fsconfig_path mi_ext)"
 check_file_exists "$mi_ext_contexts"
-
-product_converted="$(mktemp "$(get_dna_config_path '.mi_ext_product.XXXXXX')")"
-temporary_files+=("$product_converted")
-system_ext_converted="$(mktemp "$(get_dna_config_path '.mi_ext_system_ext.XXXXXX')")"
-temporary_files+=("$system_ext_converted")
-system_converted="$(mktemp "$(get_dna_config_path '.mi_ext_system.XXXXXX')")"
-temporary_files+=("$system_converted")
-
-awk \
-	-v product_out="$product_converted" \
-	-v system_ext_out="$system_ext_converted" \
-	-v system_out="$system_converted" '
-	/^\/mi_ext\/product([[:space:]]|\/|$)/ {
-		line = $0
-		sub(/^\/mi_ext\/product/, "/product", line)
-		print line >> product_out
-		next
-	}
-	/^\/mi_ext\/system_ext([[:space:]]|\/|$)/ {
-		line = $0
-		sub(/^\/mi_ext\/system_ext/, "/system_ext", line)
-		print line >> system_ext_out
-		next
-	}
-	/^\/mi_ext\/system([[:space:]]|\/|$)/ {
-		line = $0
-		sub(/^\/mi_ext\/system/, "/system/system", line)
-		print line >> system_out
-		next
-	}
-	/^\/mi_ext\/etc([[:space:]]|\/|$)/ {
-		line = $0
-		sub(/^\/mi_ext\/etc/, "/system/mi_ext/etc", line)
-		print line >> system_out
-	}
-' "$mi_ext_contexts"
+check_file_exists "$mi_ext_fsconfig"
 
 for source_name in product system_ext system etc; do
 	if [[ ! -d "$source_part/$source_name" ]]; then
@@ -127,6 +91,15 @@ for source_name in product system_ext system etc; do
 		exit 1
 	fi
 done
+
+validate_translated_contexts_prefix "$mi_ext_contexts" /mi_ext/product /product
+validate_translated_contexts_prefix "$mi_ext_contexts" /mi_ext/system_ext /system_ext
+validate_translated_contexts_prefix "$mi_ext_contexts" /mi_ext/system /system/system
+validate_translated_contexts_prefix "$mi_ext_contexts" /mi_ext/etc /system/mi_ext/etc
+validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/product product
+validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/system_ext system_ext
+validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/system system/system
+validate_translated_fsconfig_prefix "$mi_ext_fsconfig" mi_ext/etc system/mi_ext/etc
 
 product_build_prop="$project_dir/product/etc/build.prop"
 if [[ -f "$source_part/etc/build.prop" ]]; then
@@ -142,10 +115,23 @@ std_print "✅ system 文件合并完成"
 merge_tree "$source_part/etc" "$project_dir/system/mi_ext/etc"
 std_print "✅ etc 文件合并完成"
 
-append_unique_lines "$product_converted" "$(get_part_contexts_path product)"
-append_unique_lines "$system_ext_converted" "$(get_part_contexts_path system_ext)"
-append_unique_lines "$system_converted" "$(get_part_contexts_path system)"
-std_print "✅ mi_ext file_contexts 转换完成"
+merge_translated_contexts_prefix \
+	"$mi_ext_contexts" "$(get_part_contexts_path product)" /mi_ext/product /product
+merge_translated_contexts_prefix \
+	"$mi_ext_contexts" "$(get_part_contexts_path system_ext)" /mi_ext/system_ext /system_ext
+merge_translated_contexts_prefix \
+	"$mi_ext_contexts" "$(get_part_contexts_path system)" /mi_ext/system /system/system
+merge_translated_contexts_prefix \
+	"$mi_ext_contexts" "$(get_part_contexts_path system)" /mi_ext/etc /system/mi_ext/etc
+merge_translated_fsconfig_prefix \
+	"$mi_ext_fsconfig" "$(get_part_fsconfig_path product)" mi_ext/product product
+merge_translated_fsconfig_prefix \
+	"$mi_ext_fsconfig" "$(get_part_fsconfig_path system_ext)" mi_ext/system_ext system_ext
+merge_translated_fsconfig_prefix \
+	"$mi_ext_fsconfig" "$(get_part_fsconfig_path system)" mi_ext/system system/system
+merge_translated_fsconfig_prefix \
+	"$mi_ext_fsconfig" "$(get_part_fsconfig_path system)" mi_ext/etc system/mi_ext/etc
+std_print "✅ mi_ext contexts 与 fsconfig 转换完成"
 
 mi_ext_build_prop="$project_dir/system/mi_ext/etc/build.prop"
 marker_key="ro.miui.support.system.app.uninstall.v2"

@@ -21,6 +21,7 @@ vendor_displayconfig="$project_dir/vendor/etc/displayconfig"
 product_displayconfig="$project_dir/product/etc/displayconfig"
 product_contexts="$(get_part_contexts_path product)"
 contexts_patch="$patcher_dir/config/product_file_contexts"
+vendor_fsconfig="$(get_part_fsconfig_path vendor)"
 product_fsconfig="$(get_part_fsconfig_path product)"
 product_fsconfig_patch="$patcher_dir/config/product_fsconfig"
 panel_brightness_config="$patcher_dir/config/display_brightness_config_P_3.xml"
@@ -35,6 +36,7 @@ for build_prop in "${odm_build_props[@]}"; do
 done
 check_file_exists "$product_contexts"
 check_file_exists "$contexts_patch"
+check_file_exists "$vendor_fsconfig"
 check_file_exists "$product_fsconfig"
 check_file_exists "$product_fsconfig_patch"
 check_file_exists "$panel_brightness_config"
@@ -67,6 +69,11 @@ if [[ -d "$target_display_config" ]]; then
 	err_print "目标 Display ID 配置不能是目录：$target_display_config"
 	exit 1
 fi
+
+validate_translated_fsconfig_prefix \
+	"$vendor_fsconfig" \
+	vendor/etc/displayconfig \
+	product/etc/displayconfig
 
 for overlay_name in AospFrameworkResOverlay.apk MiuiFrameworkResOverlay.apk; do
 	overlay_path="$project_dir/product/overlay/$overlay_name"
@@ -540,7 +547,12 @@ std_print "✅ 已生成 135/1400/1800 nit 边界校准映射：$brightness_summ
 replace_file_if_different "$boot_brightness_overlay" "$boot_brightness_overlay_target"
 std_print "✅ 已加入仅覆盖启动默认亮度的 135 nit 单资源 Overlay"
 
-append_unique_lines "$product_fsconfig_patch" "$product_fsconfig"
-append_unique_lines "$contexts_patch" "$product_contexts"
+merge_translated_fsconfig_prefix \
+	"$vendor_fsconfig" \
+	"$product_fsconfig" \
+	vendor/etc/displayconfig \
+	product/etc/displayconfig
+merge_fsconfig_file "$product_fsconfig_patch" "$product_fsconfig"
+merge_contexts_file "$contexts_patch" "$product_contexts"
 std_print "✅ product fsconfig 与 SELinux 文件上下文合并完成"
 std_print "处理完成"

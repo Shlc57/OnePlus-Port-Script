@@ -33,11 +33,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-haptic_prop_patch="$(mktemp "$(get_dna_config_path '.fix_linear_haptic_props.XXXXXX')")"
+haptic_prop_patch="$(mktemp "$(get_config_path '.fix_linear_haptic_props.XXXXXX')")"
 temporary_files+=("$haptic_prop_patch")
-target_build_prop_next="$(mktemp "$(get_dna_config_path '.fix_linear_haptic_build_prop.XXXXXX')")"
+target_build_prop_next="$(mktemp "$(get_config_path '.fix_linear_haptic_build_prop.XXXXXX')")"
 temporary_files+=("$target_build_prop_next")
-vibrator_rc_next="$(mktemp "$(get_dna_config_path '.fix_linear_haptic_rc.XXXXXX')")"
+vibrator_rc_next="$(mktemp "$(get_config_path '.fix_linear_haptic_rc.XXXXXX')")"
 temporary_files+=("$vibrator_rc_next")
 
 if ! awk -v source_file="$source_build_prop" '

@@ -4,7 +4,6 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 port="$script_dir/auto_port.sh"
 export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
-# 暂不启用 devices/oneplus15/fix_camera_misys_fallback
 "$port" common/merge_mi_ext \
 	common/disable_mi_vulkan \
 	common/disable_odm_imports \

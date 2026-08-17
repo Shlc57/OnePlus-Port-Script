@@ -17,37 +17,38 @@ check_part_exists product
 
 product_contexts="$(get_part_contexts_path product)"
 system_contexts="$(get_part_contexts_path system)"
+product_fsconfig="$(get_part_fsconfig_path product)"
+system_fsconfig="$(get_part_fsconfig_path system)"
 check_file_exists "$product_contexts"
 check_file_exists "$system_contexts"
+check_file_exists "$product_fsconfig"
+check_file_exists "$system_fsconfig"
 
-filtered_contexts="$(mktemp "${product_contexts}.tmp.XXXXXX")"
-converted_contexts="$(mktemp "${system_contexts}.pangu.XXXXXX")"
-cleanup() {
-	rm -f -- "$filtered_contexts" "$converted_contexts"
-}
-trap cleanup EXIT
-
-awk -v converted="$converted_contexts" '
-	/^\/product\/pangu\/system([[:space:]]|\/|$)/ {
-		line = $0
-		sub(/^\/product\/pangu\/system/, "/system/system", line)
-		print line >> converted
-		next
-	}
-	{ print }
-' "$product_contexts" > "$filtered_contexts"
+validate_translated_contexts_prefix \
+	"$product_contexts" \
+	/product/pangu/system \
+	/system/system
+validate_translated_fsconfig_prefix \
+	"$product_fsconfig" \
+	product/pangu/system \
+	system/system
 
 merge_tree "$source_tree" "$project_dir/system/system"
 std_print "✅ 文件合并完成"
 
-if [[ -s "$converted_contexts" ]]; then
-	append_unique_lines "$converted_contexts" "$system_contexts"
-	chmod --reference="$product_contexts" -- "$filtered_contexts"
-	replace_file_if_different "$filtered_contexts" "$product_contexts"
-	std_print "✅ file_contexts 转换完成"
-else
-	skip_print "product_contexts 中没有待转换的 pangu 条目"
-fi
+merge_translated_contexts_prefix \
+	"$product_contexts" \
+	"$system_contexts" \
+	/product/pangu/system \
+	/system/system
+merge_translated_fsconfig_prefix \
+	"$product_fsconfig" \
+	"$system_fsconfig" \
+	product/pangu/system \
+	system/system
+remove_contexts_prefix "$product_contexts" /product/pangu/system
+remove_fsconfig_prefix "$product_fsconfig" product/pangu/system
+std_print "✅ contexts 与 fsconfig 已转换并从 product 源路径移除"
 
 remove_path_if_exists "$source_tree"
 std_print "处理完成"

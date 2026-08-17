@@ -23,7 +23,7 @@ if [[ -L "$target_file" ]]; then
 	exit 1
 fi
 
-prop_patch="$(mktemp "$(get_dna_config_path '.fix_nfc.XXXXXX')")"
+prop_patch="$(mktemp "$(get_config_path '.fix_nfc.XXXXXX')")"
 cleanup() {
 	rm -f -- "$prop_patch"
 }

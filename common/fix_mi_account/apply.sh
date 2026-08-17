@@ -104,7 +104,6 @@ merge_exec_context_overrides() {
 	local override_file="${1:-}"
 	local destination_contexts="${2:-}"
 	local partition_prefix="${3:-}"
-	local temporary_file
 
 	check_file_exists "$override_file" || return 1
 	check_file_exists "$destination_contexts" || return 1
@@ -112,52 +111,7 @@ merge_exec_context_overrides() {
 		err_print "执行上下文覆盖分区前缀无效：$partition_prefix"
 		return 1
 	fi
-	temporary_file="$(mktemp "${destination_contexts}.tmp.XXXXXX")" || return 1
-	if ! awk -v overrides="$override_file" -v partition_prefix="$partition_prefix" '
-		function normalize_path(value) {
-			gsub(/\\/, "", value)
-			return value
-		}
-		BEGIN {
-			while ((getline override_line < overrides) > 0) {
-				sub(/\r$/, "", override_line)
-				if (override_line ~ /^[[:space:]]*(#|$)/) {
-					continue
-				}
-				field_count = split(override_line, fields, /[[:space:]]+/)
-				path = normalize_path(fields[1])
-				if (partition_prefix != "" && index(path, partition_prefix) != 1) {
-					continue
-				}
-				order[++order_count] = path
-				replacement[path] = override_line
-			}
-			close(overrides)
-		}
-		{
-			path = normalize_path($1)
-			if (path in replacement) {
-				if (!(path in emitted)) {
-					print replacement[path]
-					emitted[path] = 1
-				}
-				next
-			}
-			print
-		}
-		END {
-			for (index_value = 1; index_value <= order_count; index_value++) {
-				path = order[index_value]
-				if (!(path in emitted)) {
-					print replacement[path]
-				}
-			}
-		}
-	' "$destination_contexts" > "$temporary_file"; then
-		rm -f -- "$temporary_file"
-		return 1
-	fi
-	_install_generated_file "$temporary_file" "$destination_contexts"
+	merge_contexts_file "$override_file" "$destination_contexts" "$partition_prefix"
 }
 
 check_file_exists "$exec_context_overrides"
@@ -180,12 +134,16 @@ for index in "${!source_parts[@]}"; do
 	target_part="${target_parts[$index]}"
 	source_contexts="$(get_part_contexts_path "$source_part")"
 	target_contexts="$(get_part_contexts_path "$target_part")"
+	source_fsconfig="$(get_part_fsconfig_path "$source_part")"
+	target_fsconfig="$(get_part_fsconfig_path "$target_part")"
 
 	check_part_exists "$source_part"
 	check_part_exists "$target_part"
 	check_file_exists "${manifests[$index]}"
 	check_file_exists "$source_contexts"
 	check_file_exists "$target_contexts"
+	check_file_exists "$source_fsconfig"
+	check_file_exists "$target_fsconfig"
 	validate_source_file_manifest \
 		"$project_dir/$source_part" \
 		"$project_dir/$target_part" \
@@ -195,6 +153,11 @@ for index in "${!source_parts[@]}"; do
 		"${manifests[$index]}" \
 		"/$source_part" \
 		"/$target_part"
+	validate_translated_fsconfig \
+		"$source_fsconfig" \
+		"${manifests[$index]}" \
+		"$source_part" \
+		"$target_part"
 done
 
 for index in "${!source_parts[@]}"; do
@@ -203,6 +166,8 @@ for index in "${!source_parts[@]}"; do
 	manifest_file="${manifests[$index]}"
 	source_contexts="$(get_part_contexts_path "$source_part")"
 	target_contexts="$(get_part_contexts_path "$target_part")"
+	source_fsconfig="$(get_part_fsconfig_path "$source_part")"
+	target_fsconfig="$(get_part_fsconfig_path "$target_part")"
 
 	std_print "开始处理：$source_part → $target_part"
 	apply_source_file_manifest \
@@ -215,7 +180,13 @@ for index in "${!source_parts[@]}"; do
 		"/$source_part" \
 		"/$target_part" \
 		"$manifest_file"
-	std_print "✅ $source_part → $target_part 文件与 contexts 已合并"
+	merge_translated_fsconfig \
+		"$source_fsconfig" \
+		"$target_fsconfig" \
+		"$source_part" \
+		"$target_part" \
+		"$manifest_file"
+	std_print "✅ $source_part → $target_part 文件、contexts 与 fsconfig 已合并"
 done
 
 merge_exec_context_overrides \

@@ -7,6 +7,9 @@ init_port_env "${1:-}"
 
 std_print "修复 Settings 触感支持"
 check_part_exists system_ext
+check_file_exists "$(get_part_contexts_path system_ext)"
+check_file_exists "$(get_part_fsconfig_path system_ext)"
+check_partition_metadata_tool >/dev/null
 
 settings_dir="$project_dir/system_ext/priv-app/Settings"
 settings_apk="$settings_dir/Settings.apk"
@@ -20,5 +23,6 @@ fi
 bash "$patcher_dir/patch_apk.sh" "$settings_apk"
 
 remove_path_if_exists "$oat_dir"
+remove_part_metadata_prefix system_ext priv-app/Settings/oat
 
 std_print "处理完成"

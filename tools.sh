@@ -2,6 +2,19 @@
 
 _port_tools_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
+declare -a _port_config_profiles=(
+	DNA_config
+	config
+)
+declare -A _port_contexts_name_templates=(
+	[DNA_config]='{part}_contexts.txt'
+	[config]='{part}_file_contexts'
+)
+declare -A _port_fsconfig_name_templates=(
+	[DNA_config]='{part}_fsconfig.txt'
+	[config]='{part}_fs_config'
+)
+
 std_print() {
 	printf '> %s\n' "$*"
 }
@@ -14,37 +27,35 @@ skip_print() {
 	printf '> SKIP: %s\n' "$*"
 }
 
-_resolve_dna_config_dir() {
+_resolve_config_profile() {
 	local requested_project_dir="${1:-}"
-	local candidate
-	local -a config_candidates=()
+	local profile
 
 	if [[ -z "$requested_project_dir" ]]; then
-		err_print "未指定项目目录，无法获取 D.N.A 配置目录"
+		err_print "未指定项目目录，无法获取配置目录"
 		return 1
 	fi
-	for candidate in "$requested_project_dir"/*_config; do
-		if [[ -d "$candidate" ]]; then
-			config_candidates+=("$candidate")
+	for profile in "${_port_config_profiles[@]}"; do
+		if [[ -d "$requested_project_dir/$profile" ]]; then
+			printf '%s\n' "$profile"
+			return 0
 		fi
 	done
 
-	case "${#config_candidates[@]}" in
-		0)
-			err_print "项目目录缺少 D.N.A 配置目录（*_config）：$requested_project_dir"
-			return 1
-			;;
-		1)
-			(cd -- "${config_candidates[0]}" && pwd -P)
-			;;
-		*)
-			err_print "项目目录存在多个 D.N.A 配置目录，无法确定：$requested_project_dir"
-			for candidate in "${config_candidates[@]}"; do
-				err_print "  $(basename -- "$candidate")"
-			done
-			return 1
-			;;
-	esac
+	err_print "项目目录缺少受支持的配置目录（DNA_config 或 config）：$requested_project_dir"
+	return 1
+}
+
+_load_config_profile() {
+	local requested_project_dir="${1:-}"
+	local resolved_profile
+
+	resolved_profile="$(_resolve_config_profile "$requested_project_dir")" || return 1
+	config_profile="$resolved_profile"
+	config_dir="$(cd -- "$requested_project_dir/$config_profile" && pwd -P)" || return 1
+	contexts_name_template="${_port_contexts_name_templates[$config_profile]}"
+	fsconfig_name_template="${_port_fsconfig_name_templates[$config_profile]}"
+	export config_profile config_dir contexts_name_template fsconfig_name_template
 }
 
 init_port_env() {
@@ -59,35 +70,37 @@ init_port_env() {
 	fi
 
 	project_dir="$(cd -- "$requested_project_dir" && pwd -P)"
-	dna_config_dir="$(_resolve_dna_config_dir "$project_dir")" || return 1
+	_load_config_profile "$project_dir" || return 1
 	port_dir="$_port_tools_dir"
-	export project_dir dna_config_dir
+	export project_dir port_dir
 }
 
-get_dna_config_dir() {
+get_config_dir() {
 	if [[ -z "${project_dir:-}" ]]; then
-		err_print "获取 D.N.A 配置目录前必须先调用 init_port_env"
+		err_print "获取配置目录前必须先调用 init_port_env"
 		return 1
 	fi
-	if [[ -n "${dna_config_dir:-}" && -d "$dna_config_dir" ]]; then
-		printf '%s\n' "$dna_config_dir"
+	if [[ -n "${config_dir:-}" && -n "${config_profile:-}" && \
+		-d "$config_dir" && \
+		"${_port_contexts_name_templates[$config_profile]+present}" == present && \
+		"${_port_fsconfig_name_templates[$config_profile]+present}" == present ]]; then
+		printf '%s\n' "$config_dir"
 		return 0
 	fi
 
-	dna_config_dir="$(_resolve_dna_config_dir "$project_dir")" || return 1
-	export dna_config_dir
-	printf '%s\n' "$dna_config_dir"
+	_load_config_profile "$project_dir" || return 1
+	printf '%s\n' "$config_dir"
 }
 
-get_dna_config_path() {
+get_config_path() {
 	local relative_path="${1:-}"
 
 	if ! _is_safe_relative_path "$relative_path"; then
-		err_print "无效的 D.N.A 配置相对路径：$relative_path"
+		err_print "无效的配置相对路径：$relative_path"
 		return 1
 	fi
-	get_dna_config_dir >/dev/null || return 1
-	printf '%s/%s\n' "$dna_config_dir" "$relative_path"
+	get_config_dir >/dev/null || return 1
+	printf '%s/%s\n' "$config_dir" "$relative_path"
 }
 
 check_part_exists() {
@@ -132,33 +145,39 @@ _validate_part_name() {
 
 get_part_contexts_name() {
 	local part_name="${1:-}"
+	local contexts_name
 
 	_validate_part_name "$part_name" || return 1
-	printf '%s_contexts.txt\n' "$part_name"
+	if [[ -z "${contexts_name_template:-}" || "$contexts_name_template" != *'{part}'* ]]; then
+		err_print "contexts 名称模板无效：${contexts_name_template:-<空>}"
+		return 1
+	fi
+	contexts_name="${contexts_name_template//\{part\}/$part_name}"
+	if ! _is_safe_relative_path "$contexts_name"; then
+		err_print "生成的 contexts 文件名无效：$contexts_name"
+		return 1
+	fi
+	printf '%s\n' "$contexts_name"
 }
 
 get_part_contexts_path() {
 	local contexts_name
 
 	contexts_name="$(get_part_contexts_name "${1:-}")" || return 1
-	get_dna_config_path "$contexts_name"
+	get_config_path "$contexts_name"
 }
 
 get_part_fsconfig_name() {
 	local part_name="${1:-}"
-	local name_template="${FSCONFIG_NAME_TEMPLATE:-}"
 	local fsconfig_name
 
 	_validate_part_name "$part_name" || return 1
-	if [[ -z "$name_template" ]]; then
-		name_template='{part}_fsconfig.txt'
-	fi
-	if [[ "$name_template" != *'{part}'* ]]; then
-		err_print "FSCONFIG_NAME_TEMPLATE 必须包含 {part}：$name_template"
+	if [[ -z "${fsconfig_name_template:-}" || "$fsconfig_name_template" != *'{part}'* ]]; then
+		err_print "fsconfig 名称模板无效：${fsconfig_name_template:-<空>}"
 		return 1
 	fi
 
-	fsconfig_name="${name_template//\{part\}/$part_name}"
+	fsconfig_name="${fsconfig_name_template//\{part\}/$part_name}"
 	if ! _is_safe_relative_path "$fsconfig_name"; then
 		err_print "生成的 fsconfig 文件名无效：$fsconfig_name"
 		return 1
@@ -170,7 +189,7 @@ get_part_fsconfig_path() {
 	local fsconfig_name
 
 	fsconfig_name="$(get_part_fsconfig_name "${1:-}")" || return 1
-	get_dna_config_path "$fsconfig_name"
+	get_config_path "$fsconfig_name"
 }
 
 _check_prop_args() {
@@ -550,6 +569,138 @@ append_unique_lines() {
 	fi
 }
 
+check_partition_metadata_tool() {
+	local metadata_tool="$_port_tools_dir/partition_metadata.py"
+
+	if ! command -v python3 >/dev/null 2>&1; then
+		err_print "缺少 Python 3，无法处理分区 contexts/fsconfig"
+		return 1
+	fi
+	check_file_exists "$metadata_tool" || return 1
+	printf '%s\n' "$metadata_tool"
+}
+
+_partition_metadata_tool() {
+	local metadata_tool
+
+	metadata_tool="$(check_partition_metadata_tool)" || return 1
+	python3 "$metadata_tool" "$@"
+}
+
+merge_contexts_file() {
+	local patch_file="${1:-}"
+	local destination_file="${2:-}"
+	local patch_prefix="${3:-}"
+	local -a command_args=(
+		merge
+		--kind contexts
+		--patch "$patch_file"
+		--target "$destination_file"
+	)
+
+	check_file_exists "$patch_file" || return 1
+	check_file_exists "$destination_file" || return 1
+	if [[ -n "$patch_prefix" ]]; then
+		command_args+=(--patch-prefix "$patch_prefix")
+	fi
+	_partition_metadata_tool "${command_args[@]}"
+}
+
+merge_fsconfig_file() {
+	local patch_file="${1:-}"
+	local destination_file="${2:-}"
+	local patch_prefix="${3:-}"
+	local -a command_args=(
+		merge
+		--kind fsconfig
+		--patch "$patch_file"
+		--target "$destination_file"
+	)
+
+	check_file_exists "$patch_file" || return 1
+	check_file_exists "$destination_file" || return 1
+	if [[ -n "$patch_prefix" ]]; then
+		command_args+=(--patch-prefix "$patch_prefix")
+	fi
+	_partition_metadata_tool "${command_args[@]}"
+}
+
+remove_contexts_prefix() {
+	local contexts_file="${1:-}"
+	local contexts_prefix="${2:-}"
+
+	check_file_exists "$contexts_file" || return 1
+	_partition_metadata_tool remove-prefix \
+		--kind contexts \
+		--target "$contexts_file" \
+		--prefix "$contexts_prefix"
+}
+
+remove_fsconfig_prefix() {
+	local fsconfig_file="${1:-}"
+	local fsconfig_prefix="${2:-}"
+
+	check_file_exists "$fsconfig_file" || return 1
+	_partition_metadata_tool remove-prefix \
+		--kind fsconfig \
+		--target "$fsconfig_file" \
+		--prefix "$fsconfig_prefix"
+}
+
+remove_part_metadata_prefix() {
+	local part_name="${1:-}"
+	local relative_path="${2:-}"
+	local contexts_prefix
+	local fsconfig_prefix
+
+	_validate_part_name "$part_name" || return 1
+	if [[ -n "$relative_path" ]] && ! _is_safe_relative_path "$relative_path"; then
+		err_print "无效的分区元数据相对路径：$relative_path"
+		return 1
+	fi
+	contexts_prefix="/$part_name"
+	fsconfig_prefix="$part_name"
+	if [[ -n "$relative_path" ]]; then
+		contexts_prefix="${contexts_prefix}/${relative_path}"
+		fsconfig_prefix="${fsconfig_prefix}/${relative_path}"
+	fi
+	remove_contexts_prefix "$(get_part_contexts_path "$part_name")" "$contexts_prefix" || return 1
+	remove_fsconfig_prefix "$(get_part_fsconfig_path "$part_name")" "$fsconfig_prefix"
+}
+
+ensure_part_fsconfig_entry() {
+	local part_name="${1:-}"
+	local relative_path="${2:-}"
+	local uid="${3:-}"
+	local gid="${4:-}"
+	local mode="${5:-}"
+	shift 5 2>/dev/null || true
+	local extra_fields=("$@")
+	local patch_file
+	local merge_status=0
+
+	_validate_part_name "$part_name" || return 1
+	if ! _is_safe_relative_path "$relative_path"; then
+		err_print "无效的 fsconfig 相对路径：$relative_path"
+		return 1
+	fi
+	if [[ ! "$uid" =~ ^[0-9]+$ || ! "$gid" =~ ^[0-9]+$ || ! "$mode" =~ ^0[0-7]{3,4}$ ]]; then
+		err_print "无效的 fsconfig 权限：uid=$uid gid=$gid mode=$mode"
+		return 1
+	fi
+	patch_file="$(mktemp "$(get_config_path '.fsconfig_entry.XXXXXX')")" || return 1
+	{
+		printf '%s/%s %s %s %s' "$part_name" "$relative_path" "$uid" "$gid" "$mode"
+		if (( ${#extra_fields[@]} > 0 )); then
+			printf ' %s' "${extra_fields[@]}"
+		fi
+		printf '\n'
+	} > "$patch_file"
+	merge_fsconfig_file "$patch_file" "$(get_part_fsconfig_path "$part_name")" || merge_status=$?
+	rm -f -- "$patch_file"
+	return "$merge_status"
+}
+
 copy_tree_missing_only() {
 	local source_dir="${1:-}"
 	local destination_dir="${2:-}"
@@ -815,97 +966,46 @@ apply_source_file_manifest() {
 	done < "$manifest_file"
 }
 
-_build_translated_contexts() {
-	local source_contexts="${1:-}"
+_build_translated_manifest_metadata() {
+	local source_metadata="${1:-}"
 	local manifest_file="${2:-}"
 	local source_prefix="${3:-}"
 	local target_prefix="${4:-}"
 	local generated_file="${5:-}"
+	local metadata_kind="${6:-}"
 
-	check_file_exists "$source_contexts" || return 1
+	check_file_exists "$source_metadata" || return 1
 	check_file_exists "$manifest_file" || return 1
-	if [[ ! "$source_prefix" =~ ^/[A-Za-z0-9_.-]+$ || ! "$target_prefix" =~ ^/[A-Za-z0-9_.-]+$ ]]; then
-		err_print "contexts 分区前缀无效：$source_prefix → $target_prefix"
-		return 1
-	fi
-	_validate_marked_partition_mapping "${source_prefix#/}" "${target_prefix#/}" || return 1
 	if [[ -z "$generated_file" ]]; then
-		err_print "未指定 contexts 生成文件"
+		err_print "未指定 $metadata_kind 生成文件"
 		return 1
 	fi
+	_partition_metadata_tool translate-manifest \
+		--kind "$metadata_kind" \
+		--source "$source_metadata" \
+		--manifest "$manifest_file" \
+		--source-prefix "$source_prefix" \
+		--target-prefix "$target_prefix" \
+		--output "$generated_file"
+}
 
-	if ! awk \
-		-v manifest="$manifest_file" \
-		-v source_prefix="$source_prefix" \
-		-v target_prefix="$target_prefix" \
-		-v generated="$generated_file" '
-		function normalize_path(value) {
-			gsub(/\\/, "", value)
-			return value
-		}
-		BEGIN {
-			while ((getline manifest_line < manifest) > 0) {
-				sub(/\r$/, "", manifest_line)
-				if (manifest_line ~ /^[[:space:]]*(#|$)/) {
-					continue
-				}
-				field_count = split(manifest_line, fields, /[[:space:]]+/)
-				if (field_count < 2 || (fields[1] != "replace" && fields[1] != "missing")) {
-					invalid_manifest = 1
-					continue
-				}
-				wanted[normalize_path(source_prefix "/" fields[2])] = 1
-				expected++
-			}
-			close(manifest)
-		}
-		{
-			path = normalize_path($1)
-			if (!(path in wanted)) {
-				next
-			}
-			line = $0
-			if (index(line, source_prefix) != 1) {
-				next
-			}
-			line = target_prefix substr(line, length(source_prefix) + 1)
-			found[path] = 1
-			if (!(line in emitted)) {
-				print line >> generated
-				emitted[line] = 1
-			}
-		}
-		END {
-			missing = 0
-			for (path in wanted) {
-				if (!(path in found)) {
-					missing++
-				}
-			}
-			if (invalid_manifest || expected == 0 || missing > 0) {
-				exit 1
-			}
-		}
-	' "$source_contexts"; then
-		err_print "无法从原包 contexts 生成目标路径映射：$source_contexts"
-		return 1
-	fi
+_build_translated_contexts() {
+	_build_translated_manifest_metadata "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" contexts
+}
+
+_build_translated_fsconfig() {
+	_build_translated_manifest_metadata "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" fsconfig
 }
 
 validate_translated_contexts() {
-	local source_contexts="${1:-}"
-	local manifest_file="${2:-}"
-	local source_prefix="${3:-}"
-	local target_prefix="${4:-}"
 	local temporary_file
+	local build_status=0
 
 	temporary_file="$(mktemp)" || return 1
-	if ! _build_translated_contexts \
-		"$source_contexts" "$manifest_file" "$source_prefix" "$target_prefix" "$temporary_file"; then
-		rm -f -- "$temporary_file"
-		return 1
-	fi
+	_build_translated_contexts \
+		"${1:-}" "${2:-}" "${3:-}" "${4:-}" "$temporary_file" || build_status=$?
 	rm -f -- "$temporary_file"
+	return "$build_status"
 }
 
 merge_translated_contexts() {
@@ -915,74 +1015,132 @@ merge_translated_contexts() {
 	local target_prefix="${4:-}"
 	local manifest_file="${5:-}"
 	local generated_file
-	local temporary_file
+	local merge_status=0
 
 	check_file_exists "$destination_contexts" || return 1
 	generated_file="$(mktemp "${destination_contexts}.source.XXXXXX")" || return 1
-	temporary_file="$(mktemp "${destination_contexts}.tmp.XXXXXX")" || {
-		rm -f -- "$generated_file"
-		return 1
-	}
 	if ! _build_translated_contexts \
 		"$source_contexts" "$manifest_file" "$source_prefix" "$target_prefix" "$generated_file"; then
-		rm -f -- "$generated_file" "$temporary_file"
+		rm -f -- "$generated_file"
 		return 1
 	fi
-
-	if ! awk -v generated="$generated_file" '
-		function normalize_path(value) {
-			gsub(/\\/, "", value)
-			return value
-		}
-		function emit_replacements(path, replacement_index) {
-			for (replacement_index = 1; replacement_index <= replacement_count[path]; replacement_index++) {
-				print replacement[path, replacement_index]
-			}
-			emitted[path] = 1
-		}
-		BEGIN {
-			while ((getline generated_line < generated) > 0) {
-				generated_field_count = split(generated_line, generated_fields, /[[:space:]]+/)
-				if (generated_field_count == 0) {
-					continue
-				}
-				path = normalize_path(generated_fields[1])
-				if (!(path in has_replacement)) {
-					has_replacement[path] = 1
-					order[++order_count] = path
-				}
-				replacement[path, ++replacement_count[path]] = generated_line
-			}
-			close(generated)
-		}
-		{
-			path = normalize_path($1)
-			if (path in has_replacement) {
-				if (!(path in emitted)) {
-					emit_replacements(path)
-				}
-				next
-			}
-			print
-		}
-		END {
-			for (order_index = 1; order_index <= order_count; order_index++) {
-				path = order[order_index]
-				if (!(path in emitted)) {
-					emit_replacements(path)
-				}
-			}
-		}
-	' "$destination_contexts" > "$temporary_file"; then
-		rm -f -- "$generated_file" "$temporary_file"
-		return 1
-	fi
-	chmod --reference="$destination_contexts" -- "$temporary_file" || {
-		rm -f -- "$generated_file" "$temporary_file"
-		return 1
-	}
+	merge_contexts_file "$generated_file" "$destination_contexts" || merge_status=$?
 	rm -f -- "$generated_file"
-	_install_generated_file "$temporary_file" "$destination_contexts"
+	return "$merge_status"
+}
+
+validate_translated_fsconfig() {
+	local temporary_file
+	local build_status=0
+
+	temporary_file="$(mktemp)" || return 1
+	_build_translated_fsconfig \
+		"${1:-}" "${2:-}" "${3:-}" "${4:-}" "$temporary_file" || build_status=$?
+	rm -f -- "$temporary_file"
+	return "$build_status"
+}
+
+merge_translated_fsconfig() {
+	local source_fsconfig="${1:-}"
+	local destination_fsconfig="${2:-}"
+	local source_prefix="${3:-}"
+	local target_prefix="${4:-}"
+	local manifest_file="${5:-}"
+	local generated_file
+	local merge_status=0
+
+	check_file_exists "$destination_fsconfig" || return 1
+	generated_file="$(mktemp "${destination_fsconfig}.source.XXXXXX")" || return 1
+	if ! _build_translated_fsconfig \
+		"$source_fsconfig" "$manifest_file" "$source_prefix" "$target_prefix" "$generated_file"; then
+		rm -f -- "$generated_file"
+		return 1
+	fi
+	merge_fsconfig_file "$generated_file" "$destination_fsconfig" || merge_status=$?
+	rm -f -- "$generated_file"
+	return "$merge_status"
+}
+
+_build_translated_metadata_prefix() {
+	local source_metadata="${1:-}"
+	local source_prefix="${2:-}"
+	local target_prefix="${3:-}"
+	local generated_file="${4:-}"
+	local metadata_kind="${5:-}"
+
+	check_file_exists "$source_metadata" || return 1
+	if [[ -z "$generated_file" ]]; then
+		err_print "未指定 $metadata_kind 生成文件"
+		return 1
+	fi
+	_partition_metadata_tool translate-prefix \
+		--kind "$metadata_kind" \
+		--source "$source_metadata" \
+		--source-prefix "$source_prefix" \
+		--target-prefix "$target_prefix" \
+		--output "$generated_file"
+}
+
+validate_translated_contexts_prefix() {
+	local temporary_file
+	local build_status=0
+
+	temporary_file="$(mktemp)" || return 1
+	_build_translated_metadata_prefix \
+		"${1:-}" "${2:-}" "${3:-}" "$temporary_file" contexts || build_status=$?
+	rm -f -- "$temporary_file"
+	return "$build_status"
+}
+
+validate_translated_fsconfig_prefix() {
+	local temporary_file
+	local build_status=0
+
+	temporary_file="$(mktemp)" || return 1
+	_build_translated_metadata_prefix \
+		"${1:-}" "${2:-}" "${3:-}" "$temporary_file" fsconfig || build_status=$?
+	rm -f -- "$temporary_file"
+	return "$build_status"
+}
+
+merge_translated_contexts_prefix() {
+	local source_contexts="${1:-}"
+	local destination_contexts="${2:-}"
+	local source_prefix="${3:-}"
+	local target_prefix="${4:-}"
+	local generated_file
+	local merge_status=0
+
+	check_file_exists "$destination_contexts" || return 1
+	generated_file="$(mktemp "${destination_contexts}.source.XXXXXX")" || return 1
+	if ! _build_translated_metadata_prefix \
+		"$source_contexts" "$source_prefix" "$target_prefix" "$generated_file" contexts; then
+		rm -f -- "$generated_file"
+		return 1
+	fi
+	merge_contexts_file "$generated_file" "$destination_contexts" || merge_status=$?
+	rm -f -- "$generated_file"
+	return "$merge_status"
+}
+
+merge_translated_fsconfig_prefix() {
+	local source_fsconfig="${1:-}"
+	local destination_fsconfig="${2:-}"
+	local source_prefix="${3:-}"
+	local target_prefix="${4:-}"
+	local generated_file
+	local merge_status=0
+
+	check_file_exists "$destination_fsconfig" || return 1
+	generated_file="$(mktemp "${destination_fsconfig}.source.XXXXXX")" || return 1
+	if ! _build_translated_metadata_prefix \
+		"$source_fsconfig" "$source_prefix" "$target_prefix" "$generated_file" fsconfig; then
+		rm -f -- "$generated_file"
+		return 1
+	fi
+	merge_fsconfig_file "$generated_file" "$destination_fsconfig" || merge_status=$?
+	rm -f -- "$generated_file"
+	return "$merge_status"
 }
 
 merge_tree() {

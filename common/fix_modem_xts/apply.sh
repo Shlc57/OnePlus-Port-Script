@@ -8,6 +8,9 @@ init_port_env "${1:-}"
 std_print "修复一加 15 基带 XTS OEM Hook 超时"
 std_print "保留小米 qcrilmsgtunnel，仅跳过不兼容的一加 modem 版本查询"
 check_part_exists system
+check_file_exists "$(get_part_contexts_path system)"
+check_file_exists "$(get_part_fsconfig_path system)"
+check_partition_metadata_tool >/dev/null
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
@@ -23,5 +26,6 @@ fi
 bash "$patcher_dir/patch_apk.sh" "$teleservice_apk"
 
 remove_path_if_exists "$oat_dir"
+remove_part_metadata_prefix system system/priv-app/TeleService/oat
 
 std_print "处理完成"

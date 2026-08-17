@@ -90,9 +90,9 @@ build_prop_patch() {
 	fi
 }
 
-odm_prop_patch="$(mktemp "$(get_dna_config_path '.fix_boot_refresh_rate_odm.XXXXXX')")"
+odm_prop_patch="$(mktemp "$(get_config_path '.fix_boot_refresh_rate_odm.XXXXXX')")"
 temporary_files+=("$odm_prop_patch")
-vendor_prop_patch="$(mktemp "$(get_dna_config_path '.fix_boot_refresh_rate_vendor.XXXXXX')")"
+vendor_prop_patch="$(mktemp "$(get_config_path '.fix_boot_refresh_rate_vendor.XXXXXX')")"
 temporary_files+=("$vendor_prop_patch")
 
 # 先完整读取并校验两份原包属性，避免来源不完整时只修改一部分目标文件。

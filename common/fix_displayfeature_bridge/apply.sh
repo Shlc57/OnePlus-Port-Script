@@ -24,6 +24,9 @@ bridge_platform_binder_compat_header="$patcher_dir/include/platform_binder_compa
 source_contexts="$(get_part_contexts_path mi_vendor)"
 vendor_contexts="$(get_part_contexts_path vendor)"
 odm_contexts="$(get_part_contexts_path odm)"
+source_fsconfig="$(get_part_fsconfig_path mi_vendor)"
+vendor_fsconfig="$(get_part_fsconfig_path vendor)"
+odm_fsconfig="$(get_part_fsconfig_path odm)"
 # shellcheck disable=SC2154
 vendor_file_contexts="$project_dir/vendor/etc/selinux/vendor_file_contexts"
 precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_contexts"
@@ -151,7 +154,6 @@ merge_file_context_overrides() {
 	local override_file="${1:-}"
 	local destination_contexts="${2:-}"
 	local partition_prefix="${3:-}"
-	local temporary_file
 
 	check_file_exists "$override_file" || return 1
 	check_file_exists "$destination_contexts" || return 1
@@ -159,100 +161,16 @@ merge_file_context_overrides() {
 		err_print "file_contexts 覆盖分区前缀无效：$partition_prefix"
 		return 1
 	fi
-	temporary_file="$(mktemp "${destination_contexts}.tmp.XXXXXX")" || return 1
-	if ! awk -v overrides="$override_file" -v partition_prefix="$partition_prefix" '
-		function normalize_path(value) {
-			gsub(/\\/, "", value)
-			return value
-		}
-		BEGIN {
-			while ((getline override_line < overrides) > 0) {
-				sub(/\r$/, "", override_line)
-				if (override_line ~ /^[[:space:]]*(#|$)/) {
-					continue
-				}
-				split(override_line, fields, /[[:space:]]+/)
-				path = normalize_path(fields[1])
-				if (partition_prefix != "" && index(path, partition_prefix) != 1) {
-					continue
-				}
-				order[++order_count] = path
-				replacement[path] = override_line
-			}
-			close(overrides)
-		}
-		{
-			path = normalize_path($1)
-			if (path in replacement) {
-				if (!(path in emitted)) {
-					print replacement[path]
-					emitted[path] = 1
-				}
-				next
-			}
-			print
-		}
-		END {
-			for (index_value = 1; index_value <= order_count; index_value++) {
-				path = order[index_value]
-				if (!(path in emitted)) {
-					print replacement[path]
-				}
-			}
-		}
-	' "$destination_contexts" > "$temporary_file"; then
-		rm -f -- "$temporary_file"
-		return 1
-	fi
-	_install_generated_file "$temporary_file" "$destination_contexts"
+	merge_contexts_file "$override_file" "$destination_contexts" "$partition_prefix"
 }
 
 merge_service_context_overrides() {
 	local override_file="${1:-}"
 	local destination_contexts="${2:-}"
-	local temporary_file
 
 	check_file_exists "$override_file" || return 1
 	check_file_exists "$destination_contexts" || return 1
-	temporary_file="$(mktemp "${destination_contexts}.tmp.XXXXXX")" || return 1
-	if ! awk -v overrides="$override_file" '
-		BEGIN {
-			while ((getline override_line < overrides) > 0) {
-				sub(/\r$/, "", override_line)
-				if (override_line ~ /^[[:space:]]*(#|$)/) {
-					continue
-				}
-				split(override_line, fields, /[[:space:]]+/)
-				name = fields[1]
-				order[++order_count] = name
-				replacement[name] = override_line
-			}
-			close(overrides)
-		}
-		{
-			name = $1
-			if (name in replacement) {
-				if (!(name in emitted)) {
-					print replacement[name]
-					emitted[name] = 1
-				}
-				next
-			}
-			print
-		}
-		END {
-			for (index_value = 1; index_value <= order_count; index_value++) {
-				name = order[index_value]
-				if (!(name in emitted)) {
-					print replacement[name]
-				}
-			}
-		}
-	' "$destination_contexts" > "$temporary_file"; then
-		rm -f -- "$temporary_file"
-		return 1
-	fi
-	_install_generated_file "$temporary_file" "$destination_contexts"
+	merge_contexts_file "$override_file" "$destination_contexts"
 }
 
 install_text_preserving_mode() {
@@ -373,6 +291,9 @@ for required_file in \
 	"$source_contexts" \
 	"$vendor_contexts" \
 	"$odm_contexts" \
+	"$source_fsconfig" \
+	"$vendor_fsconfig" \
+	"$odm_fsconfig" \
 	"$vendor_file_contexts" \
 	"$precompiled_file_contexts" \
 	"$vendor_service_contexts" \
@@ -395,6 +316,11 @@ validate_translated_contexts \
 	"$source_manifest" \
 	/mi_vendor \
 	/vendor
+validate_translated_fsconfig \
+	"$source_fsconfig" \
+	"$source_manifest" \
+	mi_vendor \
+	vendor
 validate_file_context_overrides "$file_context_overrides"
 validate_service_context_overrides "$service_context_overrides"
 validate_qdcm_render_intents
@@ -437,6 +363,12 @@ merge_translated_contexts \
 	/mi_vendor \
 	/vendor \
 	"$source_manifest"
+merge_translated_fsconfig \
+	"$source_fsconfig" \
+	"$vendor_fsconfig" \
+	mi_vendor \
+	vendor \
+	"$source_manifest"
 
 install_text_preserving_mode \
 	"$clean_rc" \
@@ -445,6 +377,7 @@ replace_file_if_different \
 	"$bridge_so" \
 	"$project_dir/odm/lib64/hw/displayfeature.default.so"
 chmod 0644 -- "$project_dir/odm/lib64/hw/displayfeature.default.so"
+ensure_part_fsconfig_entry odm lib64/hw/displayfeature.default.so 0 0 0644
 
 merge_file_context_overrides "$file_context_overrides" "$vendor_contexts" /vendor/
 merge_file_context_overrides "$file_context_overrides" "$odm_contexts" /odm/

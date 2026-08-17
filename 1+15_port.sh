@@ -21,6 +21,7 @@ bash "$port" common/merge_mi_ext \
 	common/fix_settings_haptic \
 	common/fix_modem_xts \
 	common/fix_mtp \
+	common/fix_oplus_fingerprint_protocol \
 	devices/oneplus15/fix_auto_brightness \
 	devices/oneplus15/fix_refresh_rate_switch \
 	devices/oneplus15/fix_fingerprint \

@@ -9,6 +9,8 @@ std_print
 
 check_part_exists odm
 
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
 odm_build_prop="$project_dir/odm/build.prop"
 display_resolution_config="$project_dir/odm/etc/sdm_display_resolution_extn.xml"
 check_file_exists "$odm_build_prop"
@@ -116,7 +118,7 @@ if not (0 <= target_top < target_bottom <= panel_height):
 properties = (
     "ro.hardware.fp.fod.c=true",
     "ro.hardware.fp.fod=true",
-    "persist.vendor.sys.fp.vendor=true",
+    "persist.vendor.sys.fp.vendor=oplus",
     f"persist.vendor.sys.fp.fod.location.X_Y={location_x},{location_y}",
     f"persist.vendor.sys.fp.fod.size.width_height={size_width},{size_height}",
     "persist.vendor.sys.fp.fod.us.target="

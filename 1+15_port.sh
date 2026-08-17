@@ -11,6 +11,7 @@ bash "$port" common/merge_mi_ext \
 	common/fix_mi_account \
 	common/enable_hyperos_features \
 	common/fix_camera_mr \
+	common/fix_face_unlock \
 	common/fix_displayfeature_bridge \
 	common/fix_launcher \
 	common/fix_device_identity \

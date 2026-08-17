@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 port="$script_dir/auto_port.sh"
 export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
-"$port" common/merge_mi_ext \
+bash "$port" common/merge_mi_ext \
 	common/disable_mi_vulkan \
 	common/disable_odm_imports \
 	common/fix_pangu \

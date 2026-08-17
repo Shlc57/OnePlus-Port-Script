@@ -8,13 +8,25 @@ std_print "刷新率：60 / 90 / 120 / 144 / 165Hz"
 std_print "分辨率：跟随底包 sdm_display_resolution_extn.xml"
 std_print
 
-for part_name in odm product; do
+for part_name in odm product system_ext; do
 	check_part_exists "$part_name"
 done
 
+# init_port_env 注入当前移植工程根目录。
+# shellcheck disable=SC2154
 display_resolution_config="$project_dir/odm/etc/sdm_display_resolution_extn.xml"
 device_features_dir="$project_dir/product/etc/device_features"
+settings_apk="$project_dir/system_ext/priv-app/Settings/Settings.apk"
+settings_oat_dir="$project_dir/system_ext/priv-app/Settings/oat"
+# init_port_env 注入补丁仓库根目录。
+# shellcheck disable=SC2154
+settings_patcher="$port_dir/common/settings_apk_patcher.sh"
 check_file_exists "$display_resolution_config"
+check_file_exists "$settings_apk"
+check_file_exists "$settings_patcher"
+check_file_exists "$(get_part_contexts_path system_ext)"
+check_file_exists "$(get_part_fsconfig_path system_ext)"
+check_partition_metadata_tool >/dev/null
 if [[ ! -d "$device_features_dir" || -L "$device_features_dir" ]]; then
 	err_print "device_features 目录不存在或不是普通目录：$device_features_dir"
 	exit 1
@@ -215,8 +227,13 @@ print(f"面板 {panel_text}；可切换宽度 {width_text}")
 PY
 )"
 
+bash "$settings_patcher" screen-resolution "$settings_apk"
 _install_generated_file "$temporary_xml" "$device_feature_xml"
+remove_path_if_exists "$settings_oat_dir"
+remove_part_metadata_prefix system_ext priv-app/Settings/oat
+
 std_print "✅ 已更新：product/etc/device_features/$device_code.xml"
 std_print "✅ 刷新率列表：165、144、120、90、60Hz"
 std_print "✅ 分辨率来源：${display_resolution_config#"$project_dir/"}（$resolution_summary）"
+std_print "✅ Settings 高度计算：优先匹配显示 supported mode 的真实宽高，1080 宽不再截断为 2353"
 std_print "处理完成"

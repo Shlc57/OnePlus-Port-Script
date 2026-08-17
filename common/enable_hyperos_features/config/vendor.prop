@@ -1,0 +1,2 @@
+# 小米相册 engine_platform 的 isXdrSupport 仅接受精确值 2.0。
+persist.vendor.XDRVersion=2.0

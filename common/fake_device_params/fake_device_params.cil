@@ -1,0 +1,28 @@
+;; BEGIN common/fake_device_params dedicated domain
+(type fake_device_params)
+(roletype object_r fake_device_params)
+(type fake_device_params_exec)
+(roletype object_r fake_device_params_exec)
+
+(typeattributeset domain (fake_device_params))
+(typeattributeset coredomain (fake_device_params))
+(typeattributeset mlstrustedsubject (fake_device_params))
+(typeattributeset file_type (fake_device_params_exec))
+(typeattributeset exec_type (fake_device_params_exec))
+(typeattributeset system_file_type (fake_device_params_exec))
+
+(allow init fake_device_params_exec (file (read getattr map execute open)))
+(allow init fake_device_params (process (transition)))
+(allow fake_device_params fake_device_params_exec (file (read getattr map execute open entrypoint)))
+(dontaudit init fake_device_params (process (noatsecure)))
+(allow init fake_device_params (process (siginh rlimitinh)))
+(typetransition init fake_device_params_exec process fake_device_params)
+
+(allow fake_device_params shell_exec (file (ioctl read getattr lock map execute open watch watch_reads execute_no_trans)))
+(allow fake_device_params toolbox_exec (file (ioctl read getattr lock map execute open watch watch_reads execute_no_trans)))
+(allow fake_device_params system_file (dir (ioctl read getattr lock open watch watch_reads search)))
+(allow fake_device_params system_file (file (ioctl read getattr lock map open watch watch_reads)))
+
+(allow fake_device_params system_app_data_file (dir (ioctl read write create getattr setattr lock rename open watch watch_reads add_name remove_name reparent search rmdir)))
+(allow fake_device_params system_app_data_file (file (ioctl read write create getattr setattr lock append map unlink rename open watch watch_reads)))
+;; END common/fake_device_params dedicated domain

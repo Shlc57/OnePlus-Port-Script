@@ -89,13 +89,66 @@ bash 1+15_port.sh
 | `common/fix_mtp` | 【补丁内置底包配置】`common/fix_mtp/init.usb.configfs.rc`；【原包目标】`system` | `system` | 使用补丁目录内置的底包 `init.usb.configfs.rc` 替换 `system/system/etc/init/hw/init.usb.configfs.rc`，使 MTP/PTP/ADB configfs 触发器与当前底包 USB 栈保持一致。补丁会校验必要的 MTP 触发器，保留目标文件权限，且不改动 fsconfig/file_contexts；更换底包时应同步更新该内置文件。 |
 | `common/fix_nfc` | 【补丁资源】同平台签名的 NXP/Xiaomi `XMNfcNci.apk`；【原包取材】`mi_odm`；【原包目标】`system`；【底包目标】`odm` | `system`、`odm` | 当前系统 `Nfc_st.apk` 只支持 `/dev/st21nfc`，而一加底包实际提供 `/dev/nq-nci` 与 NXP AIDL HAL。补丁在保留既有 `system/system/app/Nfc_st/Nfc_st.apk` 路径及 metadata 的前提下，仅替换 APK 内容，并从 `mi_odm/etc/build.prop` 动态提取五项 Xiaomi NFC 功能开关写入 `odm/etc/build.prop`。执行前校验原 ST APK、内置 APK、NXP HAL manifest 及所需 framework；不替换底包 HAL、固件或射频配置，也不携带与目标系统 boot image 绑定的 oat。内置包 versionCode 为 36，原 ST 包为 37，但两者平台签名证书一致；已在一加 15 DSU 上通过 framework 重扫并验证 NFC 设置、NXP HAL 初始化、实体卡识别和 Tag Intent 分发。 |
 | `common/fix_displayfeature_bridge` | 【原包取材】`mi_vendor`；【底包目标】`odm`、`vendor`；【补丁资源】轻量 DisplayFeature HAL | `odm`、`vendor` | 保留 Xiaomi AIDL DisplayFeature 服务与接口库，用轻量 legacy HAL 桥替换完整 Xiaomi 显示 HAL，并将小米自适应、鲜艳、原色模式分别映射到底包 QDCM 的 `DefaultSRGB`、`EnhanceSRGB`、`StandardSRGB` RenderIntent。桥复用底包 `libqservice.so`、`libsdmclient.so`、`libsdm-disp-vndapis.so` 和 QTI Display Color SELinux 域；当前只映射三种基础色彩模式，色温等级及其他 DisplayFeature 特性不会伪装为已支持。补丁会同步迁移清单文件的 contexts/fsconfig，显式补齐桥库 `0644` 权限，移除 rc 中不存在的 Xiaomi sysfs 与 `/vendor/bin/displayfeature` 引用，且在底包缺少所需显示栈、面板调色数据或策略权限时于修改前失败。 |
+| `common/fake_device_params` | 【原包】`system`，存在 userdebug plat policy 时同时处理 `system_ext`；环境变量 `DEVICE_PARAMS_SPOOF_JSON` | `system`、可选 `system_ext` | 把 `devInfoNew` 与 `allparamInfo` 的完整伪装响应生成到 Settings 的 `device_params_pref` 缓存模板，并定义最小化的 `fake_device_params` SELinux 域。开机后 init 以 `system:system` 启动专用脚本，只允许读取 system 模板和写 `system_app_data_file`，不依赖 Magisk、KSU、`su`、adbd 或其他固定 root 域。支持处理器、电池、相机、屏幕、分辨率、安全芯片及 `Mishop`/扩展 JSON 字段；只改变 Settings 设备参数卡片显示，不修改 `Build.MODEL`、`ro.product.*` 或其他 prop，也不替换 HTMLViewer.apk。Settings 本地生成的运行内存（索引 5）和型号（索引 6）不属于接口伪装范围。需要 Python 3。 |
 | `common/fix_mi_account` | 【原包取材】`mi_odm`、`mi_vendor`；【目标工作树】`odm`、`vendor` | `odm`、`vendor` | 按清单从小米原包动态提取账号、支付及安全环境资源，并把源 contexts 与 fsconfig 转换为真实目标路径。缺少来源目录、文件、contexts 或 fsconfig 权限条目时在修改前失败，不回退到补丁内二进制载荷。DisplayFeature 显示链由独立桥补丁处理。 |
 | `common/fix_modem_xts` | 【原包】`system` | `system` | 保留小米 `qcrilmsgtunnel` 的短信接收链路，精准修改 `TeleService.apk` 目标 DEX：跳过 `XtsApp` 不兼容的一加 modem 版本查询、固定报告 XTS 不受支持，并短路 `MiRilHook.onHookNotifyScreenStatusSync` 发送的小米 `0x802AA/0x1B` 屏幕状态 OEM 命令，避免电话线程每次亮灭屏阻塞 5 秒及 `QcrilOemhookMsgTunnel` 长时间持有 wakelock。需要 Java、Apktool、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`；仅替换目标 DEX，原样保留其他 APK 条目、Signing Block 与 `META-INF` 证书材料，并同步清理已删除 oat 目录的 contexts/fsconfig，但 DEX 改动后内容完整性签名必然失效。当前为一加 15 兼容性补丁，只适用于已确认系统扫描允许该产物的移植环境。 |
-| `common/fix_oplus_fingerprint_protocol` | 【原包】`system_ext` | `system_ext` | 精准修改 `miui-services.jar` 中 `FingerprintServiceStubImpl` 所在 DEX，为明确设置 `persist.vendor.sys.fp.vendor=oplus` 的锁屏认证补齐 Oplus HAL 缺失的小米 FOD 触摸协议：首次 `ACQUIRED_GOOD(0,0)` 合成 SystemUI acquired `100` 指纹按下；认证成功若仍撞上 `goingToSleep`，先以 `android.policy:OPLUS_FOD` 主动唤醒，再保留原 `mayWaitFinishGoingToSleep()` 轮询确认状态完成，避免提前交付成功结果被 SystemUI 吞掉；认证成功、失败、HAL 错误或下一认证会话开始时合成 acquired `101` 指纹抬起并释放 PowerManager 状态。非锁屏客户端和非 Oplus 属性不受影响。已在一加 15 root DSU 实机连续 14 次“刚息屏即按压”验证：14 次均一次解锁，其中 13 次命中主动唤醒，未再出现成功结果丢失或等待超时；另以未录入手指连续验证 3 次，均正常上报认证失败、合成指纹抬起并释放状态。补丁只替换目标 DEX 并保留其他 JAR 条目，重复执行会安全跳过；同时清理与新 DEX 不匹配的 profile、FS-Verity 元数据和 arm64 预编译产物及其 contexts/fsconfig。需要 Java、Apktool、Python 3 与 `zip`/`unzip`；DEX 修改后原完整性与预编译产物必然失效，只适用于已确认系统可从 JAR DEX 回退加载的移植环境。当前已由 `1+15_port.sh` 纳入一加 15 整套流程。 |
+| `common/fix_oplus_fingerprint_protocol` | 【原包】`system_ext` | `system_ext` | 精准修改 `MiuiSystemUI.apk` 的 `MiuiGxzwIconView.onTouch` 与 `miui-services.jar` 的 `FingerprintServiceStubImpl` 所在 DEX，为明确设置 `persist.vendor.sys.fp.vendor=oplus` 的锁屏认证补齐 Oplus HAL 缺失的小米 FOD 触摸协议。SystemUI 直接消费 `gxzw_touch` 窗口收到的原始 `ACTION_DOWN/UP/CANCEL`，使 `fod_animation_enabled=1` 时能在 HAL 认证结果到达前启动识别动画；服务端仍在首次 `ACQUIRED_GOOD(0,0)` 合成 acquired `100` 作为按下兜底，并在认证成功、失败、HAL 错误或下一会话开始时合成 acquired `101` 释放状态。认证成功若撞上 `goingToSleep`，服务端会先以 `android.policy:OPLUS_FOD` 主动唤醒，再保留原轮询确认，避免成功结果被 SystemUI 吞掉。非 Oplus 属性不受影响。两部分已在一加 15 root DSU 热加载实机验证：亮屏锁屏按压先命中 `OPLUS_FOD_RAW_TOUCH_DOWN` 并执行 `startRecognizingAnim`，设置开关恢复生效；服务端稳定上报 acquired `100/101`，息屏竞态还可命中主动唤醒。息屏状态沿用系统自身的图标/解锁表现，不额外强制显示完整识别动画。补丁只替换两个目标 DEX，保留其他 JAR/APK 条目、APK Signing Block 与 `META-INF` 证书材料，重复执行会安全跳过；同时清理两者不匹配的 profile、FS-Verity 元数据和预编译产物及其 contexts/fsconfig。需要 Java、Apktool、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`；DEX 修改后内容完整性与预编译产物必然失效，只适用于已确认可从 DEX 回退加载且允许系统包内容变化的移植环境。当前已由 `1+15_port.sh` 纳入一加 15 整套流程。 |
 | `common/fix_pangu` | 【原包】`product`、`system` | `product`、`system` | 将 `product/pangu/system` 合并到 system，同步转换 contexts/fsconfig 并从 product 元数据移除源路径；成功后删除源目录。 |
 | `common/fix_settings_haptic` | 【原包】`system_ext` | `system_ext` | 通过共享的 `common/settings_apk_patcher.sh` 修改 Settings，使设置界面触感能力判定返回支持。需要 Apktool、Java、`zipalign`、Python 3、`zip`/`unzip`；可分别用 `APKTOOL_JAR`、`ZIPALIGN` 指定工具。补丁只将目标 DEX 写回原 APK，原样保留其他归档条目、Signing Block 与 META-INF 证书材料，并同步清理已删除 oat 目录的 contexts/fsconfig；DEX 改动后 v1/v2/v3 内容完整性签名必然失效，只适用于已确认系统扫描绕过完整性校验的 ROM。 |
 | `common/fix_wechat_safe_mode` | 【底包】`odm` | `odm` | 移除假的 Camera Extensions 实现，并同步删除对应 contexts/fsconfig 条目，修复微信安全模式问题。 |
 | `common/merge_mi_ext` | 【原包】`mi_ext`、`product`、`system_ext`、`system` | `product`、`system_ext`、`system` | 将 mi_ext 中的 product、system_ext、system 与 etc 内容合并到真实目标路径，并迁移 contexts、fsconfig 和属性；同时迁移 CustFeatureResolve 启用属性，建立 `/mi_ext/product -> /product` 兼容路径；成功后删除 `mi_ext` 源目录。 |
+
+### Settings 设备参数伪装补丁
+
+`common/fake_device_params` 只生成 Settings 原生读取的两个缓存值：`basic_info_key` 与 `camera_info_key`。缓存语言同时写入 `device_params_last_lang`，更新时间固定到 2100 年，使当前语言下不再触发 8 小时云端刷新。补丁不修改任何 prop，也不需要破坏 HTMLViewer.apk 的接口地址或签名。
+
+全部参数通过一个环境变量传入。`basic` 是 `devInfoNew` 的完整响应对象，`camera` 是 `allparamInfo` 的完整响应对象；补丁会保留其中未识别的扩展字段，并校验 Settings 实际使用的字段：
+
+```bash
+DEVICE_PARAMS_SPOOF_JSON='{
+  "language": "zhCN",
+  "basic": {
+    "Mishop": {
+      "RightValue": "",
+      "ShowRedDot": "false",
+      "Url": ""
+    },
+    "BasicInfoToggle": 1,
+    "BasicItems": [
+      {"Title": "处理器", "Summary": "第一代骁龙®8+移动平台", "Index": 0},
+      {"Title": "电池容量", "Summary": "4800mAh(典型值)", "Index": 1},
+      {"Title": "后置摄像头", "Summary": "50MP+8MP+2MP", "Index": 2},
+      {"Title": "屏幕尺寸", "Summary": "6.7″", "Index": 3},
+      {"Title": "分辨率", "Summary": "2412×1080", "Index": 4},
+      {"Title": "安全芯片", "Summary": "独立安全芯片", "Index": 7}
+    ]
+  },
+  "camera": {
+    "status": true,
+    "data": {
+      "BasicInfoToggle": 1,
+      "camera": {
+        "front_camera": "16MP",
+        "rear_camera": "50MP+8MP+2MP"
+      }
+    }
+  }
+}' bash auto_port.sh common/fake_device_params
+```
+
+`language` 必须与目标系统当前 `Locale.getLanguage()+Locale.getCountry()` 一致，例如简体中文为 `zhCN`、美式英语为 `enUS`。`BasicItems[].Index` 当前只允许 `0`、`1`、`2`、`3`、`4`、`7`，且不能重复；分别对应处理器、电池、相机、屏幕尺寸、分辨率和安全芯片。运行内存（索引 `5`）与型号（索引 `6`）均由 Settings 在本地生成，接口缓存不能覆盖，因此补丁会拒绝这两个索引。
+
+补丁生成以下 system 文件，并同步写入 system contexts/fsconfig：
+
+```text
+system/system/etc/device_params/device_params_pref.xml
+system/system/etc/device_params/fake_device_params.sh
+system/system/etc/init/fake_device_params.rc
+```
+
+补丁还会以固定边界标记管理专用域规则，并动态定位当前平台限制 native domain 写 `system_app_data_file` 的 neverallow 属性，只把 `fake_device_params` 加入该属性的例外集合，不依赖会随版本变化的 `base_typeattr_*` 编号。规则始终写入 `system/system/etc/selinux/plat_sepolicy.cil`；如果存在 `system_ext/etc/selinux/userdebug_plat_sepolicy.cil`，也会同步补丁，确保解锁设备设置 `INIT_FORCE_DEBUGGABLE=true` 后选择 userdebug policy 时仍包含该域。`plat_file_contexts` 会把脚本标记为 `fake_device_params_exec`，并更新 `plat_sepolicy_and_mapping.sha256` 标记，使 init 放弃旧的 normal/debug `precompiled_sepolicy`、按当前 split CIL 重新编译策略。脚本 metadata 权限为 `0755`。
+
+开机完成后，唯一的 oneshot 服务由 init 自动转换到 `u:r:fake_device_params:s0`，并以 Android `system` UID/GID 运行。策略只额外允许该域读取 system 模板、执行 shell/toybox，以及访问 `system_app_data_file`；不授予 root UID、DAC 绕过或任意 root 管理器域权限。脚本等待 `/data/user_de/0/com.android.settings` 由 installd 创建，再在目标目录内原子替换 `shared_prefs/device_params_pref.xml`。新文件天然由 `system` 用户创建并继承 `system_app_data_file`，因此不需要 `chown` 或 `restorecon`。当前只处理 user 0；修改参数后应重新执行补丁并重启。运行时缓存格式及专用域权限已在一加 15 DSU 上通过临时加载候选策略、UID/GID 1000 和短时 Enforcing 写入验证；init 从 rc 自动完成开机转换仍需在下一次 DSU 启动后确认。
 
 ### HyperOS 特性属性补丁
 

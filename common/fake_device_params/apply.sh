@@ -17,6 +17,10 @@ if [[ -z "${DEVICE_PARAMS_SPOOF_JSON:-}" ]]; then
 	err_print "请通过 DEVICE_PARAMS_SPOOF_JSON 传入完整 JSON 参数"
 	exit 1
 fi
+has_english_template=0
+if [[ -n "${DEVICE_PARAMS_SPOOF_JSON_ENUS:-}" ]]; then
+	has_english_template=1
+fi
 
 generator="$patcher_dir/generate_device_params.py"
 runtime_script="$patcher_dir/fake_device_params.sh"
@@ -91,9 +95,18 @@ fi
 
 device_params_dir="$system_etc/device_params"
 device_params_xml="$device_params_dir/device_params_pref.xml"
+device_params_en_us_xml="$device_params_dir/device_params_pref.enUS.xml"
 device_params_script="$device_params_dir/fake_device_params.sh"
 device_params_rc="$system_init/fake_device_params.rc"
-for target_path in "$device_params_dir" "$device_params_xml" "$device_params_script" "$device_params_rc"; do
+device_params_target_files=(
+	"$device_params_xml"
+	"$device_params_script"
+	"$device_params_rc"
+)
+if (( has_english_template == 1 )); then
+	device_params_target_files+=("$device_params_en_us_xml")
+fi
+for target_path in "$device_params_dir" "${device_params_target_files[@]}"; do
 	if [[ -L "$target_path" ]]; then
 		err_print "目标路径不能是符号链接：$target_path"
 		exit 1
@@ -103,7 +116,7 @@ if [[ -e "$device_params_dir" && ! -d "$device_params_dir" ]]; then
 	err_print "设备参数目标目录不是普通目录：$device_params_dir"
 	exit 1
 fi
-for target_file in "$device_params_xml" "$device_params_script" "$device_params_rc"; do
+for target_file in "${device_params_target_files[@]}"; do
 	if [[ -e "$target_file" && ! -f "$target_file" ]]; then
 		err_print "设备参数目标不是普通文件：$target_file"
 		exit 1
@@ -128,6 +141,19 @@ if ! DEVICE_PARAMS_SPOOF_JSON="$DEVICE_PARAMS_SPOOF_JSON" python3 "$generator" \
 fi
 chmod 0644 -- "$temporary_xml"
 
+temporary_en_us_xml=""
+if (( has_english_template == 1 )); then
+	temporary_en_us_xml="$(mktemp "$(get_config_path '.device_params_pref.enUS.xml.XXXXXX')")"
+	temporary_files+=("$temporary_en_us_xml")
+	if ! DEVICE_PARAMS_SPOOF_JSON="$DEVICE_PARAMS_SPOOF_JSON_ENUS" python3 "$generator" \
+		--expected-language enUS \
+		--output "$temporary_en_us_xml"; then
+		err_print "DEVICE_PARAMS_SPOOF_JSON_ENUS 校验或英文 XML 生成失败"
+		exit 1
+	fi
+	chmod 0644 -- "$temporary_en_us_xml"
+fi
+
 temporary_rc="$(mktemp "$(get_config_path '.fake_device_params.rc.XXXXXX')")"
 temporary_files+=("$temporary_rc")
 cat > "$temporary_rc" <<'EOF'
@@ -140,6 +166,9 @@ service fake_device_params /system/etc/device_params/fake_device_params.sh
 
 on property:sys.boot_completed=1
     start fake_device_params
+
+on property:sys.boot_completed=1 && property:persist.sys.locale=*
+    start fake_device_params
 EOF
 chmod 0644 -- "$temporary_rc"
 
@@ -151,6 +180,11 @@ cat > "$temporary_contexts_patch" <<'EOF'
 /system/system/etc/device_params/fake_device_params\.sh u:object_r:fake_device_params_exec:s0
 /system/system/etc/init/fake_device_params\.rc u:object_r:system_file:s0
 EOF
+if (( has_english_template == 1 )); then
+	cat >> "$temporary_contexts_patch" <<'EOF'
+/system/system/etc/device_params/device_params_pref\.enUS\.xml u:object_r:system_file:s0
+EOF
+fi
 
 temporary_fsconfig_patch="$(mktemp "$(get_config_path '.fake_device_params_fsconfig.XXXXXX')")"
 temporary_files+=("$temporary_fsconfig_patch")
@@ -160,6 +194,11 @@ system/system/etc/device_params/device_params_pref.xml 0 0 0644
 system/system/etc/device_params/fake_device_params.sh 0 0 0755
 system/system/etc/init/fake_device_params.rc 0 0 0644
 EOF
+if (( has_english_template == 1 )); then
+	cat >> "$temporary_fsconfig_patch" <<'EOF'
+system/system/etc/device_params/device_params_pref.enUS.xml 0 0 0644
+EOF
+fi
 
 temporary_runtime_contexts_patch="$(mktemp "$(get_config_path '.fake_device_params_plat_contexts.XXXXXX')")"
 temporary_files+=("$temporary_runtime_contexts_patch")
@@ -230,11 +269,17 @@ std_print "init 将以 system UID 启动专用 fake_device_params 域"
 mkdir -p -- "$device_params_dir"
 chmod 0755 -- "$device_params_dir"
 replace_file_if_different "$temporary_xml" "$device_params_xml"
+if (( has_english_template == 1 )); then
+	replace_file_if_different "$temporary_en_us_xml" "$device_params_en_us_xml"
+fi
 replace_file_if_different "$runtime_script" "$device_params_script"
 replace_file_if_different "$temporary_rc" "$device_params_rc"
 
 chmod 0755 -- "$device_params_dir" "$device_params_script"
 chmod 0644 -- "$device_params_xml" "$device_params_rc"
+if (( has_english_template == 1 )); then
+	chmod 0644 -- "$device_params_en_us_xml"
+fi
 _install_generated_file "$temporary_plat_file_contexts" "$plat_file_contexts"
 for policy_index in "${!policy_targets[@]}"; do
 	_install_generated_file \
@@ -261,10 +306,18 @@ if ! grep -Fqx '/system/system/etc/device_params u:object_r:system_file:s0' "$sy
 	! grep -Fqx 'system/system/etc/init/fake_device_params.rc 0 0 0644' "$system_metadata_fsconfig" || \
 	! grep -Fqx '/system/etc/device_params/fake_device_params\.sh u:object_r:fake_device_params_exec:s0' "$plat_file_contexts" || \
 	! grep -Fqx 'service fake_device_params /system/etc/device_params/fake_device_params.sh' "$device_params_rc" || \
+	! grep -Fqx 'on property:sys.boot_completed=1 && property:persist.sys.locale=*' "$device_params_rc" || \
 	! grep -Fqx '    user system' "$device_params_rc" || \
 	! grep -Fqx '    group system' "$device_params_rc" || \
 	! grep -Fqx "$expected_policy_hash" "$plat_policy_hash"; then
 	err_print "设备参数专用域、metadata 或 init 服务写入后校验失败"
+	exit 1
+fi
+if (( has_english_template == 1 )) && { \
+	! grep -Fqx '/system/system/etc/device_params/device_params_pref\.enUS\.xml u:object_r:system_file:s0' "$system_metadata_contexts" || \
+	! grep -Fqx 'system/system/etc/device_params/device_params_pref.enUS.xml 0 0 0644' "$system_metadata_fsconfig"; \
+}; then
+	err_print "英文设备参数模板或 metadata 写入后校验失败"
 	exit 1
 fi
 if grep -Eq 'magisk|ksu|u:r:su:s0|seclabel' "$device_params_rc"; then
@@ -272,8 +325,12 @@ if grep -Eq 'magisk|ksu|u:r:su:s0|seclabel' "$device_params_rc"; then
 	exit 1
 fi
 
-std_print "✅ 已生成 Settings 设备参数缓存与专用 init 服务"
+if (( has_english_template == 1 )); then
+	std_print "✅ 已生成中文默认与 enUS 英文 Settings 设备参数缓存"
+else
+	std_print "✅ 已生成 Settings 设备参数缓存与专用 init 服务"
+fi
 std_print "✅ 已写入 fake_device_params 域、exec context 和最小应用数据权限"
 std_print "✅ 已更新 policy hash 标记，确保旧 precompiled policy 不会覆盖新规则"
-std_print "重启后由 system UID 的专用域写入 user 0 缓存；当前补丁不修改任何 prop"
+std_print "开机及系统语言变更后由 system UID 的专用域写入 user 0 缓存；当前补丁不修改任何 prop"
 std_print "处理完成"

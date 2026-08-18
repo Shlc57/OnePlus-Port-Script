@@ -15,7 +15,11 @@ from typing import Any
 
 ENV_NAME = "DEVICE_PARAMS_SPOOF_JSON"
 CACHE_TIMESTAMP_MS = 4102444800000  # 2100-01-01, avoids the 8-hour refresh.
-SUPPORTED_ITEM_INDEXES = {0, 1, 2, 3, 4, 7}
+# These entries are supplied by the spoofed devInfoNew response. Index 5 is
+# deliberately excluded: Settings uses its presence only as the trigger to
+# calculate the real RAM locally, so the generator adds that placeholder below.
+SPOOFED_ITEM_INDEXES = {0, 1, 2, 3, 4, 7}
+LOCAL_MEMORY_ITEM_INDEX = 5
 LANGUAGE_PATTERN = re.compile(
     r"^[a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4}|[A-Z]{2}|[0-9]{3})?$"
 )
@@ -120,15 +124,21 @@ def normalize_basic(payload: Any) -> dict[str, Any]:
         require_string(item_object["Title"], f"{item_path}.Title")
         require_string(item_object["Summary"], f"{item_path}.Summary")
         index = parse_integer(item_object["Index"], f"{item_path}.Index")
-        if index not in SUPPORTED_ITEM_INDEXES:
+        if index not in SPOOFED_ITEM_INDEXES:
             fail(
                 f"{item_path}.Index",
-                "接口缓存当前只伪装 0、1、2、3、4、7；5（运行内存）和 6（型号）由 Settings 本地生成",
+                "接口缓存只接受 0、1、2、3、4、7；5（运行内存）由生成器自动补齐，6（型号）由 Settings 本地生成",
             )
         if index in seen_indexes:
             fail(f"{item_path}.Index", f"索引重复：{index}")
         seen_indexes.add(index)
         item_object["Index"] = index
+
+    # Settings only invokes its local RAM calculation when BasicItems contains
+    # index 5. Keep the value empty so the app supplies both the localized title
+    # and the actual total RAM instead of accepting a spoofed value.
+    if toggle == 1:
+        items.append({"Title": "", "Summary": "", "Index": LOCAL_MEMORY_ITEM_INDEX})
 
     mishop = basic.get("Mishop")
     if mishop is not None:
@@ -229,6 +239,10 @@ def parse_payload(raw: str) -> tuple[str, str, str]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--expected-language",
+        help="要求 payload 的语言与此 Locale.getLanguage()+Locale.getCountry() 相同",
+    )
     parser.add_argument("--env", default=ENV_NAME, help=argparse.SUPPRESS)
     return parser
 
@@ -238,6 +252,13 @@ def main() -> int:
     try:
         raw = os.environ.get(args.env, "")
         basic_json, camera_json, language = parse_payload(raw)
+        if args.expected_language is not None:
+            expected_language = normalize_language(args.expected_language)
+            if language != expected_language:
+                fail(
+                    "language",
+                    f"必须是 {expected_language}，当前为 {language}",
+                )
         rendered = render_xml(basic_json, camera_json, language)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w", encoding="utf-8", newline="\n") as output:

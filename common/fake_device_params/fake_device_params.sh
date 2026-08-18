@@ -6,13 +6,24 @@
 
 set -u
 
-source_file="${1:-/system/etc/device_params/device_params_pref.xml}"
+default_source_file="/system/etc/device_params/device_params_pref.xml"
+source_file="${1:-$default_source_file}"
 package_dir="/data/user_de/0/com.android.settings"
 target_dir="$package_dir/shared_prefs"
 target_file="$target_dir/device_params_pref.xml"
 temporary_file="$target_file.fake_device_params.$$"
 max_attempts=120
 attempt=0
+
+# The primary template remains the fallback. An optional enUS template lets the
+# port keep the spoofed strings in English when the system locale is en-US.
+if [ "$source_file" = "$default_source_file" ]; then
+    locale_code="$(getprop persist.sys.locale 2>/dev/null | tr -cd '[:alnum:]')"
+    localized_source_file="${default_source_file%.xml}.${locale_code}.xml"
+    if [ -n "$locale_code" ] && [ -f "$localized_source_file" ]; then
+        source_file="$localized_source_file"
+    fi
+fi
 
 # The function is invoked by the EXIT/HUP/INT/TERM trap below.
 # shellcheck disable=SC2329

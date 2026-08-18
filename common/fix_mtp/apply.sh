@@ -22,8 +22,11 @@ if [[ -L "$source_file" ]]; then
 fi
 
 required_triggers=(
-	'on property:sys.usb.config=mtp && property:sys.usb.configfs=1'
+	'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
+	'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
 	'on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1'
+	'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
+	'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
 )
 for trigger in "${required_triggers[@]}"; do
 	if ! grep -Fqx "$trigger" "$source_file"; then

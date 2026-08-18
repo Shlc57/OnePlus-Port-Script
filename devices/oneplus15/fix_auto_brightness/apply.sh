@@ -6,7 +6,7 @@ init_port_env "${1:-}"
 
 std_print "修复一加 15 自动亮度"
 std_print "校准启动默认亮度与物理边界：普通亮度 1400 nit，HBM 1800 nit"
-std_print "保留两份原厂亮度 Overlay，仅叠加 135 nit 单资源启动 Overlay"
+std_print "保留亮度逻辑上限，仅校准环境光曲线并叠加 135 nit 启动默认值"
 std_print
 
 for part_name in vendor product; do
@@ -30,6 +30,9 @@ panel_brightness_config="$patcher_dir/config/display_brightness_config_P_3.xml"
 boot_brightness_overlay="$patcher_dir/prebuilt/product/overlay/OnePlus15BootBrightnessOverlay.apk"
 boot_brightness_overlay_checksums="$patcher_dir/config/boot_brightness_overlay.sha256"
 boot_brightness_overlay_target="$project_dir/product/overlay/OnePlus15BootBrightnessOverlay.apk"
+auto_curve_overlay="$patcher_dir/prebuilt/product/overlay/MiuiFrameworkResOverlay.apk"
+auto_curve_overlay_checksums="$patcher_dir/config/miui_framework_overlay.sha256"
+auto_curve_overlay_target="$project_dir/product/overlay/MiuiFrameworkResOverlay.apk"
 target_display_id="4630946903293830803"
 target_display_config="$product_displayconfig/display_id_${target_display_id}.xml"
 
@@ -55,6 +58,8 @@ check_file_exists "$product_fsconfig_patch"
 check_file_exists "$panel_brightness_config"
 check_file_exists "$boot_brightness_overlay"
 check_file_exists "$boot_brightness_overlay_checksums"
+check_file_exists "$auto_curve_overlay"
+check_file_exists "$auto_curve_overlay_checksums"
 if ! command -v python3 >/dev/null 2>&1; then
 	err_print "缺少 Python 3，无法生成一加 15 高亮度映射"
 	exit 1
@@ -65,6 +70,10 @@ if ! command -v sha256sum >/dev/null 2>&1; then
 fi
 if ! (cd -- "$patcher_dir" && sha256sum -c -- "$boot_brightness_overlay_checksums"); then
 	err_print "启动亮度 Overlay 校验失败"
+	exit 1
+fi
+if ! (cd -- "$patcher_dir" && sha256sum -c -- "$auto_curve_overlay_checksums"); then
+	err_print "自动亮度曲线 Overlay 校验失败"
 	exit 1
 fi
 
@@ -556,6 +565,9 @@ PY
 
 _install_generated_file "$temporary_display_config" "$target_display_config"
 std_print "✅ 已生成 135/1400/1800 nit 边界校准映射：$brightness_summary"
+
+replace_file_if_different "$auto_curve_overlay" "$auto_curve_overlay_target"
+std_print "✅ 已校准环境光默认曲线（0→2、30→40、600→70、5000→1060 逻辑 nit），保留 1060 逻辑上限"
 
 replace_file_if_different "$boot_brightness_overlay" "$boot_brightness_overlay_target"
 std_print "✅ 已加入仅覆盖启动默认亮度的 135 nit 单资源 Overlay"

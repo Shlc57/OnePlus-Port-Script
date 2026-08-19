@@ -880,9 +880,13 @@ int set_feature(displayfeature_device_t*, int display_id, int mode, int value, i
             mode == kEyeCareMode
                     ? calculate_warmth_pcc_diagonal(requested_eye_care_warmth)
                     : PccDiagonal{1.0, 1.0, 1.0};
+    // 基础色彩模式的 value 同样携带 1/2/3 色温档位；mode 23 则用于
+    // 独立色温更新及无限色彩模式的打包 RGB 值。
+    const bool updates_color_temperature =
+            render_intent >= 0 || mode == kColorTemperatureMode;
     const PccDiagonal requested_color_temperature_pcc =
-            mode == kColorTemperatureMode ? map_color_temperature_to_pcc(value)
-                                          : PccDiagonal{1.0, 1.0, 1.0};
+            updates_color_temperature ? map_color_temperature_to_pcc(value)
+                                      : PccDiagonal{1.0, 1.0, 1.0};
 
     pthread_mutex_lock(&g_state.mutex);
     g_state.last_request_mode = mode;
@@ -899,10 +903,12 @@ int set_feature(displayfeature_device_t*, int display_id, int mode, int value, i
         if (color_mode_applied) {
             g_state.current_xiaomi_mode = mode;
             g_state.current_render_intent = render_intent;
-            if (g_state.pcc_configured) {
-                pcc_reapplied = true;
-                status = apply_desired_pcc_locked();
-            }
+            g_state.color_temperature_value = value;
+            g_state.color_temperature_pcc = requested_color_temperature_pcc;
+            set_desired_pcc_locked(combine_pcc_diagonals(
+                    requested_color_temperature_pcc, g_state.eye_care_pcc));
+            pcc_reapplied = true;
+            status = apply_desired_pcc_locked();
         }
     } else if (mode == kEyeCareMode) {
         g_state.eye_care_value = normalized_eye_care_value;

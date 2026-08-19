@@ -35,4 +35,3 @@ constexpr uint32_t kHardwareDeviceTag = 0x48574454U;  // HWDT
 
 static_assert(sizeof(hw_module_t) == 248, "hw_module_t ABI 不匹配");
 static_assert(sizeof(hw_device_t) == 120, "hw_device_t ABI 不匹配");
-

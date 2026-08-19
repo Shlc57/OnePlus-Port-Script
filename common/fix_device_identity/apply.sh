@@ -3,7 +3,7 @@ set -euo pipefail
 
 init_port_env "${1:-}"
 
-std_print "从小米原包 mi_odm 写入设备标识"
+std_print "写入原包设备标识：${PORT_SOURCE_DEVICE_MARKET_NAME:-${PORT_SOURCE_DEVICE_NAME:-未知}}（${PORT_SOURCE_DEVICE_CODE:-未知}）"
 std_print
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
@@ -26,17 +26,17 @@ fi
 
 if [[ -n "$override_prop_name" ]]; then
 	if [[ ! "$override_prop_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*\.prop$ ]]; then
-		err_print "无效的设备标识覆盖文件名：$override_prop_name"
+		err_print "无效的设备标识附加配置文件名：$override_prop_name"
 		exit 1
 	fi
 	override_prop_candidate="$project_dir/mi_odm/etc/$override_prop_name"
 	if [[ -L "$override_prop_candidate" ]]; then
-		err_print "设备标识覆盖属性不能是符号链接：$override_prop_candidate"
+		err_print "设备标识附加配置不能是符号链接：$override_prop_candidate"
 		exit 1
 	elif [[ ! -e "$override_prop_candidate" ]]; then
-		warn_print "设备标识覆盖属性不存在，跳过：mi_odm/etc/$override_prop_name"
+		warn_print "设备标识附加配置不存在，忽略：mi_odm/etc/$override_prop_name"
 	elif [[ ! -f "$override_prop_candidate" ]]; then
-		err_print "设备标识覆盖属性不是普通文件：$override_prop_candidate"
+		err_print "设备标识附加配置不是普通文件：$override_prop_candidate"
 		exit 1
 	else
 		validate_prop_file "$override_prop_candidate"
@@ -46,11 +46,11 @@ if [[ -n "$override_prop_name" ]]; then
 fi
 
 if [[ -n "$override_prop_file" && -f "$source_build_prop" ]]; then
-	std_print "身份来源：mi_odm/build.prop + mi_odm/etc/$override_prop_name"
+	std_print "基础身份来源：mi_odm/etc/build.prop；附加配置：mi_odm/etc/$override_prop_name"
 elif [[ -n "$override_prop_file" ]]; then
-	std_print "身份来源：mi_odm/etc/$override_prop_name"
+	std_print "附加配置：mi_odm/etc/$override_prop_name"
 elif [[ -f "$source_build_prop" ]]; then
-	std_print "身份来源：mi_odm/build.prop"
+	std_print "基础身份来源：mi_odm/etc/build.prop"
 fi
 
 odm_build_props=(
@@ -129,7 +129,7 @@ if [[ -n "$override_prop_file" ]]; then
 		prop_write_performed=1
 	done
 	if (( ${#available_odm_build_props[@]} > 0 )); then
-		std_print "✅ 指定 prop 的全部有效属性已合并到 odm"
+		std_print "✅ 附加 prop 的全部有效属性已合并到 odm"
 	fi
 fi
 

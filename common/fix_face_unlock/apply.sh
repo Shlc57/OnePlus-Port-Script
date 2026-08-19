@@ -14,27 +14,36 @@ done
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
-device_features="$project_dir/product/etc/device_features/nezha.xml"
+project_root="$project_dir"
+device_features="${PORT_SOURCE_DEVICE_FEATURE_FILE:-}"
 # init_port_env 注入补丁仓库根目录。
 # shellcheck disable=SC2154
 settings_patcher="$port_dir/common/settings_apk_patcher.sh"
-settings_apk="$project_dir/system_ext/priv-app/Settings/Settings.apk"
-settings_oat_dir="$project_dir/system_ext/priv-app/Settings/oat"
+settings_apk="$project_root/system_ext/priv-app/Settings/Settings.apk"
+settings_oat_dir="$project_root/system_ext/priv-app/Settings/oat"
 permission_manifest="$patcher_dir/config/mi_vendor_sources.tsv"
-source_permission="$project_dir/mi_vendor/etc/permissions/android.hardware.biometrics.face.xml"
-target_permission="$project_dir/vendor/etc/permissions/android.hardware.biometrics.face.xml"
+source_permission="$project_root/mi_vendor/etc/permissions/android.hardware.biometrics.face.xml"
+target_permission="$project_root/vendor/etc/permissions/android.hardware.biometrics.face.xml"
 source_contexts="$(get_part_contexts_path mi_vendor)"
 source_fsconfig="$(get_part_fsconfig_path mi_vendor)"
 vendor_contexts="$(get_part_contexts_path vendor)"
 vendor_fsconfig="$(get_part_fsconfig_path vendor)"
 
 face_file_patch_ready=1
-for target_file in "$device_features" "$settings_apk"; do
+if [[ -z "$PORT_SOURCE_DEVICE_CODE" || -z "$device_features" ]]; then
+	warn_print "移植前未识别原包设备代号，跳过人脸特性 XML 与 Settings 子步骤"
+	face_file_patch_ready=0
+fi
+face_patch_targets=("$settings_apk")
+if [[ -n "$device_features" ]]; then
+	face_patch_targets=("$device_features" "${face_patch_targets[@]}")
+fi
+for target_file in "${face_patch_targets[@]}"; do
 	if [[ -L "$target_file" ]]; then
 		err_print "不支持修改符号链接人脸解锁目标：$target_file"
 		exit 1
 	elif [[ ! -e "$target_file" ]]; then
-		warn_print "待修改的人脸解锁目标不存在，跳过：${target_file#"$project_dir"/}"
+		warn_print "待修改的人脸解锁目标不存在，跳过：${target_file#"$project_root"/}"
 		face_file_patch_ready=0
 	elif [[ ! -f "$target_file" ]]; then
 		err_print "待修改的人脸解锁目标不是普通文件：$target_file"
@@ -70,8 +79,8 @@ fi
 check_partition_metadata_tool >/dev/null
 
 validate_source_file_manifest \
-	"$project_dir/mi_vendor" \
-	"$project_dir/vendor" \
+	"$project_root/mi_vendor" \
+	"$project_root/vendor" \
 	"$permission_manifest"
 validate_translated_contexts \
 	"$source_contexts" \
@@ -337,8 +346,8 @@ PY
 fi
 
 apply_source_file_manifest \
-	"$project_dir/mi_vendor" \
-	"$project_dir/vendor" \
+	"$project_root/mi_vendor" \
+	"$project_root/vendor" \
 	"$permission_manifest"
 merge_translated_contexts \
 	"$source_contexts" \

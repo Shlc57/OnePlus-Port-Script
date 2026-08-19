@@ -30,7 +30,7 @@ odm_metadata_fsconfig="$(get_part_fsconfig_path odm)"
 policy_patcher="$patcher_dir/patch_vendor_avc_policy.py"
 # shellcheck disable=SC2154 # port_dir is exported by init_port_env/tools.sh.
 selinux_merger="$port_dir/common/selinux_merge/selinux_merge.py"
-display_patch_dir="$port_dir/common/fix_displayfeature_bridge"
+display_patch_dir="$port_dir/features/fix_displayfeature_bridge"
 display_policy_fragment="$display_patch_dir/config/selinux_policy.cil.in"
 display_service_rc="$project_dir/vendor/etc/init/vendor.xiaomi.hardware.displayfeature_aidl-service.rc"
 

@@ -18,55 +18,18 @@ settings_oat_dir="$project_dir/system_ext/priv-app/Settings/oat"
 # shellcheck disable=SC2154
 settings_patcher="$port_dir/common/settings_apk_patcher.sh"
 
-device_code=""
-device_prop_files=(
-	"$project_dir/odm/etc/build.prop"
-	"$project_dir/odm/build.prop"
-	"$project_dir/mi_odm/etc/build.prop"
-)
-for prop_file in "${device_prop_files[@]}"; do
-	if [[ -L "$prop_file" ]]; then
-		err_print "不支持从符号链接读取属性：$prop_file"
-		exit 1
-	elif [[ ! -e "$prop_file" ]]; then
-		warn_print "设备代号属性来源不存在，跳过：${prop_file#"$project_dir"/}"
-		continue
-	elif [[ ! -f "$prop_file" ]]; then
-		err_print "设备代号属性来源不是普通文件：$prop_file"
-		exit 1
-	fi
-	if grep -Eq '^[[:space:]]*ro\.product\.odm\.device[[:space:]]*=' "$prop_file"; then
-		prop_device_code="$(read_prop_value ro.product.odm.device "$prop_file")"
-		if [[ -z "$prop_device_code" ]]; then
-			warn_print "设备代号属性值为空，跳过：${prop_file#"$project_dir"/}"
-			continue
-		fi
-		if [[ -z "$device_code" ]]; then
-			device_code="$prop_device_code"
-		elif [[ "$device_code" != "$prop_device_code" ]]; then
-			err_print "设备代号来源不一致：$device_code / $prop_device_code"
-			exit 1
-		fi
-	else
-		warn_print "设备代号属性不存在，跳过：${prop_file#"$project_dir"/} 中的 ro.product.odm.device"
-	fi
-done
-
+device_code="$PORT_SOURCE_DEVICE_CODE"
 if [[ -z "$device_code" ]]; then
-	warn_print "无法从 odm/mi_odm build.prop 读取 ro.product.odm.device，跳过刷新率与分辨率切换"
+	warn_print "移植前未识别原包设备代号，跳过刷新率与分辨率切换"
 	std_print "处理完成"
 	exit 0
-fi
-if [[ ! "$device_code" =~ ^[A-Za-z0-9_.-]+$ ]]; then
-	err_print "设备代号无效：$device_code"
-	exit 1
 fi
 
 for part_name in odm product system_ext; do
 	check_part_exists "$part_name"
 done
 
-device_feature_xml="$device_features_dir/$device_code.xml"
+device_feature_xml="$PORT_SOURCE_DEVICE_FEATURE_FILE"
 feature_patch_ready=1
 if [[ -L "$device_features_dir" ]]; then
 	err_print "device_features 目录不能是符号链接：$device_features_dir"

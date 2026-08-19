@@ -1,0 +1,5 @@
+# 一加 15 组合流程选择的目标 vendor 显示栈配置。
+# common/fix_boot_refresh_rate 只合并此显式配置，不读取小米原包显示属性。
+vendor.display.disable_3d_adaptive_tm=1
+vendor.display.disable_stc_dimming=1
+vendor.display.disable_sdr_dimming=0

@@ -1,0 +1,12 @@
+# 一加 15 超声波指纹目标设备硬件参数。
+# features/fix_ultrasonic_fingerprint 只读取此显式配置，不从小米原包推断。
+ultrasonic.fp.reference.width=1272
+ultrasonic.fp.reference.height=2772
+ultrasonic.fp.sensor.center.x=636
+ultrasonic.fp.sensor.center.y=2048
+ultrasonic.fp.icon.width=195
+ultrasonic.fp.icon.height=195
+ultrasonic.fp.sensor.area.width=220
+ultrasonic.fp.sensor.area.height=242
+ultrasonic.fp.vendor=oplus
+ultrasonic.fp.fingerdown.delay.ms=20

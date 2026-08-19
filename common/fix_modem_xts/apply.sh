@@ -5,7 +5,7 @@ patcher_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 init_port_env "${1:-}"
 
-std_print "修复一加 15 基带不兼容的小米 OEM Hook"
+std_print "修复 Oplus 基带不兼容的小米 OEM Hook"
 std_print "保留小米 qcrilmsgtunnel，跳过 XTS 版本查询与屏幕状态通知"
 check_part_exists system
 

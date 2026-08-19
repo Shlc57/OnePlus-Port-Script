@@ -1,6 +1,6 @@
 # 一加 15 修补脚本使用说明
 
-本说明只适用于 `port/1+15_port.sh`。脚本会直接修改已经解包的分区目录，不负责解包、打包或刷机。
+本说明只适用于 `port/OP15_port.sh`。脚本会直接修改已经解包的分区目录，不负责解包、打包或刷机。
 
 ## 准备工作
 
@@ -35,11 +35,9 @@
 
 4. `DNA_config/` 中必须保留上述各分区对应的 `{分区名}_contexts.txt` 和 `{分区名}_fsconfig.txt`。也支持 `config/`，对应文件名为 `{分区名}_file_contexts` 和 `{分区名}_fs_config`；两者同时存在时优先使用 `DNA_config/`。
 
-5. 确认小米原包中存在：
+5. 确认小米原包至少包含 `mi_odm/etc/build.prop`。脚本会在修改分区前自动识别底包与原包设备；一加 15 组合流程还会明确尝试合并额外配置 `mi_odm/etc/nezha_5.9.9.prop`，该文件不存在时只输出弱警告并忽略，不影响基础设备标识写入和后续补丁。
 
-   ```text
-   mi_odm/etc/nezha_5.9.9.prop
-   ```
+6. 一加 15 的刷新率、NFC、线性触感和超声波指纹硬件参数均保存在 `port/devices/oneplus15/config/` 下的 `.props` 文件，由 `OP15_port.sh` 显式传给对应补丁；其中指纹参数集中在 `fingerprint.props`，不会从小米原包推断。更换底包或目标机型时必须重新核对这些目标设备配置，不能照搬。
 
 ## 电脑 Linux 使用方法
 
@@ -47,7 +45,7 @@
 
 ```bash
 cd /你的路径/DNA_hyper/port
-bash 1+15_port.sh
+bash OP15_port.sh
 ```
 
 不要直接运行各补丁目录中的 `apply.sh`。脚本遇到错误会立即停止；根据终端提示补齐缺失文件或工具后，再重新执行同一条命令即可。
@@ -57,12 +55,12 @@ bash 1+15_port.sh
 ```bash
 APKTOOL_JAR=/你的路径/apktool.jar \
 ZIPALIGN=/你的路径/zipalign \
-bash 1+15_port.sh
+bash OP15_port.sh
 ```
 
 ## Termux 使用方法
 
-Termux 理论上可以运行本脚本，但目前没有经过手机端完整流程验证。必须使用 Bash 显式启动，不能使用 `sh 1+15_port.sh` 或 `./1+15_port.sh`。
+Termux 理论上可以运行本脚本，但目前没有经过手机端完整流程验证。必须使用 Bash 显式启动，不能使用 `sh OP15_port.sh` 或 `./OP15_port.sh`。
 
 1. 建议安装 F-Droid 或 GitHub 发布的新版 Termux，然后安装依赖：
 
@@ -91,7 +89,7 @@ Termux 理论上可以运行本脚本，但目前没有经过手机端完整流�
 
    ```bash
    cd "$HOME/DNA_hyper/port"
-   bash ./1+15_port.sh
+   bash ./OP15_port.sh
    ```
 
 Termux 下同样不要直接运行各目录中的 `apply.sh`。手机内存或剩余空间不足时，Apktool 处理大型 APK 可能失败。

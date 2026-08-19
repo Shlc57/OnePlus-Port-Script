@@ -5,18 +5,18 @@ patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
 std_print "修复开机卡顿与锁 60Hz"
-std_print "来源：小米原包 mi_odm、mi_vendor；目标：底包 odm、vendor"
+std_print "来源：目标设备流程显式提供的显示配置；目标：底包 odm、vendor"
 std_print "范围：仅合并显示、刷新率与触控属性，保留底包音频链和完整 ODM 文件树"
 std_print
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
+odm_prop_source="${BOOT_REFRESH_RATE_ODM_PROPERTIES_FILE:-}"
+vendor_prop_source="${BOOT_REFRESH_RATE_VENDOR_PROPERTIES_FILE:-}"
 # shellcheck disable=SC2154
-mi_odm_build_prop="$project_dir/mi_odm/etc/build.prop"
-mi_vendor_build_prop="$project_dir/mi_vendor/build.prop"
 odm_build_prop="$project_dir/odm/etc/build.prop"
 vendor_build_prop="$project_dir/vendor/build.prop"
-mi_odm_prop_list="$patcher_dir/config/mi_odm_props.list"
-mi_vendor_prop_list="$patcher_dir/config/mi_vendor_props.list"
+odm_prop_list="$patcher_dir/config/odm_props.list"
+vendor_prop_list="$patcher_dir/config/vendor_props.list"
 
 odm_target_ready=1
 vendor_target_ready=1
@@ -66,24 +66,29 @@ build_prop_patch() {
 	local -A seen_keys=()
 
 	: > "$output_file"
+	if [[ -z "$source_file" ]]; then
+		warn_print "未提供 $source_name 目标设备配置，跳过动态属性"
+		return 0
+	fi
 	if [[ -L "$source_file" ]]; then
-		err_print "不支持从符号链接读取属性：$source_file"
+		err_print "目标设备属性配置不能是符号链接：$source_file"
 		return 1
 	elif [[ ! -e "$source_file" ]]; then
-		warn_print "属性来源不存在，跳过 $source_name 动态属性：${source_file#"$project_dir"/}"
+		warn_print "目标设备属性配置不存在，跳过 $source_name 动态属性：$source_file"
 		return 0
 	elif [[ ! -f "$source_file" ]]; then
-		err_print "属性来源不是普通文件：$source_file"
+		err_print "目标设备属性配置不是普通文件：$source_file"
 		return 1
 	fi
+	validate_prop_file "$source_file" || return 1
 	if [[ -L "$prop_list" ]]; then
-		err_print "属性清单不能是符号链接：$prop_list"
+		err_print "目标设备属性清单不能是符号链接：$prop_list"
 		return 1
 	elif [[ ! -e "$prop_list" ]]; then
-		warn_print "属性清单不存在，跳过 $source_name 动态属性：${prop_list#"$port_dir"/}"
+		warn_print "目标设备属性清单不存在，跳过 $source_name 动态属性：${prop_list#"$port_dir"/}"
 		return 0
 	elif [[ ! -f "$prop_list" ]]; then
-		err_print "属性清单不是普通文件：$prop_list"
+		err_print "目标设备属性清单不是普通文件：$prop_list"
 		return 1
 	fi
 	while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
@@ -117,7 +122,7 @@ build_prop_patch() {
 	done < "$prop_list"
 
 	if (( listed_prop_count == 0 )); then
-		warn_print "属性清单没有有效条目，跳过：${prop_list#"$port_dir"/}"
+		warn_print "目标设备属性清单没有有效条目，跳过：${prop_list#"$port_dir"/}"
 	elif (( prop_count == 0 )); then
 		warn_print "$source_name 没有可合并的动态属性，跳过"
 	fi
@@ -129,35 +134,28 @@ vendor_prop_patch="$(mktemp "$(get_config_path '.fix_boot_refresh_rate_vendor.XX
 temporary_files+=("$vendor_prop_patch")
 
 if (( odm_target_ready == 1 )); then
-	build_prop_patch "$mi_odm_build_prop" "$mi_odm_prop_list" "$odm_prop_patch" "mi_odm"
+	build_prop_patch "$odm_prop_source" "$odm_prop_list" "$odm_prop_patch" "ODM"
 fi
 if (( vendor_target_ready == 1 )); then
-	build_prop_patch "$mi_vendor_build_prop" "$mi_vendor_prop_list" "$vendor_prop_patch" "mi_vendor"
+	build_prop_patch "$vendor_prop_source" "$vendor_prop_list" "$vendor_prop_patch" "vendor"
 fi
 
-# 这两个开关来自教程的刷新率修复本身，当前原包和底包均未定义。
-if (( odm_target_ready == 1 )); then
-	printf '%s\n' \
-		'ro.surface_flinger.enable_frame_rate_override=false' \
-		'debug.sf.set_idle_timer_ms=1100' >> "$odm_prop_patch"
-fi
-
-if (( odm_target_ready == 1 )); then
+if (( odm_target_ready == 1 )) && [[ -s "$odm_prop_patch" ]]; then
 	validate_prop_file "$odm_prop_patch"
 fi
 if (( vendor_target_ready == 1 )) && [[ -s "$vendor_prop_patch" ]]; then
 	validate_prop_file "$vendor_prop_patch"
 fi
 
-if (( odm_target_ready == 1 )); then
-	odm_dynamic_prop_count="$(awk 'END { print NR - 2 }' "$odm_prop_patch")"
+if (( odm_target_ready == 1 )) && [[ -s "$odm_prop_patch" ]]; then
+	odm_dynamic_prop_count="$(awk 'END { print NR }' "$odm_prop_patch")"
 	merge_prop_file "$odm_prop_patch" "$odm_build_prop"
-	std_print "✅ ODM 显示、刷新率与触控属性已合并到 odm/etc/build.prop（动态提取 $odm_dynamic_prop_count 项，固定补充 2 项）"
+	std_print "✅ 已从目标设备配置合并 $odm_dynamic_prop_count 项 ODM 显示、刷新率与触控属性：odm/etc/build.prop"
 fi
 
 if (( vendor_target_ready == 1 )) && [[ -s "$vendor_prop_patch" ]]; then
 	vendor_prop_count="$(awk 'END { print NR }' "$vendor_prop_patch")"
 	merge_prop_file "$vendor_prop_patch" "$vendor_build_prop"
-	std_print "✅ 原包 vendor 的 $vendor_prop_count 项显示属性已合并到 vendor/build.prop"
+	std_print "✅ 已从目标设备配置合并 $vendor_prop_count 项显示属性：vendor/build.prop"
 fi
 std_print "处理完成"

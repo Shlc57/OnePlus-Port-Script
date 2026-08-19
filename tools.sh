@@ -1,6 +1,7 @@
 #!/bin/bash
 
 _port_tools_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+_port_device_identity_project=""
 
 declare -a _port_config_profiles=(
 	DNA_config
@@ -77,6 +78,9 @@ init_port_env() {
 	_load_config_profile "$project_dir" || return 1
 	port_dir="$_port_tools_dir"
 	export project_dir port_dir
+	if [[ "$_port_device_identity_project" != "$project_dir" ]]; then
+		_port_detect_device_identities "$project_dir" || return 1
+	fi
 }
 
 get_config_dir() {
@@ -293,6 +297,269 @@ read_prop_value() {
 		return 1
 	}
 	printf '%s\n' "$prop_value"
+}
+
+# 设备身份只在首个补丁修改工作树前识别一次并导出。后续 apply.sh 及其子脚本
+# 统一消费同一份快照，不再重新读取可能已经被补丁修改过的 odm/build.prop。
+_port_identity_pick_field() {
+	local field="${1:-}"
+	shift || true
+	local key
+	local prop_file
+	local prop_value
+	local grep_status
+	local output_var="_port_identity_${field}"
+
+	printf -v "$output_var" '%s' ''
+	# 候选文件顺序代表来源优先级；先在高优先级文件内按属性语义回退，
+	# 再读取下一份文件，避免低优先级分区中的 ro.product.odm.* 抢先覆盖。
+	for prop_file in "${_port_identity_candidate_files[@]}"; do
+		if [[ -L "$prop_file" ]]; then
+			err_print "设备身份来源不能是符号链接：$prop_file"
+			return 1
+		elif [[ ! -e "$prop_file" ]]; then
+			continue
+		elif [[ ! -f "$prop_file" ]]; then
+			err_print "设备身份来源不是普通文件：$prop_file"
+			return 1
+		fi
+		for key in "$@"; do
+			if grep -Eq "^[[:space:]]*${key//./\\.}[[:space:]]*=" "$prop_file"; then
+				prop_value="$(read_prop_value "$key" "$prop_file")" || return 1
+				if [[ -z "$prop_value" ]]; then
+					err_print "设备身份属性值为空：$key（$prop_file）"
+					return 1
+				fi
+				printf -v "$output_var" '%s' "$prop_value"
+				return 0
+			else
+				grep_status=$?
+				if (( grep_status > 1 )); then
+					err_print "读取设备身份来源失败：$prop_file"
+					return 1
+				fi
+			fi
+		done
+	done
+	return 0
+}
+
+_port_identity_validate_component() {
+	local component_name="${1:-}"
+	local component_value="${2:-}"
+
+	if [[ -z "$component_value" ]]; then
+		return 0
+	fi
+	if [[ "$component_value" == "." || "$component_value" == ".." || \
+		! "$component_value" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+		err_print "${component_name}无效：$component_value"
+		return 1
+	fi
+}
+
+_port_collect_base_identity_files() {
+	local odm_build_prop="$project_dir/odm/build.prop"
+	local profile_name=""
+	local profile_candidate
+	local -a discovered_profiles=()
+
+	_port_identity_candidate_files=()
+	if [[ -L "$odm_build_prop" ]]; then
+		err_print "底包设备身份来源不能是符号链接：$odm_build_prop"
+		return 1
+	fi
+	if [[ -f "$odm_build_prop" ]] && \
+		grep -Eq '^[[:space:]]*ro\.separate\.soft[[:space:]]*=' "$odm_build_prop"; then
+		profile_name="$(read_prop_value ro.separate.soft "$odm_build_prop")" || return 1
+		_port_identity_validate_component "底包配置标识" "$profile_name" || return 1
+		for profile_candidate in \
+			"$project_dir/odm/etc/$profile_name/build.default.prop" \
+			"$project_dir/odm/etc/$profile_name/build.prop"; do
+			if [[ -e "$profile_candidate" || -L "$profile_candidate" ]]; then
+				_port_identity_candidate_files+=("$profile_candidate")
+			fi
+		done
+	fi
+
+	# 非 Oplus 底包不一定提供 ro.separate.soft；仅在候选唯一时采用嵌套
+	# build.default.prop，避免多机型底包中随意挑选配置。
+	if (( ${#_port_identity_candidate_files[@]} == 0 )) && \
+		[[ -d "$project_dir/odm/etc" && ! -L "$project_dir/odm/etc" ]]; then
+		mapfile -t discovered_profiles < <(
+			find "$project_dir/odm/etc" -mindepth 2 -maxdepth 2 \
+				-type f -name build.default.prop -print | LC_ALL=C sort
+		)
+		if (( ${#discovered_profiles[@]} == 1 )); then
+			_port_identity_candidate_files+=("${discovered_profiles[0]}")
+		fi
+	fi
+
+	_port_identity_candidate_files+=(
+		"$project_dir/odm/build.prop"
+		"$project_dir/odm/etc/build.prop"
+		"$project_dir/vendor/build.prop"
+	)
+}
+
+_port_detect_identity_role() {
+	local role="${1:-}"
+	local role_prefix
+	local identity_label
+	local fingerprint_device=""
+	local fingerprint_product=""
+	local -a _port_identity_candidate_files=()
+	local _port_identity_code=""
+	local _port_identity_name=""
+	local _port_identity_model=""
+	local _port_identity_market_name=""
+	local _port_identity_fingerprint=""
+
+	case "$role" in
+		base)
+			role_prefix=BASE
+			identity_label=底包
+			_port_collect_base_identity_files || return 1
+			_port_identity_pick_field code \
+				ro.product.device \
+				ro.vendor.product.device.oem \
+				ro.product.odm.device \
+				ro.product.vendor.device \
+				ro.vendor.product.device \
+				ro.build.product || return 1
+			_port_identity_pick_field name \
+				ro.product.name \
+				ro.product.odm.name \
+				ro.product.vendor.name \
+				ro.vendor.product.name || return 1
+			_port_identity_pick_field model \
+				ro.product.model \
+				ro.product.odm.model \
+				ro.product.vendor.model \
+				ro.vendor.product.model \
+				ro.vendor.product.oem || return 1
+			_port_identity_pick_field market_name \
+				ro.vendor.oplus.market.name \
+				ro.product.vendor.marketname \
+				ro.product.odm.marketname \
+				ro.product.marketname || return 1
+			_port_identity_pick_field fingerprint \
+				ro.vendor.build.fingerprint \
+				ro.odm.build.fingerprint \
+				ro.product.build.fingerprint || return 1
+			;;
+		source)
+			role_prefix=SOURCE
+			identity_label=原包
+			_port_identity_candidate_files=(
+				"$project_dir/mi_odm/etc/build.prop"
+				"$project_dir/mi_odm/build.prop"
+				"$project_dir/product/etc/build.prop"
+				"$project_dir/product/build.prop"
+				"$project_dir/system/system/build.prop"
+			)
+			_port_identity_pick_field code \
+				ro.product.odm.device \
+				ro.product.vendor.device \
+				ro.product.product.device \
+				ro.product.device \
+				ro.build.product || return 1
+			_port_identity_pick_field name \
+				ro.product.odm.name \
+				ro.product.vendor.name \
+				ro.product.product.name \
+				ro.product.name || return 1
+			_port_identity_pick_field model \
+				ro.product.odm.model \
+				ro.product.vendor.model \
+				ro.product.product.model \
+				ro.product.model || return 1
+			_port_identity_pick_field market_name \
+				ro.product.odm.marketname \
+				ro.product.vendor.marketname \
+				ro.product.product.marketname \
+				ro.product.marketname || return 1
+			_port_identity_pick_field fingerprint \
+				ro.odm.build.fingerprint \
+				ro.vendor.build.fingerprint \
+				ro.product.build.fingerprint || return 1
+			;;
+		*)
+			err_print "未知的设备身份来源：$role"
+			return 1
+			;;
+	esac
+
+	# 少数分区只提供 fingerprint；其中第三段为设备代号，第二段为产品名。
+	if [[ -z "${_port_identity_code:-}" && -n "${_port_identity_fingerprint:-}" ]]; then
+		fingerprint_device="$(awk -F/ 'NF >= 3 { print $3; exit }' <<< "$_port_identity_fingerprint")"
+		fingerprint_product="$(awk -F/ 'NF >= 2 { print $2; exit }' <<< "$_port_identity_fingerprint")"
+		fingerprint_device="${fingerprint_device%%:*}"
+		fingerprint_product="${fingerprint_product%%:*}"
+		_port_identity_code="${fingerprint_device:-$fingerprint_product}"
+	fi
+	if [[ -z "${_port_identity_name:-}" ]]; then
+		_port_identity_name="${_port_identity_code:-}"
+	fi
+	if [[ -z "${_port_identity_market_name:-}" ]]; then
+		_port_identity_market_name="${_port_identity_model:-${_port_identity_name:-}}"
+	fi
+
+	_port_identity_validate_component "${identity_label}设备代号" "${_port_identity_code:-}" || return 1
+
+	printf -v "PORT_${role_prefix}_DEVICE_CODE" '%s' "${_port_identity_code:-}"
+	printf -v "PORT_${role_prefix}_DEVICE_NAME" '%s' "${_port_identity_name:-}"
+	printf -v "PORT_${role_prefix}_DEVICE_MODEL" '%s' "${_port_identity_model:-}"
+	printf -v "PORT_${role_prefix}_DEVICE_MARKET_NAME" '%s' "${_port_identity_market_name:-}"
+}
+
+_port_export_device_identities() {
+	PORT_SOURCE_DEVICE_FEATURE_FILE=""
+	if [[ -n "$PORT_SOURCE_DEVICE_CODE" ]]; then
+		PORT_SOURCE_DEVICE_FEATURE_FILE="$project_dir/product/etc/device_features/$PORT_SOURCE_DEVICE_CODE.xml"
+	fi
+
+	export \
+		PORT_BASE_DEVICE_CODE PORT_BASE_DEVICE_NAME PORT_BASE_DEVICE_MODEL \
+		PORT_BASE_DEVICE_MARKET_NAME \
+		PORT_SOURCE_DEVICE_CODE PORT_SOURCE_DEVICE_NAME PORT_SOURCE_DEVICE_MODEL \
+		PORT_SOURCE_DEVICE_MARKET_NAME PORT_SOURCE_DEVICE_FEATURE_FILE
+}
+
+_port_detect_device_identities() {
+	local identity_project_dir="${1:-}"
+
+	if [[ -z "$identity_project_dir" || "$identity_project_dir" != "$project_dir" ]]; then
+		err_print "设备身份识别项目目录无效：$identity_project_dir"
+		return 1
+	fi
+
+	# 每次切换工程时清空旧值。允许缺少可选分区；需要具体身份的补丁自行判断
+	# 空值是否可用。
+	PORT_BASE_DEVICE_CODE=""
+	PORT_BASE_DEVICE_NAME=""
+	PORT_BASE_DEVICE_MODEL=""
+	PORT_BASE_DEVICE_MARKET_NAME=""
+	PORT_SOURCE_DEVICE_CODE=""
+	PORT_SOURCE_DEVICE_NAME=""
+	PORT_SOURCE_DEVICE_MODEL=""
+	PORT_SOURCE_DEVICE_MARKET_NAME=""
+
+	_port_detect_identity_role base || return 1
+	_port_detect_identity_role source || return 1
+	_port_export_device_identities
+
+	if [[ -n "$PORT_BASE_DEVICE_CODE" || -n "$PORT_BASE_DEVICE_NAME" ]]; then
+		std_print "识别底包设备：${PORT_BASE_DEVICE_MARKET_NAME:-${PORT_BASE_DEVICE_NAME:-未知}}（代号：${PORT_BASE_DEVICE_CODE:-未知}）"
+	else
+		warn_print "移植前未识别到底包设备（请确认 vendor/odm 已解包）"
+	fi
+	if [[ -n "$PORT_SOURCE_DEVICE_CODE" || -n "$PORT_SOURCE_DEVICE_NAME" ]]; then
+		std_print "识别原包设备：${PORT_SOURCE_DEVICE_MARKET_NAME:-${PORT_SOURCE_DEVICE_NAME:-未知}}（代号：${PORT_SOURCE_DEVICE_CODE:-未知}）"
+	else
+		warn_print "移植前未识别到原包设备（请确认 mi_odm/product 已解包）"
+	fi
+	_port_device_identity_project="$identity_project_dir"
 }
 
 validate_prop_file() {

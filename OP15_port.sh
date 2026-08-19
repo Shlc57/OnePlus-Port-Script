@@ -2,8 +2,18 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-port="$script_dir/auto_port.sh"
+port="$script_dir/port_main.sh"
+oneplus15_config_dir="$script_dir/devices/oneplus15/config"
+# 一加 15 流程明确选用的可选 SKU 附加配置；缺失时只警告并继续。
 export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
+# 依赖目标实际硬件的属性由一加 15 组合入口提供，不从小米原包提取。
+export BOOT_REFRESH_RATE_ODM_PROPERTIES_FILE="$oneplus15_config_dir/refresh_odm.props"
+export BOOT_REFRESH_RATE_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/refresh_vendor.props"
+export NFC_PROPERTIES_FILE="$oneplus15_config_dir/nfc.props"
+export LINEAR_HAPTIC_PROPERTIES_FILE="$oneplus15_config_dir/linear_haptic.props"
+export LINEAR_HAPTIC_MOTOR_TYPE=linear
+# 一加 15 实机硬件快照。超声波指纹通用模块不从小米原包推断这些参数。
+export ULTRASONIC_FP_PROPERTIES_FILE="$oneplus15_config_dir/fingerprint.props"
 export DEVICE_PARAMS_SPOOF_JSON='{
   "language": "zhCN",
   "basic": {
@@ -63,27 +73,28 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
   }
 }'
 bash "$port" common/merge_mi_ext \
-	common/disable_mi_vulkan \
+	features/disable_mi_vulkan \
 	common/disable_odm_imports \
 	common/fake_device_params \
 	common/fix_pangu \
 	common/fix_mi_account \
-	common/enable_hyperos_features \
+	features/enable_hyperos_features \
 	common/fix_camera_mr \
 	common/fix_face_unlock \
-	common/fix_displayfeature_bridge \
+	features/fix_displayfeature_bridge \
 	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
 	common/fix_boot_refresh_rate \
+	features/fix_ltpo \
 	common/fix_nfc \
 	common/fix_wechat_safe_mode \
 	common/fix_settings_haptic \
 	common/fix_modem_xts \
 	common/fix_mtp \
 	common/fix_mi_mtp_kill_self \
-	common/fix_oplus_fingerprint_protocol \
+	features/fix_ultrasonic_fingerprint \
+	features/fix_oplus_fingerprint_protocol \
 	devices/oneplus15/fix_auto_brightness \
 	devices/oneplus15/fix_refresh_rate_switch \
-	devices/oneplus15/fix_fingerprint \
-	devices/oneplus15/fix_linear_haptic
+	common/fix_linear_haptic

@@ -15,6 +15,7 @@ print_help() {
 
 补丁路径示例：
   common/fix_launcher
+  features/fix_ltpo
   devices/oneplus15/fix_auto_brightness
 
 未指定补丁时仅列出可用补丁。只有显式传入的补丁才会按参数顺序执行。
@@ -27,6 +28,10 @@ discover_modules() {
 	{
 		if [[ -d "$script_dir/common" ]]; then
 			find "$script_dir/common" \
+				-mindepth 2 -maxdepth 2 -type f -name apply.sh -print
+		fi
+		if [[ -d "$script_dir/features" ]]; then
+			find "$script_dir/features" \
 				-mindepth 2 -maxdepth 2 -type f -name apply.sh -print
 		fi
 		if [[ -d "$script_dir/devices" ]]; then
@@ -55,6 +60,7 @@ load_modules() {
 list_modules() {
 	local index
 	local found_common=0
+	local found_feature=0
 	local found_device=0
 
 	load_modules
@@ -67,6 +73,17 @@ list_modules() {
 	done
 	if (( found_common == 0 )); then
 		skip_print "未发现通用补丁"
+	fi
+
+	std_print "硬件特性补丁："
+	for index in "${!available_module_paths[@]}"; do
+		if [[ "${available_module_paths[$index]}" == features/* ]]; then
+			printf '  %s\n' "${available_module_paths[$index]}"
+			found_feature=1
+		fi
+	done
+	if (( found_feature == 0 )); then
+		skip_print "未发现硬件特性补丁"
 	fi
 
 	std_print "设备专属补丁："

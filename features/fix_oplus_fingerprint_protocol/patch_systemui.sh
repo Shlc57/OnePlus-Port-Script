@@ -4,7 +4,7 @@ set -Eeuo pipefail
 CLASS_PATH='com/miui/keyguard/biometrics/fod/MiuiGxzwIconView.smali'
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PORT_ROOT=$(cd -- "$PATCHER_DIR/../.." && pwd -P)
-SIGNING_BLOCK_TOOL="$PORT_ROOT/common/fix_settings_haptic/apk_signing_block.py"
+SIGNING_BLOCK_TOOL="$PORT_ROOT/common/apk_signing_block.py"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''

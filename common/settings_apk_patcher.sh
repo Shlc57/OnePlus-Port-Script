@@ -10,7 +10,7 @@ SCREEN_RESOLUTION_METHOD_NAME='calculateHeightFromWidth(I)I'
 FACE_ENROLL_FINISH_CLASS_PATH='com/android/settings/faceunlock/MiuiNormalCameraMultiFaceInput$NewMultiFaceEnrollFragment$9.smali'
 FACE_ENROLL_FINISH_METHOD_NAME='onEnrollmentProgress(I)V'
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-SIGNING_BLOCK_TOOL="$PATCHER_DIR/fix_settings_haptic/apk_signing_block.py"
+SIGNING_BLOCK_TOOL="$PATCHER_DIR/apk_signing_block.py"
 
 PATCH_KIND=''
 CLASS_PATH=''

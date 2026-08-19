@@ -3,8 +3,8 @@ set -euo pipefail
 
 init_port_env "${1:-}"
 
-std_print "禁用一加 15 不支持的 CameraMR 特殊输入功能"
-std_print "避免将一加活动识别传感器误作小米 CameraMR 传感器，并阻断开机窗口焦点初始化崩溃"
+std_print "禁用目标设备不支持的 CameraMR 特殊输入功能"
+std_print "避免将 Oplus 活动识别传感器误作小米 CameraMR 传感器，并阻断开机窗口焦点初始化崩溃"
 std_print
 
 check_part_exists product

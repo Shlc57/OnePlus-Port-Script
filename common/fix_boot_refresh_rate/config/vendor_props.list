@@ -1,0 +1,4 @@
+# 每行一个允许写入最终 vendor 的属性名。值必须由目标设备流程显式配置，缺失项警告后跳过。
+vendor.display.disable_3d_adaptive_tm
+vendor.display.disable_stc_dimming
+vendor.display.disable_sdr_dimming

@@ -1,3 +1,4 @@
+# 每行一个允许写入最终 ODM 的 NFC 兼容属性；值由目标设备流程显式配置。
 ro.vendor.nfc.repair
 ro.vendor.nfc.wallet_fusion
 ro.vendor.nfc.secure_display_optim

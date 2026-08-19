@@ -6,7 +6,7 @@ ISOLATED_PROCESS='android.process.mtp'
 
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PORT_ROOT=$(cd -- "$PATCHER_DIR/../.." && pwd)
-SIGNING_BLOCK_TOOL="$PORT_ROOT/common/fix_settings_haptic/apk_signing_block.py"
+SIGNING_BLOCK_TOOL="$PORT_ROOT/common/apk_signing_block.py"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''

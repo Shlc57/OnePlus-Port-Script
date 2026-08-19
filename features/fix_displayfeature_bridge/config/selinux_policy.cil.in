@@ -1,4 +1,4 @@
-;; DisplayFeature SELinux rules owned by common/fix_displayfeature_bridge.
+;; DisplayFeature SELinux rules owned by features/fix_displayfeature_bridge.
 ;; The final CIL block and API-version substitution are owned by
 ;; common/selinux_merge; this file intentionally contains no device-global
 ;; policy or direct write marker.

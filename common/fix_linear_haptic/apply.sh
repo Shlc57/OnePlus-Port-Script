@@ -3,15 +3,26 @@ set -euo pipefail
 
 init_port_env "${1:-}"
 
-std_print "修复一加 15 线性震动"
-std_print "来源：小米原包 sys.haptic 属性；执行：开机完成后设置线性马达类型"
+std_print "适配目标设备线性马达触感"
+std_print "来源：目标设备流程显式提供的 sys.haptic 属性；执行：开机完成后设置马达类型"
 std_print
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
+source_build_prop="${LINEAR_HAPTIC_PROPERTIES_FILE:-}"
 # shellcheck disable=SC2154
-source_build_prop="$project_dir/mi_odm/etc/build.prop"
 target_build_prop="$project_dir/odm/etc/build.prop"
 vibrator_rc="$project_dir/odm/etc/init/vibrator-default.rc"
+motor_type="${LINEAR_HAPTIC_MOTOR_TYPE:-}"
+
+if [[ -z "$source_build_prop" || -z "$motor_type" ]]; then
+	warn_print "未提供目标设备线性马达配置（LINEAR_HAPTIC_PROPERTIES_FILE/LINEAR_HAPTIC_MOTOR_TYPE），跳过补丁"
+	std_print "处理完成"
+	exit 0
+fi
+if [[ ! "$motor_type" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+	err_print "线性马达类型无效：$motor_type"
+	exit 1
+fi
 
 patch_ready=1
 for required_file in "$source_build_prop" "$target_build_prop" "$vibrator_rc"; do
@@ -19,7 +30,7 @@ for required_file in "$source_build_prop" "$target_build_prop" "$vibrator_rc"; d
 		err_print "不支持直接处理符号链接：$required_file"
 		exit 1
 	elif [[ ! -e "$required_file" ]]; then
-		warn_print "线性震动属性相关文件不存在，跳过补丁：${required_file#"$project_dir"/}"
+		warn_print "线性震动属性相关文件不存在，跳过补丁：$required_file"
 		patch_ready=0
 		continue
 	elif [[ ! -f "$required_file" ]]; then
@@ -31,6 +42,7 @@ if (( patch_ready == 0 )); then
 	std_print "处理完成"
 	exit 0
 fi
+validate_prop_file "$source_build_prop"
 
 declare -a temporary_files=()
 cleanup() {
@@ -48,8 +60,9 @@ vibrator_rc_next="$(mktemp "$(get_config_path '.fix_linear_haptic_rc.XXXXXX')")"
 temporary_files+=("$vibrator_rc_next")
 
 for excluded_prop_key in sys.haptic.motor sys.haptic.version; do
-	if ! grep -Eq "^[[:space:]]*${excluded_prop_key//./\\.}[[:space:]]*=" "$source_build_prop"; then
-		warn_print "原包缺少待排除属性，跳过该项：$excluded_prop_key"
+	if grep -Eq "^[[:space:]]*${excluded_prop_key//./\\.}[[:space:]]*=" "$source_build_prop"; then
+		err_print "目标设备触感映射不得定义静态属性 $excluded_prop_key；马达类型由 LINEAR_HAPTIC_MOTOR_TYPE 单独配置"
+		exit 1
 	fi
 done
 
@@ -76,14 +89,14 @@ if awk -v source_file="$source_build_prop" '
 			next
 		}
 		if (key in seen) {
-			printf "! 原包触感属性重复：%s：%s\n", source_file, key > "/dev/stderr"
+			printf "! 目标设备触感属性重复：%s：%s\n", source_file, key > "/dev/stderr"
 			invalid = 1
 			next
 		}
 		seen[key] = 1
 		value = trim(substr(candidate, separator + 1))
 		if (value == "") {
-			printf "! 原包触感属性值为空：%s：%s\n", source_file, key > "/dev/stderr"
+			printf "! 目标设备触感属性值为空：%s：%s\n", source_file, key > "/dev/stderr"
 			invalid = 1
 			next
 		}
@@ -106,7 +119,7 @@ if awk -v source_file="$source_build_prop" '
 else
 	awk_status=$?
 	if (( awk_status == 3 )); then
-		warn_print "原包没有可合并的 sys.haptic 属性，跳过线性震动补丁：${source_build_prop#"$project_dir"/}"
+		warn_print "目标设备配置没有可合并的 sys.haptic 属性，跳过线性震动补丁：$source_build_prop"
 		std_print "处理完成"
 		exit 0
 	fi
@@ -218,7 +231,7 @@ if ! awk -v patch_file="$haptic_prop_patch" -v target_file="$target_build_prop" 
 	exit 1
 fi
 
-if ! awk -v rc_file="$vibrator_rc" '
+if ! awk -v rc_file="$vibrator_rc" -v motor_type="$motor_type" '
 	function trim(value) {
 		sub(/^[[:space:]]*/, "", value)
 		sub(/[[:space:]]*$/, "", value)
@@ -236,7 +249,7 @@ if ! awk -v rc_file="$vibrator_rc" '
 		}
 		if (stripped ~ /^setprop[[:space:]]+sys\.haptic\.motor([[:space:]]+|$)/) {
 			field_count = split(stripped, fields, /[[:space:]]+/)
-			if (field_count == 3 && fields[3] == "linear" && action == "on property:sys.boot_completed=1") {
+			if (field_count == 3 && fields[3] == motor_type && action == "on property:sys.boot_completed=1") {
 				exact++
 			} else {
 				printf "! 发现冲突的 sys.haptic.motor 设置：%s：%s\n", rc_file, stripped > "/dev/stderr"
@@ -260,14 +273,14 @@ if ! awk -v rc_file="$vibrator_rc" '
 				print ""
 			}
 			print "on property:sys.boot_completed=1"
-			print "    setprop sys.haptic.motor linear"
+			print "    setprop sys.haptic.motor " motor_type
 		}
 	}
 ' "$vibrator_rc" > "$vibrator_rc_next"; then
 	exit 1
 fi
 
-if ! awk -v rc_file="$vibrator_rc" '
+if ! awk -v rc_file="$vibrator_rc" -v motor_type="$motor_type" '
 	function trim(value) {
 		sub(/^[[:space:]]*/, "", value)
 		sub(/[[:space:]]*$/, "", value)
@@ -284,7 +297,7 @@ if ! awk -v rc_file="$vibrator_rc" '
 		}
 		if (stripped ~ /^setprop[[:space:]]+sys\.haptic\.motor([[:space:]]+|$)/) {
 			field_count = split(stripped, fields, /[[:space:]]+/)
-			if (field_count == 3 && fields[3] == "linear" && action == "on property:sys.boot_completed=1") {
+			if (field_count == 3 && fields[3] == motor_type && action == "on property:sys.boot_completed=1") {
 				exact++
 			} else {
 				invalid = 1
@@ -306,5 +319,5 @@ _install_generated_file "$vibrator_rc_next" "$vibrator_rc"
 
 std_print "✅ 已合并 $haptic_prop_count 项 sys.haptic 属性：odm/etc/build.prop"
 std_print "✅ 已确保目标中不保留静态属性：sys.haptic.motor、sys.haptic.version"
-std_print "✅ 已配置开机完成后设置 sys.haptic.motor=linear：odm/etc/init/vibrator-default.rc"
+std_print "✅ 已配置开机完成后设置 sys.haptic.motor=$motor_type：odm/etc/init/vibrator-default.rc"
 std_print "处理完成"

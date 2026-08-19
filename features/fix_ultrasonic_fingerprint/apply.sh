@@ -3,9 +3,50 @@ set -euo pipefail
 
 init_port_env "${1:-}"
 
-std_print "修复一加 15 超声波指纹"
-std_print "坐标：按一加 15 实机 HAL 的传感器中心与图标尺寸适配 PanelResolution"
+std_print "配置超声波屏下指纹"
+std_print "坐标：使用目标设备流程提供的硬件参数，并按底包 PanelResolution 缩放"
 std_print
+
+fingerprint_properties_file="${ULTRASONIC_FP_PROPERTIES_FILE:-}"
+if [[ -z "$fingerprint_properties_file" ]]; then
+	err_print "缺少超声波指纹目标设备参数配置：ULTRASONIC_FP_PROPERTIES_FILE"
+	exit 1
+elif [[ -L "$fingerprint_properties_file" ]]; then
+	err_print "超声波指纹参数配置不能是符号链接：$fingerprint_properties_file"
+	exit 1
+elif [[ ! -e "$fingerprint_properties_file" ]]; then
+	err_print "超声波指纹参数配置不存在：$fingerprint_properties_file"
+	exit 1
+elif [[ ! -f "$fingerprint_properties_file" ]]; then
+	err_print "超声波指纹参数配置不是普通文件：$fingerprint_properties_file"
+	exit 1
+fi
+validate_prop_file "$fingerprint_properties_file"
+
+read_fingerprint_parameter() {
+	local property_name="$1"
+	local property_value
+	if ! property_value="$(read_prop_value "$property_name" "$fingerprint_properties_file")"; then
+		err_print "超声波指纹参数配置缺少属性：$property_name"
+		exit 1
+	fi
+	if [[ -z "$property_value" ]]; then
+		err_print "超声波指纹参数配置的属性值为空：$property_name"
+		exit 1
+	fi
+	printf '%s\n' "$property_value"
+}
+
+reference_width="$(read_fingerprint_parameter ultrasonic.fp.reference.width)"
+reference_height="$(read_fingerprint_parameter ultrasonic.fp.reference.height)"
+sensor_center_x="$(read_fingerprint_parameter ultrasonic.fp.sensor.center.x)"
+sensor_center_y="$(read_fingerprint_parameter ultrasonic.fp.sensor.center.y)"
+icon_width="$(read_fingerprint_parameter ultrasonic.fp.icon.width)"
+icon_height="$(read_fingerprint_parameter ultrasonic.fp.icon.height)"
+sensor_area_width="$(read_fingerprint_parameter ultrasonic.fp.sensor.area.width)"
+sensor_area_height="$(read_fingerprint_parameter ultrasonic.fp.sensor.area.height)"
+fingerprint_vendor="$(read_fingerprint_parameter ultrasonic.fp.vendor)"
+fingerdown_delay_ms="$(read_fingerprint_parameter ultrasonic.fp.fingerdown.delay.ms)"
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
@@ -41,13 +82,26 @@ if ! command -v python3 >/dev/null 2>&1; then
 	exit 1
 fi
 
-fingerprint_prop_patch="$(mktemp)"
+fingerprint_prop_patch="$(mktemp "$(get_config_path '.fix_ultrasonic_fingerprint.XXXXXX')")"
 cleanup() {
 	rm -f -- "$fingerprint_prop_patch"
 }
 trap cleanup EXIT
 
-coordinate_summary="$(python3 - "$display_resolution_config" "$fingerprint_prop_patch" <<'PY'
+coordinate_summary="$(python3 - \
+	"$display_resolution_config" \
+	"$fingerprint_prop_patch" \
+	"$reference_width" \
+	"$reference_height" \
+	"$sensor_center_x" \
+	"$sensor_center_y" \
+	"$icon_width" \
+	"$icon_height" \
+	"$sensor_area_width" \
+	"$sensor_area_height" \
+	"$fingerprint_vendor" \
+	"$fingerdown_delay_ms" <<'PY'
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -56,19 +110,74 @@ from pathlib import Path
 display_config_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
 
-reference_width = 1272
-reference_height = 2772
-# 一加 15 实机 HAL：sensorlocation=636::2048，iconsize=195。
-reference_sensor_center = (636, 2048)
-reference_icon_size = (195, 195)
-# 识别区保持一加 13 示例中 208x228 相对 184x184 图标的扩大比例。
-reference_target_size = (220, 242)
-
-
 def positive_int(value, description):
     if value is None or not value.isdigit() or int(value) <= 0:
         raise ValueError(f"{description} 不是正整数：{value!r}")
     return int(value)
+
+
+def non_negative_int(value, description):
+    if not value.isdigit():
+        raise ValueError(f"{description} 不是非负整数：{value!r}")
+    return int(value)
+
+
+try:
+    reference_width = positive_int(sys.argv[3], "参考分辨率宽度")
+    reference_height = positive_int(sys.argv[4], "参考分辨率高度")
+    reference_sensor_center = (
+        non_negative_int(sys.argv[5], "参考传感器中心 X"),
+        non_negative_int(sys.argv[6], "参考传感器中心 Y"),
+    )
+    reference_icon_size = (
+        positive_int(sys.argv[7], "参考图标宽度"),
+        positive_int(sys.argv[8], "参考图标高度"),
+    )
+    reference_target_size = (
+        positive_int(sys.argv[9], "参考识别区宽度"),
+        positive_int(sys.argv[10], "参考识别区高度"),
+    )
+    fingerdown_delay_ms = non_negative_int(sys.argv[12], "按下延迟")
+except ValueError as error:
+    raise SystemExit(f"超声波指纹参数无效：{error}")
+
+fingerprint_vendor = sys.argv[11]
+if not re.fullmatch(r"[A-Za-z0-9_.-]+", fingerprint_vendor):
+    raise SystemExit(
+        f"超声波指纹参数无效：厂商协议值包含非法字符：{fingerprint_vendor!r}"
+    )
+if (
+    reference_target_size[0] < reference_icon_size[0]
+    or reference_target_size[1] < reference_icon_size[1]
+):
+    raise SystemExit("超声波指纹参数无效：参考识别区不能小于参考图标")
+
+
+def validate_reference_region(center, size, limit, description):
+    start = center - size // 2
+    end = start + size
+    if start < 0 or end > limit:
+        raise SystemExit(f"超声波指纹参数无效：{description}超出参考分辨率")
+
+
+validate_reference_region(
+    reference_sensor_center[0], reference_icon_size[0], reference_width, "图标横向区域"
+)
+validate_reference_region(
+    reference_sensor_center[1], reference_icon_size[1], reference_height, "图标纵向区域"
+)
+validate_reference_region(
+    reference_sensor_center[0],
+    reference_target_size[0],
+    reference_width,
+    "识别区横向区域",
+)
+validate_reference_region(
+    reference_sensor_center[1],
+    reference_target_size[1],
+    reference_height,
+    "识别区纵向区域",
+)
 
 
 def scale_half_up(value, source_size, target_size):
@@ -139,12 +248,12 @@ if not (0 <= target_top < target_bottom <= panel_height):
 properties = (
     "ro.hardware.fp.fod.c=true",
     "ro.hardware.fp.fod=true",
-    "persist.vendor.sys.fp.vendor=oplus",
+    f"persist.vendor.sys.fp.vendor={fingerprint_vendor}",
     f"persist.vendor.sys.fp.fod.location.X_Y={location_x},{location_y}",
     f"persist.vendor.sys.fp.fod.size.width_height={size_width},{size_height}",
     "persist.vendor.sys.fp.fod.us.target="
     f"{target_left},{target_top},{target_right},{target_bottom}",
-    "persist.vendor.sys.fp.fod.delay.fingerdown.ms=20",
+    f"persist.vendor.sys.fp.fod.delay.fingerdown.ms={fingerdown_delay_ms}",
 )
 
 try:

@@ -5,7 +5,7 @@ patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
 std_print "替换 ST NFC 系统应用并补充 Xiaomi NFC 功能属性"
-std_print "来源：补丁内置 NXP/Xiaomi NFC APK、小米原包 mi_odm；目标：原包 system、底包 odm"
+std_print "来源：补丁内置 NXP/Xiaomi NFC APK、目标设备流程显式配置；目标：原包 system、底包 odm"
 std_print
 
 for part_name in odm system system_ext; do
@@ -13,10 +13,10 @@ for part_name in odm system system_ext; do
 done
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
+source_file="${NFC_PROPERTIES_FILE:-}"
 # shellcheck disable=SC2154
-source_file="$project_dir/mi_odm/etc/build.prop"
 target_file="$project_dir/odm/etc/build.prop"
-prop_list="$patcher_dir/config/mi_odm_props.list"
+prop_list="$patcher_dir/config/target_props.list"
 nfc_apk_source="$patcher_dir/prebuilt/XMNfcNci.apk"
 nfc_apk_checksums="$patcher_dir/config/XMNfcNci.apk.sha256"
 nfc_apk_target="$project_dir/system/system/app/Nfc_st/Nfc_st.apk"
@@ -93,15 +93,21 @@ trap cleanup EXIT
 
 prop_count=0
 prop_update_ready=1
-if [[ -L "$source_file" ]]; then
-	err_print "不支持从符号链接读取属性：$source_file"
+if [[ -z "$source_file" ]]; then
+	warn_print "未提供目标设备 NFC 属性配置（NFC_PROPERTIES_FILE），跳过属性写入"
+	prop_update_ready=0
+elif [[ -L "$source_file" ]]; then
+	err_print "目标设备 NFC 属性配置不能是符号链接：$source_file"
 	exit 1
 elif [[ ! -e "$source_file" ]]; then
-	warn_print "NFC 属性来源不存在，跳过属性写入：${source_file#"$project_dir"/}"
+	warn_print "目标设备 NFC 属性配置不存在，跳过属性写入：$source_file"
 	prop_update_ready=0
 elif [[ ! -f "$source_file" ]]; then
-	err_print "NFC 属性来源不是普通文件：$source_file"
+	err_print "目标设备 NFC 属性配置不是普通文件：$source_file"
 	exit 1
+fi
+if (( prop_update_ready == 1 )); then
+	validate_prop_file "$source_file"
 fi
 if [[ -L "$target_file" ]]; then
 	err_print "不支持直接修改符号链接：$target_file"
@@ -143,12 +149,12 @@ if (( prop_update_ready == 1 )); then
 		fi
 		seen_keys["$prop_key"]=1
 		if ! grep -Eq "^[[:space:]]*${prop_key//./\\.}[[:space:]]*=" "$source_file"; then
-			warn_print "NFC 来源属性不存在，跳过：$prop_key"
+			warn_print "目标设备 NFC 配置缺少属性，跳过：$prop_key"
 			continue
 		fi
 		prop_value="$(read_prop_value "$prop_key" "$source_file")"
 		if [[ -z "$prop_value" ]]; then
-			warn_print "NFC 来源属性值为空，跳过：$prop_key"
+			warn_print "目标设备 NFC 属性值为空，跳过：$prop_key"
 			continue
 		fi
 		printf '%s=%s\n' "$prop_key" "$prop_value" >> "$prop_patch"
@@ -159,7 +165,7 @@ if (( prop_update_ready == 1 )); then
 		warn_print "NFC 属性清单没有有效条目，跳过属性写入：${prop_list#"$port_dir"/}"
 		prop_update_ready=0
 	elif (( prop_count == 0 )); then
-		warn_print "mi_odm 中没有可写入的 NFC 属性，跳过属性写入"
+		warn_print "目标设备配置中没有可写入的 NFC 属性，跳过属性写入"
 		prop_update_ready=0
 	else
 		validate_prop_file "$prop_patch"
@@ -168,7 +174,7 @@ fi
 
 if (( prop_update_ready == 1 )); then
 	merge_prop_file "$prop_patch" "$target_file"
-	std_print "✅ 已从 mi_odm 动态提取并写入 $prop_count 项 NFC 属性：${target_file#"$project_dir"/}"
+	std_print "✅ 已从目标设备配置写入 $prop_count 项 NFC 属性：${target_file#"$project_dir"/}"
 fi
 
 if (( apk_update_ready == 0 )); then

@@ -1,0 +1,7 @@
+# 一加 15 组合流程为目标 NXP NFC 栈选择的 Xiaomi 上层兼容开关。
+# common/fix_nfc 不从小米原包复制这些目标硬件属性。
+ro.vendor.nfc.repair=1
+ro.vendor.nfc.wallet_fusion=1
+ro.vendor.nfc.secure_display_optim=1
+ro.vendor.nfc.mitouch=1
+ro.vendor.nfc.phonecase=1

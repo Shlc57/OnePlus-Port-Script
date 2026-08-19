@@ -72,6 +72,7 @@ bash "$port" common/merge_mi_ext \
 	common/fix_camera_mr \
 	common/fix_face_unlock \
 	common/fix_displayfeature_bridge \
+	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
 	common/fix_boot_refresh_rate \

@@ -11,6 +11,7 @@ std_print
 source_manifest="$patcher_dir/config/mi_vendor_sources.tsv"
 file_context_overrides="$patcher_dir/config/file_context_overrides.tsv"
 service_context_overrides="$patcher_dir/config/service_context_overrides.tsv"
+selinux_policy_fragment="$patcher_dir/config/selinux_policy.cil.in"
 clean_rc="$patcher_dir/config/vendor.xiaomi.hardware.displayfeature_aidl-service.rc"
 bridge_so="$patcher_dir/prebuilt/odm/lib64/hw/displayfeature.default.so"
 bridge_input_stamp="$bridge_so.inputs.sha256"
@@ -33,6 +34,8 @@ precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_context
 vendor_service_contexts="$project_dir/vendor/etc/selinux/vendor_service_contexts"
 precompiled_service_contexts="$project_dir/odm/etc/selinux/precompiled_service_contexts"
 vendor_policy="$project_dir/vendor/etc/selinux/vendor_sepolicy.cil"
+vendor_policy_debug="$project_dir/vendor/etc/selinux/vendor_sepolicy_debug.cil"
+plat_sepolicy_version="$project_dir/vendor/etc/selinux/plat_sepolicy_vers.txt"
 vndservice_contexts="$project_dir/vendor/etc/selinux/vndservice_contexts"
 
 calculate_bridge_input_hash() {
@@ -188,17 +191,62 @@ install_text_preserving_mode() {
 	_install_generated_file "$temporary_file" "$target_file"
 }
 
-merge_surfaceflinger_policy_rules() {
+validate_displayfeature_policy() {
 	local policy_file="${1:-}"
-	local surfaceflinger_type
-	local surfaceflinger_service_type
-	local temporary_file
+	local api_version="${2:-}"
+	local system_server_type="system_server_${api_version}"
+	local servicemanager_type="servicemanager_${api_version}"
+	local client_attribute_line
 	local policy_rule
 	local -a surfaceflinger_types=()
 	local -a surfaceflinger_service_types=()
-	local -a policy_rules=()
+	local -a client_attribute_lines=()
+	local -a required_policy_rules=()
 
 	check_file_exists "$policy_file" || return 1
+	if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
+		err_print "DisplayFeature 策略 API 版本无效：$api_version"
+		return 1
+	fi
+	if ! grep -Eq '^\(typetransition init(_[A-Za-z0-9]+)? vendor_hal_display_color_default_exec process vendor_hal_display_color_default\)$' \
+		"$policy_file"; then
+		err_print "目标策略缺少 QTI Display Color 执行域转换：$policy_file"
+		return 1
+	fi
+	required_policy_rules=(
+		'(allow vendor_hal_display_color vendor_qdisplay_service (service_manager (find)))'
+		'(allow vendor_hal_display_color_client vendor_hal_display_color_server (binder (call transfer)))'
+		'(allow vendor_hal_display_color_client vendor_hal_display_color_aidl_service (service_manager (find)))'
+		'(allow vendor_hal_display_color_server vendor_hal_display_color_aidl_service (service_manager (add find)))'
+	)
+	for policy_rule in "${required_policy_rules[@]}"; do
+		if ! grep -Fqx "$policy_rule" "$policy_file"; then
+			err_print "目标策略缺少 DisplayFeature 桥所需权限：$policy_rule"
+			return 1
+		fi
+	done
+	mapfile -t client_attribute_lines < <(
+		grep -E '^\(typeattributeset vendor_hal_display_color_client \(.*\)\)$' "$policy_file"
+	)
+	if (( ${#client_attribute_lines[@]} != 1 )); then
+		err_print "无法唯一确定目标 vendor 策略中的 Display Color 客户端属性集"
+		return 1
+	fi
+	client_attribute_line="${client_attribute_lines[0]}"
+	if [[ "$client_attribute_line" != *'))' ]]; then
+		err_print "Display Color 客户端属性集格式无效"
+		return 1
+	fi
+	if ! grep -Eq "(^|[[:space:]\(])${system_server_type}([[:space:]\)]|$)" \
+		"$policy_file"; then
+		err_print "目标 vendor 策略缺少版本化 system_server 类型：$system_server_type"
+		return 1
+	fi
+	if ! grep -Eq "(^|[[:space:]\(])${servicemanager_type}([[:space:]\)]|$)" \
+		"$policy_file"; then
+		err_print "目标 vendor 策略缺少版本化 servicemanager 类型：$servicemanager_type"
+		return 1
+	fi
 	mapfile -t surfaceflinger_types < <(
 		grep -oE 'surfaceflinger_[0-9]+' "$policy_file" | sort -u
 	)
@@ -213,25 +261,41 @@ merge_surfaceflinger_policy_rules() {
 		err_print "无法唯一确定目标 vendor 策略中的 SurfaceFlinger 服务类型"
 		return 1
 	fi
-
-	surfaceflinger_type="${surfaceflinger_types[0]}"
-	surfaceflinger_service_type="${surfaceflinger_service_types[0]}"
-	policy_rules=(
-		"(allow vendor_hal_display_color_default $surfaceflinger_type (binder (call)))"
-		"(allow vendor_hal_display_color_default $surfaceflinger_service_type (service_manager (find)))"
-	)
-
-	temporary_file="$(mktemp "${policy_file}.tmp.XXXXXX")" || return 1
-	if ! cp -- "$policy_file" "$temporary_file"; then
-		rm -f -- "$temporary_file"
+	if [[ "${surfaceflinger_types[0]}" != "surfaceflinger_${api_version}" || \
+		"${surfaceflinger_service_types[0]}" != "surfaceflinger_service_${api_version}" ]]; then
+		err_print "DisplayFeature 策略版本化 SurfaceFlinger 类型与 API 不一致"
 		return 1
 	fi
-	for policy_rule in "${policy_rules[@]}"; do
-		if ! grep -Fqx "$policy_rule" "$temporary_file"; then
-			printf '%s\n' "$policy_rule" >> "$temporary_file"
+	# The actual additions live in config/selinux_policy.cil.in and are merged
+	# later by common/fix_vendor_avc.  This patch only proves that the bottom
+	# policy can carry those symbols; it never appends CIL itself.
+}
+
+validate_displayfeature_fragment() {
+	local fragment_file="${1:-}"
+	local expected_rule
+	local unsupported_placeholders
+
+	check_file_exists "$fragment_file" || return 1
+	# These strings intentionally preserve the template variable literally.
+	# shellcheck disable=SC2016
+	for expected_rule in \
+		'(allow servicemanager_${API_VERSION} vendor_hal_display_color_server (binder (call)))' \
+		'(allow vendor_hal_display_color_default surfaceflinger_${API_VERSION} (binder (call)))' \
+		'(allow vendor_hal_display_color_default surfaceflinger_service_${API_VERSION} (service_manager (find)))' \
+		'(typeattributeset vendor_hal_display_color_client (system_server_${API_VERSION}))'; do
+		if ! grep -Fqx "$expected_rule" "$fragment_file"; then
+			err_print "DisplayFeature SELinux 片段缺少受控规则：$expected_rule"
+			return 1
 		fi
 	done
-	_install_generated_file "$temporary_file" "$policy_file"
+	# shellcheck disable=SC2016
+	unsupported_placeholders="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$fragment_file" | \
+		grep -vFx '${API_VERSION}' || true)"
+	if [[ -n "$unsupported_placeholders" ]]; then
+		err_print "DisplayFeature SELinux 片段包含未支持的变量：$fragment_file"
+		return 1
+	fi
 }
 
 validate_qdcm_render_intents() {
@@ -286,6 +350,7 @@ for required_file in \
 	"$source_manifest" \
 	"$file_context_overrides" \
 	"$service_context_overrides" \
+	"$selinux_policy_fragment" \
 	"$clean_rc" \
 	"$bridge_so" \
 	"$source_contexts" \
@@ -299,12 +364,35 @@ for required_file in \
 	"$vendor_service_contexts" \
 	"$precompiled_service_contexts" \
 	"$vendor_policy" \
+	"$plat_sepolicy_version" \
 	"$vndservice_contexts" \
 	"$project_dir/vendor/lib64/libqservice.so" \
 	"$project_dir/vendor/lib64/libsdmclient.so" \
 	"$project_dir/vendor/lib64/libsdm-disp-vndapis.so"; do
 	check_file_exists "$required_file"
 done
+
+for regular_policy_file in "$vendor_policy" "$plat_sepolicy_version"; do
+	if [[ -L "$regular_policy_file" ]]; then
+		err_print "DisplayFeature 策略输入不能是符号链接：$regular_policy_file"
+		exit 1
+	fi
+done
+
+api_version="$(tr -d '[:space:]' < "$plat_sepolicy_version")"
+if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
+	err_print "plat_sepolicy_vers.txt 不是单一数字 API 版本：$api_version"
+	exit 1
+fi
+
+policy_targets=("$vendor_policy")
+if [[ -e "$vendor_policy_debug" || -L "$vendor_policy_debug" ]]; then
+	if [[ ! -f "$vendor_policy_debug" || -L "$vendor_policy_debug" ]]; then
+		err_print "vendor_sepolicy_debug.cil 不是普通文件：$vendor_policy_debug"
+		exit 1
+	fi
+	policy_targets+=("$vendor_policy_debug")
+fi
 
 validate_bridge_prebuilt
 validate_source_file_manifest \
@@ -336,22 +424,15 @@ if ! grep -Fqx \
 	exit 1
 fi
 
-if ! grep -Eq '^\(typetransition init(_[A-Za-z0-9]+)? vendor_hal_display_color_default_exec process vendor_hal_display_color_default\)$' "$vendor_policy"; then
-	err_print "目标策略缺少 QTI Display Color 执行域转换"
-	exit 1
-fi
-for policy_rule in \
-	'(allow vendor_hal_display_color vendor_qdisplay_service (service_manager (find)))' \
-	'(allow vendor_hal_display_color_server vendor_hal_display_color_aidl_service (service_manager (add find)))'; do
-	if ! grep -Fqx "$policy_rule" "$vendor_policy"; then
-		err_print "目标策略缺少 DisplayFeature 桥所需权限：$policy_rule"
-		exit 1
-	fi
-done
 if ! grep -Eq '^display\.qservice[[:space:]]+u:object_r:vendor_qdisplay_service:s0$' "$vndservice_contexts"; then
 	err_print "底包缺少 display.qservice 的 vndservice context"
 	exit 1
 fi
+
+validate_displayfeature_fragment "$selinux_policy_fragment"
+for policy_target in "${policy_targets[@]}"; do
+	validate_displayfeature_policy "$policy_target" "$api_version"
+done
 
 apply_source_file_manifest \
 	"$project_dir/mi_vendor" \
@@ -385,9 +466,9 @@ merge_file_context_overrides "$file_context_overrides" "$vendor_file_contexts" /
 merge_file_context_overrides "$file_context_overrides" "$precompiled_file_contexts"
 merge_service_context_overrides "$service_context_overrides" "$vendor_service_contexts"
 merge_service_context_overrides "$service_context_overrides" "$precompiled_service_contexts"
-merge_surfaceflinger_policy_rules "$vendor_policy"
 
 std_print "✅ Xiaomi AIDL DisplayFeature 已映射到 QTI Display Color 兼容域"
 std_print "✅ 轻量 displayfeature.default.so 已写入真实 odm 分区"
-std_print "✅ DisplayFeature 桥已获准访问 system SurfaceFlinger 色彩矩阵接口"
+std_print "✅ DisplayFeature SELinux 规则已登记到本补丁片段"
+std_print "ℹ️ 由 common/fix_vendor_avc 统一合并普通与 debug vendor CIL"
 std_print "处理完成"

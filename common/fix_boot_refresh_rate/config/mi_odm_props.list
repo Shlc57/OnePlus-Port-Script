@@ -2,6 +2,7 @@
 ro.vendor.fps.switch.default
 ro.vendor.fps.switch.thermal
 ro.vendor.dfps.enable
+ro.vendor.mi_sf.ltpo.support
 ro.vendor.display.default_fps
 ro.vendor.display.fod_monitor_default_fps
 ro.vendor.display.dynamic_refresh_rate

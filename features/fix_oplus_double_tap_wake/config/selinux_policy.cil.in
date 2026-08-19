@@ -1,0 +1,48 @@
+;; Xiaomi TouchFeature to Oplus Touch bridge policy owned by
+;; features/fix_oplus_double_tap_wake.  The bridge does not access touch
+;; devices directly: it is an AIDL server for system_server and a client of
+;; the bottom IOplusTouch HAL.
+
+(type hal_touchfeature_oplus_bridge)
+(roletype object_r hal_touchfeature_oplus_bridge)
+(type hal_touchfeature_oplus_bridge_exec)
+(roletype object_r hal_touchfeature_oplus_bridge_exec)
+(type hal_touchfeature_oplus_bridge_service)
+(roletype object_r hal_touchfeature_oplus_bridge_service)
+(type vendor_touchfeature_compat_prop)
+(roletype object_r vendor_touchfeature_compat_prop)
+
+(typeattributeset domain (hal_touchfeature_oplus_bridge))
+(typeattributeset halserverdomain (hal_touchfeature_oplus_bridge))
+(typeattributeset halclientdomain (hal_touchfeature_oplus_bridge))
+(typeattributeset file_type (hal_touchfeature_oplus_bridge_exec))
+(typeattributeset exec_type (hal_touchfeature_oplus_bridge_exec))
+(typeattributeset vendor_file_type (hal_touchfeature_oplus_bridge_exec))
+(typeattributeset service_manager_type (hal_touchfeature_oplus_bridge_service))
+(typeattributeset protected_service (hal_touchfeature_oplus_bridge_service))
+(typeattributeset hal_service_type (hal_touchfeature_oplus_bridge_service))
+(typeattributeset property_type (vendor_touchfeature_compat_prop))
+(typeattributeset vendor_property_type (vendor_touchfeature_compat_prop))
+(typeattributeset vendor_public_property_type (vendor_touchfeature_compat_prop))
+
+;; Reuse the bottom policy's existing IOplusTouch client contract instead of
+;; granting this bridge direct access to the HBP device or touch procfs.
+(typeattributeset hal_oplus_touch_aidl_client (hal_touchfeature_oplus_bridge))
+
+;; Dedicated init domain transition and Xiaomi AIDL registration.
+(allow init_${API_VERSION} hal_touchfeature_oplus_bridge_exec (file (read getattr map execute open)))
+(allow init_${API_VERSION} hal_touchfeature_oplus_bridge (process (transition)))
+(allow hal_touchfeature_oplus_bridge hal_touchfeature_oplus_bridge_exec (file (read getattr map execute open entrypoint)))
+(dontaudit init_${API_VERSION} hal_touchfeature_oplus_bridge (process (noatsecure)))
+(allow init_${API_VERSION} hal_touchfeature_oplus_bridge (process (siginh rlimitinh)))
+(typetransition init_${API_VERSION} hal_touchfeature_oplus_bridge_exec process hal_touchfeature_oplus_bridge)
+(allow hal_touchfeature_oplus_bridge servicemanager_${API_VERSION} (binder (call transfer)))
+(allow servicemanager_${API_VERSION} hal_touchfeature_oplus_bridge (binder (transfer)))
+(allow hal_touchfeature_oplus_bridge servicemanager_${API_VERSION} (fd (use)))
+(allow hal_touchfeature_oplus_bridge hal_touchfeature_oplus_bridge_service (service_manager (add find)))
+
+;; HyperOS framework client and touch capability property.
+(allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge_service (service_manager (find)))
+(allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))
+(allow system_server_${API_VERSION} vendor_touchfeature_compat_prop (file (read getattr map open)))
+(allow vendor_init_${API_VERSION} vendor_touchfeature_compat_prop (property_service (set)))

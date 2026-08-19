@@ -1,0 +1,5 @@
+# 类型	目标	相对 fix_nfc 目录的片段或项目内必需文件
+require	project	odm/bin/hw/android.hardware.nfc-service.nxp
+require	project	odm/etc/init/nfc-service-nxp.rc
+require	project	odm/etc/vintf/manifest/nfc-service.xml
+policy	vendor_policy	config/selinux_policy.cil.in

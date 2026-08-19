@@ -1,0 +1,4 @@
+# 仅属于最终 ODM 工作树的打包标签；不要把 /data 运行时路径写入分区 metadata。
+/odm/bin/mtd u:object_r:hal_mtdservice_default_exec:s0
+/odm/bin/mtd_check u:object_r:hal_mtdservice_check_exec:s0
+/odm/bin/mtd_keysoter u:object_r:hal_mtkeysoter_default_exec:s0

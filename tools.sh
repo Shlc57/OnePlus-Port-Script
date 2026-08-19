@@ -1062,6 +1062,188 @@ _is_safe_relative_path() {
 	esac
 }
 
+load_selinux_bundle_manifest() {
+	local manifest_file="${1:-}"
+	local requested_bundle_dir="${2:-}"
+	local bundle_dir
+	local manifest_real_path
+	local record_type
+	local target_name
+	local relative_path
+	local extra_field
+	local fragment_path
+	local fragment_real_path
+	local record_key
+	local record_count=0
+	declare -A seen_records=()
+
+	SELINUX_BUNDLE_REQUIREMENTS=()
+	SELINUX_BUNDLE_POLICY_FRAGMENTS=()
+	SELINUX_BUNDLE_CONTEXT_TARGETS=()
+	SELINUX_BUNDLE_CONTEXT_FRAGMENTS=()
+	if [[ ! -d "$requested_bundle_dir" || -L "$requested_bundle_dir" ]]; then
+		err_print "SELinux bundle 目录不存在或不是普通目录：$requested_bundle_dir"
+		return 1
+	fi
+	bundle_dir="$(cd -- "$requested_bundle_dir" && pwd -P)" || return 1
+	check_file_exists "$manifest_file" || return 1
+	if [[ -L "$manifest_file" ]]; then
+		err_print "SELinux bundle 清单不能是符号链接：$manifest_file"
+		return 1
+	fi
+	manifest_real_path="$(realpath -e -- "$manifest_file")" || return 1
+	case "$manifest_real_path" in
+		"$bundle_dir"/*) ;;
+		*)
+			err_print "SELinux bundle 清单不属于声明目录：$manifest_file"
+			return 1
+			;;
+	esac
+
+	while IFS=$'\t' read -r record_type target_name relative_path extra_field || \
+		[[ -n "$record_type" || -n "$target_name" || -n "$relative_path" ]]; do
+		record_type="${record_type%$'\r'}"
+		target_name="${target_name%$'\r'}"
+		relative_path="${relative_path%$'\r'}"
+		extra_field="${extra_field%$'\r'}"
+		[[ -z "$record_type" || "$record_type" == \#* ]] && continue
+		if [[ -z "$target_name" || -z "$relative_path" || -n "$extra_field" ]]; then
+			err_print "SELinux bundle 清单格式错误：$manifest_file"
+			return 1
+		fi
+		if ! _is_safe_relative_path "$relative_path"; then
+			err_print "SELinux bundle 相对路径不安全：$relative_path"
+			return 1
+		fi
+		record_key="$record_type:$target_name:$relative_path"
+		if [[ -n "${seen_records[$record_key]+present}" ]]; then
+			err_print "SELinux bundle 清单条目重复：$record_key"
+			return 1
+		fi
+		seen_records["$record_key"]=1
+		case "$record_type" in
+			require)
+				if [[ "$target_name" != project ]]; then
+					err_print "SELinux bundle require 目标无效：$target_name"
+					return 1
+				fi
+				SELINUX_BUNDLE_REQUIREMENTS+=("$relative_path")
+				;;
+			policy)
+				if [[ "$target_name" != vendor_policy ]]; then
+					err_print "SELinux bundle policy 目标无效：$target_name"
+					return 1
+				fi
+				fragment_path="$bundle_dir/$relative_path"
+				check_file_exists "$fragment_path" || return 1
+				if [[ -L "$fragment_path" ]]; then
+					err_print "SELinux bundle 片段不能是符号链接：$fragment_path"
+					return 1
+				fi
+				fragment_real_path="$(realpath -e -- "$fragment_path")" || return 1
+				case "$fragment_real_path" in
+					"$bundle_dir"/*) ;;
+					*)
+						err_print "SELinux bundle 片段越出声明目录：$fragment_path"
+						return 1
+						;;
+				esac
+				SELINUX_BUNDLE_POLICY_FRAGMENTS+=("$fragment_real_path")
+				;;
+			contexts)
+				if [[ ! "$target_name" =~ ^[a-z][a-z0-9_]*$ ]]; then
+					err_print "SELinux bundle contexts 目标无效：$target_name"
+					return 1
+				fi
+				fragment_path="$bundle_dir/$relative_path"
+				check_file_exists "$fragment_path" || return 1
+				if [[ -L "$fragment_path" ]]; then
+					err_print "SELinux bundle 片段不能是符号链接：$fragment_path"
+					return 1
+				fi
+				fragment_real_path="$(realpath -e -- "$fragment_path")" || return 1
+				case "$fragment_real_path" in
+					"$bundle_dir"/*) ;;
+					*)
+						err_print "SELinux bundle 片段越出声明目录：$fragment_path"
+						return 1
+						;;
+				esac
+				SELINUX_BUNDLE_CONTEXT_TARGETS+=("$target_name")
+				SELINUX_BUNDLE_CONTEXT_FRAGMENTS+=("$fragment_real_path")
+				;;
+			*)
+				err_print "SELinux bundle 清单类型无效：$record_type"
+				return 1
+				;;
+		esac
+		record_count=$((record_count + 1))
+	done < "$manifest_file"
+
+	if (( record_count == 0 || ${#SELINUX_BUNDLE_REQUIREMENTS[@]} == 0 )); then
+		err_print "SELinux bundle 清单为空或缺少 require：$manifest_file"
+		return 1
+	fi
+	if (( ${#SELINUX_BUNDLE_POLICY_FRAGMENTS[@]} == 0 && \
+		${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} == 0 )); then
+		err_print "SELinux bundle 没有 policy 或 contexts 交付物：$manifest_file"
+		return 1
+	fi
+}
+
+check_selinux_bundle_requirements() {
+	local requested_project_dir="${1:-}"
+	local bundle_project_dir
+	local requirement_path
+	local target_path
+	local target_parent
+	local target_parent_real
+	local present_count=0
+
+	SELINUX_BUNDLE_ACTIVE=false
+	if [[ ! -d "$requested_project_dir" ]]; then
+		err_print "SELinux bundle 项目目录不存在：$requested_project_dir"
+		return 1
+	fi
+	bundle_project_dir="$(cd -- "$requested_project_dir" && pwd -P)" || return 1
+	if (( ${#SELINUX_BUNDLE_REQUIREMENTS[@]} == 0 )); then
+		err_print "尚未加载 SELinux bundle require 清单"
+		return 1
+	fi
+	for requirement_path in "${SELINUX_BUNDLE_REQUIREMENTS[@]}"; do
+		if ! _is_safe_relative_path "$requirement_path"; then
+			err_print "SELinux bundle 必需路径不安全：$requirement_path"
+			return 1
+		fi
+		target_path="$bundle_project_dir/$requirement_path"
+		target_parent="$(dirname -- "$target_path")"
+		target_parent_real="$(realpath -m -- "$target_parent")" || return 1
+		case "$target_parent_real" in
+			"$bundle_project_dir"|"$bundle_project_dir"/*) ;;
+			*)
+				err_print "SELinux bundle 必需路径通过符号链接越出项目：$target_path"
+				return 1
+				;;
+		esac
+		if [[ -e "$target_path" || -L "$target_path" ]]; then
+			present_count=$((present_count + 1))
+			if [[ ! -f "$target_path" || -L "$target_path" ]]; then
+				err_print "SELinux bundle 必需文件类型无效：$target_path"
+				return 1
+			fi
+		fi
+	done
+	if (( present_count == 0 )); then
+		return 0
+	fi
+	if (( present_count != ${#SELINUX_BUNDLE_REQUIREMENTS[@]} )); then
+		err_print "SELinux bundle 必需文件不完整：${present_count}/${#SELINUX_BUNDLE_REQUIREMENTS[@]}"
+		return 1
+	fi
+	# shellcheck disable=SC2034 # 该状态由调用方在同一 sourced shell 中消费。
+	SELINUX_BUNDLE_ACTIVE=true
+}
+
 _validate_marked_partition_mapping() {
 	local source_name="${1:-}"
 	local target_name="${2:-}"

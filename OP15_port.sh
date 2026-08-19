@@ -14,6 +14,7 @@ export LINEAR_HAPTIC_PROPERTIES_FILE="$oneplus15_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # 一加 15 实机硬件快照。超声波指纹通用模块不从小米原包推断这些参数。
 export ULTRASONIC_FP_PROPERTIES_FILE="$oneplus15_config_dir/fingerprint.props"
+export OPLUS_DOUBLE_TAP_PROPERTIES_FILE="$oneplus15_config_dir/double_tap_wake.props"
 export DEVICE_PARAMS_SPOOF_JSON='{
   "language": "zhCN",
   "basic": {
@@ -81,13 +82,14 @@ bash "$port" common/merge_mi_ext \
 	features/enable_hyperos_features \
 	common/fix_camera_mr \
 	common/fix_face_unlock \
+	common/fix_nfc \
 	features/fix_displayfeature_bridge \
+	features/fix_oplus_double_tap_wake \
 	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
 	common/fix_boot_refresh_rate \
 	features/fix_ltpo \
-	common/fix_nfc \
 	common/fix_wechat_safe_mode \
 	common/fix_settings_haptic \
 	common/fix_modem_xts \

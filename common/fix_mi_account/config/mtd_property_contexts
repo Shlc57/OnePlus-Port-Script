@@ -1,0 +1,20 @@
+# Xiaomi mtdservice 原始属性契约。精确键优先于底包 persist.vendor.sys. 回退前缀。
+ro.boot.cpuid u:object_r:vendor_cpuid_prop:s0
+vendor.sys.rpmb_state u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.pay.widevine u:object_r:vendor_payment_security_prop:s0
+vendor.sys.feature_state u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.pay.soter u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.provision.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.attestation.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.attestation_key.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.ese_attestation.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.biokey.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.biokey_check.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.caikey.status u:object_r:vendor_payment_security_prop:s0
+ro.vendor.oem.serialno u:object_r:vendor_deviceid_prop:s0
+ro.vendor.oem.boot_completed u:object_r:vendor_deviceid_prop:s0
+persist.vendor.sys.rkp.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.wv_rkp.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.ese_provision.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.disable_gpio.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.strongbox_upgrade.status u:object_r:vendor_payment_security_prop:s0

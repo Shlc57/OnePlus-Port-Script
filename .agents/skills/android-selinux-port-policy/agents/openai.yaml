@@ -1,0 +1,4 @@
+interface:
+  display_name: "Android SELinux Port Policy"
+  short_description: "先热测再固化 HyperOS 移植 SELinux 策略"
+  default_prompt: "使用 $android-selinux-port-policy 分析这个 Android SELinux 拒绝，先在已授权 DSU Enforcing 环境热测最小候选规则，再固化策略、contexts、metadata 和验证边界。"

@@ -1,0 +1,2 @@
+# Oplus HBP reports the double-tap gesture with this scan code.
+key @SCAN_CODE@ F4 WAKE

@@ -124,6 +124,28 @@ def test_context_merge_matches_escaped_path_spellings() -> None:
     assert r"/vendor/bin/new\:foo u:object_r:new_exec:s0" in merged_new
 
 
+def test_context_normalization_places_managed_block_last() -> None:
+    target = (
+        "service.base u:object_r:base_service:s0\n"
+        f"{merger.CONTEXT_BEGIN_MARKER}\n"
+        "service.imported u:object_r:imported_service:s0\n"
+        f"{merger.CONTEXT_END_MARKER}\n"
+        "service.patch u:object_r:patch_service:s0\n"
+    )
+    normalized = merger.normalize_managed_contexts(
+        target,
+        "vendor_service_contexts",
+    )
+    assert normalized.index("service.patch") < normalized.index(
+        merger.CONTEXT_BEGIN_MARKER
+    )
+    assert normalized.endswith(f"{merger.CONTEXT_END_MARKER}\n")
+    assert (
+        merger.normalize_managed_contexts(normalized, "vendor_service_contexts")
+        == normalized
+    )
+
+
 def test_seapp_fallback_checks_domain_and_selector_conflicts() -> None:
     target = (
         "user=_app seinfo=platform name=com.example.same "
@@ -185,6 +207,48 @@ def test_incompatible_cil_uses_existing_type_context_fallback() -> None:
         merged_contexts = (output / "vendor_file_contexts").read_text(encoding="utf-8")
         assert "/vendor/known" in merged_contexts
         assert "/vendor/unknown" not in merged_contexts
+
+
+def test_incompatible_fallback_ignores_patch_owned_types() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        target = root / "target"
+        source = root / "source"
+        output = root / "output"
+        target.mkdir()
+        source.mkdir()
+        (target / "vendor_sepolicy.cil").write_text(
+            "(type native_file)\n"
+            "(typeattributeset base_typeattr_1_202504 (domain))\n"
+            f"{merger.POLICY_BEGIN_MARKER}\n"
+            "(type patch_owned_file)\n"
+            f"{merger.POLICY_END_MARKER}\n",
+            encoding="utf-8",
+        )
+        (source / "vendor_sepolicy.cil").write_text(
+            "(type source_domain)\n"
+            "(typeattributeset base_typeattr_1_202504 (appdomain))\n",
+            encoding="utf-8",
+        )
+        (target / "vendor_file_contexts").write_text(
+            "/vendor/native u:object_r:native_file:s0\n", encoding="utf-8"
+        )
+        (source / "vendor_file_contexts").write_text(
+            "/vendor/from-source u:object_r:patch_owned_file:s0\n",
+            encoding="utf-8",
+        )
+        for directory in (target, source):
+            (directory / "plat_sepolicy_vers.txt").write_text(
+                "202504\n", encoding="utf-8"
+            )
+            (directory / "genfs_labels_version.txt").write_text(
+                "1\n", encoding="utf-8"
+            )
+        merger.merge_directories(target, source, output)
+        merged_contexts = (output / "vendor_file_contexts").read_text(
+            encoding="utf-8"
+        )
+        assert "/vendor/from-source" not in merged_contexts
 
 
 def test_directory_merge_writes_expected_files() -> None:
@@ -311,8 +375,10 @@ if __name__ == "__main__":
     test_context_merge_keeps_target_service_label()
     test_context_merge_collapses_old_and_new_markers()
     test_context_merge_matches_escaped_path_spellings()
+    test_context_normalization_places_managed_block_last()
     test_seapp_fallback_checks_domain_and_selector_conflicts()
     test_incompatible_cil_uses_existing_type_context_fallback()
+    test_incompatible_fallback_ignores_patch_owned_types()
     test_directory_merge_writes_expected_files()
     test_policy_fragments_share_one_managed_block_and_expand_api()
     test_policy_fragment_rejects_unresolved_variable()

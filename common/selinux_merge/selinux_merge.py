@@ -759,6 +759,13 @@ def merge_contexts(
     return merged, added, conflicts, unavailable_types
 
 
+def normalize_managed_contexts(target: str, filename: str) -> str:
+    """Place imported managed entries after every unmanaged context entry."""
+
+    normalized, _, _, _ = merge_contexts(target, "", filename)
+    return normalized
+
+
 def ensure_regular_file(path: Path, label: str) -> None:
     if not path.is_file() or path.is_symlink():
         raise MergeError(f"{label} 不存在或不是普通文件：{path}")
@@ -811,7 +818,13 @@ def merge_directories(target_dir: Path, source_dir: Path, output_dir: Path) -> N
             )
     target_policy_text = target_policy.read_text(encoding="utf-8")
     source_policy_text = source_policy.read_text(encoding="utf-8")
-    target_types = policy_types(target_policy_text)
+    # In the incompatible-ABI fallback, only types native to the bottom policy
+    # may make source contexts importable.  Types added by patch-owned managed
+    # fragments carry their own explicit contexts; counting them here would
+    # expand the imported source set only on the second run and break
+    # idempotence.
+    unmanaged_target_policy, _ = extract_managed_blocks(target_policy_text)
+    target_types = policy_types(unmanaged_target_policy)
     cil_compatible = True
     try:
         validate_base_typeattrs(
@@ -895,6 +908,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="替换旧托管块的 provider 名称（需同时存在对应 END marker）",
     )
+    contexts_parser = subparsers.add_parser(
+        "normalize-contexts",
+        help="把已导入的托管 contexts 块确定性归位到文件末尾",
+    )
+    contexts_parser.add_argument("--contexts", required=True, type=Path)
+    contexts_parser.add_argument("--output", required=True, type=Path)
+    contexts_parser.add_argument("--filename", required=True, choices=CONTEXT_FILES)
     return parser
 
 
@@ -932,6 +952,13 @@ def main() -> int:
                 f"vendor policy: 新增 {added} 条，底包优先跳过 {conflicts} 条 genfscon 冲突，"
                 f"合并 {attributes} 个 typeattributeset"
             )
+        elif args.command == "normalize-contexts":
+            ensure_regular_file(args.contexts, "SELinux contexts")
+            normalized = normalize_managed_contexts(
+                args.contexts.read_text(encoding="utf-8"),
+                args.filename,
+            )
+            write_output_file(args.output, normalized, "SELinux contexts 规范化输出")
         else:  # pragma: no cover - argparse enforces the choices
             raise MergeError(f"未知 SELinux 合并命令：{args.command}")
     except (OSError, UnicodeError, MergeError) as error:

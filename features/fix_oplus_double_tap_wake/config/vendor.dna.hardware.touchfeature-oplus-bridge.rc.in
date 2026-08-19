@@ -1,0 +1,6 @@
+service vendor.touchfeature-oplus-bridge /odm/bin/hw/vendor.dna.hardware.touchfeature-oplus-bridge @PANEL_ID@ @GESTURE_CFG_NODE@ @GESTURE_ENABLE_NODE@ @GESTURE_CFG_VALUE@
+    interface aidl vendor.xiaomi.hw.touchfeature.ITouchFeature/default
+    class hal
+    user system
+    group system input
+

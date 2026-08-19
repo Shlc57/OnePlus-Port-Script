@@ -1,0 +1,5 @@
+;; NXP NFC ANR signal contract owned by common/fix_nfc.
+;; Enforcing DSU evidence showed AnrConsumer in system_server repeatedly denied
+;; process signal to the correctly labelled hal_nfc_default process.  The live
+;; rule was validated without weakening either domain.
+(allow system_server_${API_VERSION} hal_nfc_default (process (signal)))

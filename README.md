@@ -60,8 +60,7 @@ bash port_main.sh devices/oneplus15/fix_auto_brightness \
 bash port_main.sh common/fix_camera_mr common/fix_modem_xts \
   common/fix_mtp
 
-# 统一合并 vendor 来源策略、补丁片段和已确认 AVC 规则；DisplayFeature
-# 已安装时会自动带入 features/fix_displayfeature_bridge 的 SELinux 片段
+# 统一合并 vendor 来源策略、已启用模块片段和完整 SELinux bundle
 bash port_main.sh common/fix_vendor_avc
 
 # 对其他工程目录执行指定补丁
@@ -93,119 +92,55 @@ bash OP15_port.sh
 
 明确用于替换或修补既有文件的子步骤也采用相同的缺失处理：目标文件不存在时输出 `WARN`，只跳过该替换；混合补丁中的独立属性写入、文件迁移或其他可执行步骤继续运行。已经存在但类型错误、版本或校验不受支持、内容冲突或使用不安全符号链接的目标仍会失败。本规则不影响本来就要新增的 Overlay、配置、服务文件、跨分区迁移目标、生成产物及 metadata，公共复制接口仍保留创建这些文件的能力。
 
-## 可复用补丁（`common` / `features`）
+## 模块索引
 
-`common` 与 `features` 都可以跨机型组合。NFC、触感、人脸、基带和 CameraMR 这类大部分移植机型共享的兼容逻辑放在 `common`；LTPO、超声波指纹及特定厂商协议等需要按目标硬件能力显式启用或传参的模块放在 `features`。位于 `common` 不代表无条件适用，仍应满足每个补丁列出的底包与工具前提。
+模块的输入、具体行为、限制、验证边界和执行示例已迁移到各模块目录。下表的“改动分区”只列模块直接写入的最终分区工作树及其 metadata；只读来源、条件性目标和由下游统一入口落盘的内容会在模块 README 中单独说明。
 
-| 补丁路径 | 主要输入 | 最终修改分区 | 作用与重要说明 |
-| --- | --- | --- | --- |
-| `common/fix_vendor_avc` | 【规则依据】当前一加 15 DSU 起点 `dmesg.log`、`logcat.log` 中的 AVC/服务拒绝及 Enforcing 热补丁复测；【原包】`mi_vendor/etc/selinux`；【底包】`vendor/etc/selinux`、`system/system/etc/selinux`、`system_ext/etc/selinux`、`odm/etc/selinux`；【可选片段】已安装 DisplayFeature rc 与 `features/fix_displayfeature_bridge/config/selinux_policy.cil.in` | `vendor`、`odm` metadata | 由 `common/selinux_merge` 统一合并原包 vendor 策略（版本/ABI 不兼容时只导入底包已有类型可承载的 contexts）、本补丁 17 条受控策略语句（16 条基于当前证据的 `allow`、1 条 QSPM client 属性扩展），以及已启用 DisplayFeature 的 3 条精确 allow 和 1 条 client 属性扩展；普通与 debug vendor CIL 使用同一托管块并保持幂等。规则内容不放在通用接口中。原有 AVC 规则、MI-SF/DFPS 的 8 条精确 `vendor_display_prop` context、qguard/BSG 标签和 ODM precompiled metadata 清理保持不变；固化后的完整开机策略仍需下次 DSU 启动复核。 |
-| `features/disable_mi_vulkan` | 【原包】`product` | `product` | 注释小米 8 Elite 上可能导致卡首屏的 Vulkan pipeline cache 属性；仅适用于目标 GPU/驱动无法兼容该特性的流程。 |
-| `common/disable_odm_imports` | 【底包】`odm` | `odm` | 禁用两份 ODM build.prop 对项目专属及 `my_manifest` build.prop 的外部导入。 |
-| `features/enable_hyperos_features` | 【原包】`product`；【底包】`vendor` | `product`、`vendor` | 将教程第四部分的 32 项全局模糊、高级材质、画质、游戏及声效属性统一写入 `product/etc/build.prop`，并向最终 `vendor/build.prop` 写入 `persist.vendor.XDRVersion=2.0`，共 33 项。XDR 属性用于通过小米相册的 `isXdrSupport` 私有能力门控，只适用于底层标准 HDR 已确认正常的设备；本补丁不补充缺失的硬件驱动、媒体算法或 DisplayFeature 能力。当前已由 `OP15_port.sh` 显式纳入一加 15 整套流程。 |
-| `common/fix_boot_refresh_rate` | 【目标设备配置】`BOOT_REFRESH_RATE_ODM_PROPERTIES_FILE`、`BOOT_REFRESH_RATE_VENDOR_PROPERTIES_FILE`；【底包目标】`odm`、`vendor` | `odm`、`vendor` | 按白名单把目标设备流程显式提供的显示、刷新率与触控属性写入底包真实分区；不再从小米原包 `mi_odm`/`mi_vendor` 推断面板、触控或刷新率能力。配置文件、目标文件或单项属性缺失时只警告并跳过相应子步骤。一加 15 的配置位于 `devices/oneplus15/config/refresh_*.props`，由 `OP15_port.sh` 传入。LTPO 能力声明独立位于 `features/fix_ltpo`。 |
-| `features/fix_ltpo` | 【底包目标】`odm` | `odm` | 向 `odm/etc/build.prop` 写入 `ro.vendor.mi_sf.ltpo.support=true`。只开放 MI SurfaceFlinger 上层 LTPO 策略，不补充面板、HWC 或 DynFPS 命令序列；仅应在目标设备底层确实支持 LTPO 时启用，实际状态仍以运行时面板为准。 |
-| `features/fix_ultrasonic_fingerprint` | 【目标设备配置】`ULTRASONIC_FP_PROPERTIES_FILE`（`.props`）；【底包】`odm` | `odm` | 向 `odm/build.prop` 写入超声波屏下指纹能力、厂商协议、位置、图标尺寸、识别区域与按下延迟。模块不包含机型默认值，也不从小米原包推断指纹硬件；组合入口必须提供目标设备实测参数文件 `fingerprint.props`，并由模块校验属性格式、重复键和数值范围。模块从底包 `sdm_display_resolution_extn.xml` 读取唯一 `PanelResolution` 并分别缩放 X/Y。一加 15 的参考面板 `1272x2772`、中心 `636,2048`、图标 `195x195`、识别区 `220x242`、协议 `oplus`、延迟 `20ms` 集中在 `devices/oneplus15/config/fingerprint.props`，当前面板得到图标 `539,1951` 与识别区 `526,1927,746,2169`。需要 Python 3。 |
-| `common/fix_camera_mr` | 【原包】`product` | `product` | 将 `product/etc/cust_features/device_features.xml` 中的 `input_support_camera_mr` 和 `cust_features.xml` 中的 `settings_is_support_camera_mr_function` 唯一设为 `false`，避免非 Xiaomi 设备的活动识别传感器被误作 CameraMR 输入并引发开机窗口焦点初始化崩溃。CameraMR 传感器语义不属于其他移植设备的目标硬件能力，因此本兼容补丁保留在 `common`。两份配置必须配套修改；任一目标不存在时警告并跳过。需要 Python 3。 |
-| `common/fix_face_unlock` | 【原包】`product`、`system_ext`、`mi_vendor`；【目标工作树】`product`、`system_ext`、`vendor` | `product`、`system_ext`、`vendor` | 按移植前识别的原包代号修改 `product/etc/device_features/<原包代号>.xml`：当 `support_face_unlock_region_dom` 不包含 `ALL` 时，将其中所有 `item` 设为 `ALL`；当 `support_tee_face_unlock` 不为 `true` 时将其设为 `true`。从 `mi_vendor` 迁移 `android.hardware.biometrics.face.xml` 到最终 `vendor` 后，Settings 会走标准 `FaceManager`；补丁会在有效 Surface 上正式启动录入时先进入小米原有 acquired `19` 步骤路径，使相机预览就绪后及时结束加载提示，再将 `remaining>0` 的标准录入进度映射到同一路径，并把五段圆环节奏调整到当前标准回调间隔，只在 `remaining=0` 时进入成功流程。若底层只上报最终回调，仍会跳过无结束监听器的第 0 个圆环，避免模板已保存但录入页停住。人脸特性 XML 或 Settings.apk 缺失时，这两个配套文件子步骤会警告后一起跳过，但硬件特性声明迁移仍继续。无需安装 `PearlBiometric.apk`：已在 nezha DSU 上移除用户 0 的 `com.miui.face`、确认进程与 `miui.face.FaceService` 均不存在后，实测录入、成功页退出和人脸解锁全部正常。Settings 仅替换目标 DEX 并保留其他归档条目、Signing Block 与 META-INF 证书材料，同时清理来源 oat。需要 Apktool、Java、`zipalign`、Python 3 与 `zip`/`unzip`；Settings DEX 改动后 v1/v2/v3 内容完整性签名必然失效，只适用于已确认系统扫描绕过完整性校验且底包提供标准 Face HAL 的移植环境。当前已由 `OP15_port.sh` 纳入一加 15 整套流程。 |
-| `common/fix_device_identity` | 【原包取材】`mi_odm`；【目标工作树】`odm`、`system` | `odm`、`system` | 从 `mi_odm/etc/build.prop` 动态读取设备标识与版本属性，写入 `odm/build.prop`、`odm/etc/build.prop`，并同步系统侧品牌、厂商、型号与产品名。组合入口可通过 `DEVICE_IDENTITY_PROP` 明确指定 `mi_odm/etc` 下的 SKU 附加 prop，并把其中全部有效属性合并到两份目标 ODM build.prop；附加文件不存在时只警告并忽略，基础标识写入继续执行。 |
-| `common/fix_launcher` | 【底包】`odm` | `odm` | 写入中国区、系统桌面包名及 APEX 可更新属性。 |
-| `common/fix_mtp` | 【补丁内置底包配置】`common/fix_mtp/init.usb.configfs.rc`；【原包目标】`system` | `system` | 使用补丁目录内置的底包 `init.usb.configfs.rc` 替换 `system/system/etc/init/hw/init.usb.configfs.rc`，使 MTP/PTP/ADB configfs 触发器与当前底包 USB 栈保持一致。MTP 内核函数路径仅在 `vendor.usb.use_ffs_mtp=0` 时启用，避免与 vendor rc 的 FunctionFS MTP 路径重复挂接；补丁会校验必要的 MTP 触发器，保留目标文件权限，且不改动 fsconfig/file_contexts；目标 RC 不存在时警告并跳过替换，更换底包时应同步更新内置来源文件。 |
-| `common/fix_mi_mtp_kill_self` | 【原包目标】`system` | `system` | 精确修改 `system/system/priv-app/MtpService/MtpService.apk` 的 application 进程名：将与 `DownloadProvider` 共用的 `android.process.media` 改为 `android.process.mtp`。用于规避小米 DownloadProvider 启动期 `BootHelper` 在空闲状态调用 `XCrashlytics.killSelf()` 时杀掉同 PID 的 MTP 服务。补丁只回写二进制 `AndroidManifest.xml`，原样保留其他归档条目、Signing Block 和 META-INF 证书材料，并清理 MtpService 的 oat、profile 及 fs-verity 元数据和对应 contexts/fsconfig；需要 Java、Apktool、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`。Manifest 修改后 v1/v2/v3 内容完整性签名必然失效，仅适用于已确认允许系统包回退加载且绕过完整性校验的移植环境。 |
-| `common/fix_nfc` | 【补丁资源】同平台签名的 NXP/Xiaomi `XMNfcNci.apk`；【目标设备配置】`NFC_PROPERTIES_FILE`；【原包目标】`system`；【底包目标】`odm` | `system`、`odm` | 当前系统 `Nfc_st.apk` 只支持 `/dev/st21nfc`，而目标底包可提供 `/dev/nq-nci` 与 NXP AIDL HAL。补丁在保留既有 `system/system/app/Nfc_st/Nfc_st.apk` 路径及 metadata 的前提下仅替换 APK 内容，并按白名单写入目标设备流程显式提供的 Xiaomi NFC 上层兼容开关；不再从小米原包提取 NFC 芯片相关能力。一加 15 使用 `devices/oneplus15/config/nfc.props`。配置或目标缺失只跳过属性子步骤，不影响 APK 主流程；APK 目标缺失也只跳过替换。执行 APK 子步骤前校验原 ST APK、内置 APK、NXP HAL manifest 及所需 framework；不替换底包 HAL、固件或射频配置，也不携带与目标 boot image 绑定的 oat。已在一加 15 DSU 上验证 NFC 设置、NXP HAL 初始化、实体卡识别和 Tag Intent 分发。 |
-| `features/fix_displayfeature_bridge` | 【原包取材】`mi_vendor`；【底包目标】`odm`、`vendor`；【补丁资源】轻量 DisplayFeature HAL | `odm`、`vendor` | 保留 Xiaomi AIDL DisplayFeature 服务与接口库，用轻量 legacy HAL 桥替换完整 Xiaomi 显示 HAL，并将小米自适应、鲜艳、原色模式分别映射到底包 QDCM 的 `DefaultSRGB`、`EnhanceSRGB`、`StandardSRGB` RenderIntent。基础模式请求携带的 `value=1/2/3` 会同步映射为暖色、中性、冷色 RGB/PCC，并与独立色温及护眼 PCC 合成后交给 SurfaceFlinger；纸张纹理及其他未映射特性仍明确返回不支持。桥复用底包 `libqservice.so`、`libsdmclient.so`、`libsdm-disp-vndapis.so` 和 QTI Display Color SELinux 域；补丁只验证底包已有的 Display Color 能力，并把版本化 `system_server`、servicemanager 回调 HAL 及桥访问 SurfaceFlinger 的 4 条规则登记到本补丁片段，最终由 `common/fix_vendor_avc` 统一合并普通及 debug vendor CIL。补丁还会迁移清单文件的 contexts/fsconfig，显式补齐桥库 `0644` 权限，移除 rc 中不存在的 Xiaomi sysfs 与 `/vendor/bin/displayfeature` 引用，且在底包缺少所需 QTI 显示栈、面板调色数据或策略权限时于修改前失败。桥库已在一加 15 DSU 上通过 tmpfs 热替换验证三档 RGB/PCC 与 RenderIntent 切换；上层权限链已用 KSU 临时规则在 Enforcing 下验证，固化 CIL 仍需下次启动确认。 |
-| `common/fake_device_params` | 【原包】`system`，存在 userdebug plat policy 时同时处理 `system_ext`；环境变量 `DEVICE_PARAMS_SPOOF_JSON`，可选 `DEVICE_PARAMS_SPOOF_JSON_ENUS` | `system`、可选 `system_ext` | 把 `devInfoNew` 与 `allparamInfo` 的完整伪装响应生成到 Settings 的 `device_params_pref` 缓存模板，并定义最小化的 `fake_device_params` SELinux 域。开机后 init 以 `system:system` 启动专用脚本，只允许读取 system 模板和写 `system_app_data_file`，不依赖 Magisk、KSU、`su`、adbd 或其他固定 root 域。可选 enUS 模板会在系统语言为 en-US 时自动选用，语言变更后也会重新同步缓存。支持处理器、电池、相机、屏幕、分辨率、安全芯片及 `Mishop`/扩展 JSON 字段；启用基础参数卡片时会自动插入索引 5，让 Settings 本地检测并展示真实运行内存。补丁不修改 `Build.MODEL`、`ro.product.*` 或其他 prop，也不替换 HTMLViewer.apk。需要 Python 3。 |
-| `common/fix_mi_account` | 【原包取材】`mi_odm`、`mi_vendor`；【目标工作树】`odm`、`vendor` | `odm`、`vendor` | 按清单从小米原包动态提取账号、支付及安全环境资源，并把源 contexts 与 fsconfig 转换为真实目标路径。缺少来源目录、文件、contexts 或 fsconfig 权限条目时在修改前失败，不回退到补丁内二进制载荷。DisplayFeature 显示链由独立桥补丁处理。 |
-| `common/fix_modem_xts` | 【原包】`system` | `system` | 保留小米 `qcrilmsgtunnel` 的短信接收链路，精准修改 `TeleService.apk` 目标 DEX：跳过 `XtsApp` 不兼容的 Oplus modem 版本查询、固定报告 XTS 不受支持，并短路 `MiRilHook.onHookNotifyScreenStatusSync` 发送的小米 `0x802AA/0x1B` 屏幕状态 OEM 命令，避免电话线程每次亮灭屏阻塞 5 秒及 `QcrilOemhookMsgTunnel` 长时间持有 wakelock。`TeleService.apk` 不存在时警告并跳过。需要 Java、Apktool、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`；仅替换目标 DEX，原样保留其他 APK 条目、Signing Block 与 `META-INF` 证书材料，并同步清理已删除 oat 目录的 contexts/fsconfig，但 DEX 改动后内容完整性签名必然失效。只适用于存在该 Oplus modem/Xiaomi OEM Hook 不兼容的目标，并须确认系统扫描允许该产物。 |
-| `features/fix_oplus_fingerprint_protocol` | 【原包】`system_ext` | `system_ext` | 精准修改 `MiuiSystemUI.apk` 的 `MiuiGxzwIconView.onTouch` 与 `miui-services.jar` 的 `FingerprintServiceStubImpl` 所在 DEX，为明确设置 `persist.vendor.sys.fp.vendor=oplus` 的锁屏认证补齐 Oplus HAL 缺失的小米 FOD 触摸协议。SystemUI 直接消费 `gxzw_touch` 窗口收到的原始 `ACTION_DOWN/UP/CANCEL`，使 `fod_animation_enabled=1` 时能在 HAL 认证结果到达前启动识别动画；服务端仍在首次 `ACQUIRED_GOOD(0,0)` 合成 acquired `100` 作为按下兜底，并在认证成功、失败、HAL 错误或下一会话开始时合成 acquired `101` 释放状态。认证成功若撞上 `goingToSleep`，服务端会先以 `android.policy:OPLUS_FOD` 主动唤醒，再保留原轮询确认，避免成功结果被 SystemUI 吞掉。非 Oplus 属性不受影响。两部分已在一加 15 root DSU 热加载实机验证：亮屏锁屏按压先命中 `OPLUS_FOD_RAW_TOUCH_DOWN` 并执行 `startRecognizingAnim`，设置开关恢复生效；服务端稳定上报 acquired `100/101`，息屏竞态还可命中主动唤醒。息屏状态沿用系统自身的图标/解锁表现，不额外强制显示完整识别动画。补丁只替换两个目标 DEX，保留其他 JAR/APK 条目、APK Signing Block 与 `META-INF` 证书材料，重复执行会安全跳过；两者必须成对更新，任一目标不存在时警告并整体跳过，避免只写入半套协议；同时清理两者不匹配的 profile、FS-Verity 元数据和预编译产物及其 contexts/fsconfig。需要 Java、Apktool、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`；DEX 修改后内容完整性与预编译产物必然失效，只适用于 Oplus 指纹 HAL 且已确认可从 DEX 回退加载的移植环境。当前已由 `OP15_port.sh` 纳入一加 15 整套流程。 |
-| `common/fix_pangu` | 【原包】`product`、`system` | `product`、`system` | 将 `product/pangu/system` 合并到 system，同步转换 contexts/fsconfig 并从 product 元数据移除源路径；成功后删除源目录。 |
-| `common/fix_settings_haptic` | 【原包】`system_ext` | `system_ext` | 通过共享的 `common/settings_apk_patcher.sh` 修改 Settings，使设置界面触感能力判定返回支持。`Settings.apk` 不存在时警告并跳过。需要 Apktool、Java、`zipalign`、Python 3 与 `zip`/`unzip`；补丁只将目标 DEX 写回原 APK，原样保留其他归档条目、Signing Block 与 META-INF 证书材料，并同步清理已删除 oat 目录的 contexts/fsconfig；DEX 改动后 v1/v2/v3 内容完整性签名必然失效，只适用于目标设备确有可用触感 HAL 且系统扫描绕过完整性校验的 ROM。 |
-| `common/fix_linear_haptic` | 【目标设备配置】`LINEAR_HAPTIC_PROPERTIES_FILE`、`LINEAR_HAPTIC_MOTOR_TYPE`；【底包目标】`odm` | `odm` | 按目标设备流程显式提供的 `sys.haptic.*` 映射写入最终 ODM，并在底包 `vibrator-default.rc` 中于 `sys.boot_completed=1` 后设置配置的马达类型；不再从小米原包提取马达能力或效果编号。一加 15 使用 `devices/oneplus15/config/linear_haptic.props` 与 `LINEAR_HAPTIC_MOTOR_TYPE=linear`。未提供配置时只警告并跳过；底包 HAL、效果资源和实际震感仍需按目标设备验证。 |
-| `common/fix_wechat_safe_mode` | 【底包】`odm` | `odm` | 移除假的 Camera Extensions 实现，并同步删除对应 contexts/fsconfig 条目，修复微信安全模式问题。 |
-| `common/merge_mi_ext` | 【原包】`mi_ext`、`product`、`system_ext`、`system` | `product`、`system_ext`、`system` | 将 mi_ext 中的 product、system_ext、system 与 etc 内容合并到真实目标路径，并迁移 contexts、fsconfig 和属性；同时迁移 CustFeatureResolve 启用属性，建立 `/mi_ext/product -> /product` 兼容路径；成功后删除 `mi_ext` 源目录。 |
+### 共享补丁（`common`）
 
-### Settings 设备参数伪装补丁
-
-`common/fake_device_params` 只生成 Settings 原生读取的两个缓存值：`basic_info_key` 与 `camera_info_key`。缓存语言同时写入 `device_params_last_lang`，更新时间固定到 2100 年，使当前语言下不再触发 8 小时云端刷新。补丁不修改任何 prop，也不需要破坏 HTMLViewer.apk 的接口地址或签名。
-
-默认参数通过 `DEVICE_PARAMS_SPOOF_JSON` 传入。`basic` 是 `devInfoNew` 的完整响应对象，`camera` 是 `allparamInfo` 的完整响应对象；补丁会保留其中未识别的扩展字段，并校验 Settings 实际使用的字段：
-
-```bash
-DEVICE_PARAMS_SPOOF_JSON='{
-  "language": "zhCN",
-  "basic": {
-    "Mishop": {
-      "RightValue": "",
-      "ShowRedDot": "false",
-      "Url": ""
-    },
-    "BasicInfoToggle": 1,
-    "BasicItems": [
-      {"Title": "处理器", "Summary": "第一代骁龙®8+移动平台", "Index": 0},
-      {"Title": "电池容量", "Summary": "4800mAh(典型值)", "Index": 1},
-      {"Title": "后置摄像头", "Summary": "50MP+8MP+2MP", "Index": 2},
-      {"Title": "屏幕尺寸", "Summary": "6.7″", "Index": 3},
-      {"Title": "分辨率", "Summary": "2412×1080", "Index": 4},
-      {"Title": "安全芯片", "Summary": "独立安全芯片", "Index": 7}
-    ]
-  },
-  "camera": {
-    "status": true,
-    "data": {
-      "BasicInfoToggle": 1,
-      "camera": {
-        "front_camera": "16MP",
-        "rear_camera": "50MP+8MP+2MP"
-      }
-    }
-  }
-}' bash port_main.sh common/fake_device_params
-```
-
-`language` 必须与目标系统当前 `Locale.getLanguage()+Locale.getCountry()` 一致，例如简体中文为 `zhCN`、美式英语为 `enUS`。如需同时提供英文模板，可额外设置 `DEVICE_PARAMS_SPOOF_JSON_ENUS`，其 `language` 必须严格为 `enUS`；运行时在 `persist.sys.locale=en-US` 时自动选择该模板，其他语言仍回退到默认模板。`BasicItems[].Index` 当前只允许 `0`、`1`、`2`、`3`、`4`、`7`，且不能重复；分别对应处理器、电池、相机、屏幕尺寸、分辨率和安全芯片。启用 `BasicInfoToggle=1` 时，补丁会自动追加空的索引 `5` 占位项，触发 Settings 以本机硬件自动检测运行内存；用户无需、也不能在 JSON 中填写该项。型号（索引 `6`）仍由 Settings 在本地生成，不能由接口缓存覆盖。
-
-补丁生成以下 system 文件，并同步写入 system contexts/fsconfig：
-
-```text
-system/system/etc/device_params/device_params_pref.xml
-system/system/etc/device_params/device_params_pref.enUS.xml（设置 `DEVICE_PARAMS_SPOOF_JSON_ENUS` 时）
-system/system/etc/device_params/fake_device_params.sh
-system/system/etc/init/fake_device_params.rc
-```
-
-补丁还会以固定边界标记管理专用域规则，并动态定位当前平台限制 native domain 写 `system_app_data_file` 的 neverallow 属性，只把 `fake_device_params` 加入该属性的例外集合，不依赖会随版本变化的 `base_typeattr_*` 编号。规则始终写入 `system/system/etc/selinux/plat_sepolicy.cil`；如果存在 `system_ext/etc/selinux/userdebug_plat_sepolicy.cil`，也会同步补丁，确保解锁设备设置 `INIT_FORCE_DEBUGGABLE=true` 后选择 userdebug policy 时仍包含该域。`plat_file_contexts` 会把脚本标记为 `fake_device_params_exec`，并更新 `plat_sepolicy_and_mapping.sha256` 标记，使 init 放弃旧的 normal/debug `precompiled_sepolicy`、按当前 split CIL 重新编译策略。脚本 metadata 权限为 `0755`。
-
-开机完成后，以及 `persist.sys.locale` 发生变更时，oneshot 服务由 init 自动转换到 `u:r:fake_device_params:s0`，并以 Android `system` UID/GID 运行。策略只额外允许该域读取 system 模板、执行 shell/toybox，以及访问 `system_app_data_file`；不授予 root UID、DAC 绕过或任意 root 管理器域权限。脚本等待 `/data/user_de/0/com.android.settings` 由 installd 创建，再在目标目录内原子替换 `shared_prefs/device_params_pref.xml`。新文件天然由 `system` 用户创建并继承 `system_app_data_file`，因此不需要 `chown` 或 `restorecon`。当前只处理 user 0；修改参数后应重新执行补丁并重启。运行时缓存格式及专用域权限已在一加 15 DSU 上通过临时加载候选策略、UID/GID 1000 和短时 Enforcing 写入验证；init 从 rc 自动完成开机转换仍需在下一次 DSU 启动后确认。
-
-### HyperOS 特性属性补丁
-
-`features/enable_hyperos_features` 将教程末尾第四部分中粘连的属性还原为 32 个独立条目并写入 `product/etc/build.prop`，同时向 `vendor/build.prop` 写入 1 项小米相册 XDR 能力属性，共 33 项。重复执行会更新同名属性并移除两份目标文件内的重复定义，不修改 `system` 或 `system_ext` 分区；任一目标文件不存在时会警告并独立跳过该分区，另一分区仍可继续处理。
-
-| 分类 | 目标文件 | 属性及目标值 |
+| 模块 | 改动分区 | 用途 |
 | --- | --- | --- |
-| 全局模糊 | `product/etc/build.prop` | `ro.config.low_ram.threshold_gb=`<br>`ro.config.low_ram.middle.threshold_gb=`<br>`ro.miui.backdrop_sampling_enabled=true`<br>`ro.config.low_ram.support_miuilite_plus=false`<br>`persist.sys.background_blur_supported=true` |
-| 高级材质与转场 | `product/etc/build.prop` | `persist.sys.background_blur_status_default=false`<br>`persist.sys.background_blur_mode=0`<br>`ro.surface_flinger.supports_background_blur=1`<br>`ro.launcher.blur.appLaunch=1`<br>`ro.sf.blurs_are_expensive=0`<br>`persist.sys.add_blurnoise_supported=true`<br>`persist.sys.hyper_transition=true`<br>`persist.sys.hyper_transition_v=2`<br>`persist.sys.element_transition_supported=true`<br>`ro.miui.shell_anim_enable_fcb=true` |
-| 画质增强 | `product/etc/build.prop` | `debug.config.media.video.frc.support=true`<br>`debug.config.media.video.ais.support=true`<br>`debug.config.media.video.aie.support=true`<br>`persist.sys.support_ultra_hdr=true` |
-| 相册 Ultra HDR | `vendor/build.prop` | `persist.vendor.XDRVersion=2.0` |
-| 游戏视频与性能 | `product/etc/build.prop` | `debug.game.video.support=true`<br>`debug.game.video.speed=true`<br>`debug.performance.tuning=1`<br>`video.accelerate.hw=1` |
-| 空间音频与声效 | `product/etc/build.prop` | `ro.vendor.audio.surround.headphone.only=false`<br>`ro.vendor.audio.videobox.switch=true`<br>`ro.vendor.audio.feature.spatial=7`<br>`ro.vendor.audio.game.effect=true`<br>`ro.vendor.audio.sfx.earadj=true`<br>`ro.vendor.audio.sfx.scenario=true`<br>`ro.vendor.audio.sfx.harmankardon=true`<br>`ro.vendor.audio.surround.support=true`<br>`ro.vendor.audio.scenario.support=true` |
+| [`common/disable_odm_imports`](common/disable_odm_imports/README.md) | `odm` | 禁用 ODM 对项目专属和 `my_manifest` 属性文件的外部导入。 |
+| [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
+| [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`vendor` | 从目标设备配置合并显示、刷新率与触控属性。 |
+| [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
+| [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份和可选 SKU 属性。 |
+| [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
+| [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
+| [`common/fix_linear_haptic`](common/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
+| [`common/fix_mi_account`](common/fix_mi_account/README.md) | `odm`、`vendor` | 迁移账号、支付与安全环境资源并登记 SELinux bundle。 |
+| [`common/fix_mi_mtp_kill_self`](common/fix_mi_mtp_kill_self/README.md) | `system` | 将 MTP 服务从 `android.process.media` 隔离。 |
+| [`common/fix_modem_xts`](common/fix_modem_xts/README.md) | `system` | 短路不兼容的 Oplus modem/Xiaomi OEM Hook 调用。 |
+| [`common/fix_mtp`](common/fix_mtp/README.md) | `system` | 替换匹配底包 USB 栈的 configfs rc。 |
+| [`common/fix_nfc`](common/fix_nfc/README.md) | `system`、`odm` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
+| [`common/fix_pangu`](common/fix_pangu/README.md) | `product`、`system` | 将 `product/pangu/system` 迁移到最终 system。 |
+| [`common/fix_settings_haptic`](common/fix_settings_haptic/README.md) | `system_ext` | 修复 Settings 的触感能力判断。 |
+| [`common/fix_vendor_avc`](common/fix_vendor_avc/README.md) | `vendor`、`odm` | 统一合并 vendor 策略、模块片段与 SELinux bundle。 |
+| [`common/fix_wechat_safe_mode`](common/fix_wechat_safe_mode/README.md) | `odm` | 删除假的 Camera Extensions 实现。 |
+| [`common/merge_mi_ext`](common/merge_mi_ext/README.md) | `product`、`system_ext`、`system`；删除 `mi_ext` 来源 | 将 `mi_ext` 内容映射到真实最终分区。 |
 
-原教程没有给出 `ro.config.low_ram.threshold_gb` 与 `ro.config.low_ram.middle.threshold_gb` 的数值，因此补丁保留为空值，不猜测设备阈值。
+### 硬件特性模块（`features`）
 
-这些属性主要用于能力声明和功能入口判断。HyperOS 版本、SoC、显示栈或音频 HAL 不支持时，对应功能可能不生效；尤其是画质算法和空间音频，不能仅靠属性补齐底层实现。`persist.vendor.XDRVersion=2.0` 只解除小米相册的私有 XDR 门控，不会创建 HDR 显示能力；应先确认第三方应用能够正常显示 HDR。一加 15 已通过临时 `setprop` 实机验证相册恢复 Ultra HDR。当前 `OP15_port.sh` 已显式调用本补丁；其他设备流程应先评估硬件支持，如需单独执行：
+| 模块 | 改动分区 | 用途 |
+| --- | --- | --- |
+| [`features/disable_mi_vulkan`](features/disable_mi_vulkan/README.md) | `product` | 禁用不兼容的 Xiaomi Vulkan pipeline cache 属性。 |
+| [`features/enable_hyperos_features`](features/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
+| [`features/fix_displayfeature_bridge`](features/fix_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM。 |
+| [`features/fix_ltpo`](features/fix_ltpo/README.md) | `odm` | 开放 MI SurfaceFlinger 上层 LTPO 策略。 |
+| [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
+| [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
+| [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm` | 按目标面板换算并写入超声波指纹参数。 |
 
-```bash
-bash port_main.sh features/enable_hyperos_features
-```
+### 一加 15 专属模块（`devices/oneplus15`）
 
-## 一加 15 设备补丁（`devices/oneplus15`）
+一加 15 的专属模块和传给共享模块的硬件参数见 [`devices/oneplus15/README.md`](devices/oneplus15/README.md)。
 
-| 补丁路径 | 主要输入 | 最终修改分区 | 作用与重要说明 |
-| --- | --- | --- | --- |
-| `devices/oneplus15/fix_auto_brightness` | 【底包】`odm`、`vendor`；【原包】`product` | `odm`、`product` | 禁用一加 15 高 PWM RGB 传感器属性，把底包 vendor 显示配置补入原包 product，并用最大配置适配实机 Display ID `4630946903293830803`。补丁同步写入这些显示配置和启动 Overlay 的 product contexts/fsconfig 权限。保留 `1..1060` 的小米逻辑 nit 上限，从真机 P3 表扩展高段：普通/HBM 分界为 1400 nit，HBM 末端为 1800 nit；当前预编译 `MiuiFrameworkResOverlay.apk` 的 `config_defaultLogicalCurve` 为 `0→2、30→40、600→70、5000→1060`，仅校准环境光到逻辑 nit 的室内映射，不把物理 P3 nit 写入逻辑坐标。`test_hot_reload.sh` 可在已授权 DSU 上先通过私有 mount namespace 生成候选 idmap，再原子替换 resource-cache 中的 idmap，最后挂载测试 Overlay 并重启 framework；不得删除既有 idmap，否则 zygote 会因继承到失效文件描述符而循环崩溃。另加入只覆盖 `config_screenBrightnessSettingDefaultFloat` 的 135 nit 启动亮度 Overlay。写入曲线 Overlay 前会调用 Android SDK `zipalign` 检查 4 字节边界；若预编译 APK 未对齐，先生成并复验临时对齐副本，避免 PackageManager 解析 `resources.arsc` 时导致 system_server 启动循环。曲线 Overlay 是预编译资源 APK，已移除原签名材料；仅适用于已确认移植系统允许该 Overlay 重新生成并绕过原包完整性校验的环境。该对齐修复已在一加 15 DSU 上确认正常完成开机。 |
-| `devices/oneplus15/fix_refresh_rate_switch` | 【底包】`odm`；【原包】`product`、`system_ext` | `product`、`system_ext` | 按当前设备代号修改 `product/etc/device_features/<device>.xml`：最高智能刷新率设为 165Hz，刷新率列表设为 165/144/120/90/60Hz；从底包 `odm/etc/sdm_display_resolution_extn.xml` 动态读取 `PanelResolution width` 和 `ScalingResolution w` 生成 `screen_resolution_supported`。同时复用 `common/settings_apk_patcher.sh` 修正旧 `ScreenResolutionManager.calculateHeightFromWidth()`：优先从 `Display.getSupportedModes()` 返回目标宽度对应的真实高度，找不到时才按比例并用 `Math.round()` 回退；当前一加 15 的 1080 宽模式因此使用 2354 高度，不再自动截断为 2353。机型 XML 与 Settings.apk 任一缺失时只警告并跳过对应子步骤，另一项仍可继续。需要 Apktool、Java、Python 3、`zip`/`unzip` 与 Android SDK `zipalign`；Settings 仅替换目标 DEX 并保留其他归档条目、Signing Block 与 META-INF 证书材料，同时清理 oat 目录及其 contexts/fsconfig，但 DEX 修改后内容完整性签名必然失效。 |
-启用补丁前应根据目标机型和底包确认其适用性。重复教程只保留一个对应补丁，不适用的补丁不要传给 `port_main.sh`。设备专属补丁必须通过对应机型流程调用，不得混用。超声波指纹逻辑已放入 `features/fix_ultrasonic_fingerprint`，一加 15 的位置等硬件参数由 `OP15_port.sh` 提供。该入口还会传入 `devices/oneplus15/config` 下的刷新率、NFC 与触感目标设备配置；这些值不会从小米原包动态提取。`OP15_port.sh` 会按固定顺序组合 `common`、`features` 与 `devices/oneplus15` 模块；不要仅根据本节表格推断整套流程。
+| 模块 | 改动分区 | 用途 |
+| --- | --- | --- |
+| [`devices/oneplus15/fix_auto_brightness`](devices/oneplus15/fix_auto_brightness/README.md) | `odm`、`product` | 适配自动亮度曲线、物理亮度边界和启动亮度。 |
+| [`devices/oneplus15/fix_refresh_rate_switch`](devices/oneplus15/fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 配置 165Hz 刷新率列表与真实分辨率切换。 |
 
+启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
 
 ## 鸣谢
 

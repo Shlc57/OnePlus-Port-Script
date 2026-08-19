@@ -1,0 +1,2 @@
+vendor.xiaomi.hardware.aidl.mtdservice.IMTService/default u:object_r:hal_mtdservice_service:s0
+vendor.xiaomi.hardware.aidl.mtkeysoter.IMTKeysoterService/default u:object_r:hal_mtkeysoter_service:s0

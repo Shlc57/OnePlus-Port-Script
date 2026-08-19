@@ -1,0 +1,4 @@
+interface:
+  display_name: "Runtime Hot Patch"
+  short_description: "验证 Android DSU 运行时热修补、服务重载与临时 SELinux 豁免"
+  default_prompt: "使用 $runtime-hot-patch 规划并验证 Android DSU 运行时热修补；先确认服务边界、备份与回滚，再处理 HAL、system_server 或 ksud SELinux 规则。"

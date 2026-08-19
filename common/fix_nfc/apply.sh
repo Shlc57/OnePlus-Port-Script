@@ -4,11 +4,11 @@ set -euo pipefail
 patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
-std_print "替换 ST NFC 系统应用并补充 Xiaomi NFC 功能属性"
+std_print "适配 NXP NFC 系统应用、属性与 SELinux 服务契约"
 std_print "来源：补丁内置 NXP/Xiaomi NFC APK、目标设备流程显式配置；目标：原包 system、底包 odm"
 std_print
 
-for part_name in odm system system_ext; do
+for part_name in odm vendor system system_ext; do
 	check_part_exists "$part_name"
 done
 
@@ -22,12 +22,131 @@ nfc_apk_checksums="$patcher_dir/config/XMNfcNci.apk.sha256"
 nfc_apk_target="$project_dir/system/system/app/Nfc_st/Nfc_st.apk"
 expected_st_apk_sha256="ad9bf76f39243ef776a24604e5206606e314c69dda3d9f0d8de0cafcebe6aa53"
 nxp_hal="$project_dir/odm/bin/hw/android.hardware.nfc-service.nxp"
+nxp_hal_rc="$project_dir/odm/etc/init/nfc-service-nxp.rc"
 nxp_manifest="$project_dir/odm/etc/vintf/manifest/nfc-service.xml"
+selinux_bundle_manifest="$patcher_dir/config/selinux_bundle.tsv"
+selinux_policy_fragment="$patcher_dir/config/selinux_policy.cil.in"
+vendor_selinux="$project_dir/vendor/etc/selinux"
+vendor_policy="$vendor_selinux/vendor_sepolicy.cil"
+vendor_versioned_policy="$vendor_selinux/plat_pub_versioned.cil"
+vendor_debug_policy="$vendor_selinux/vendor_sepolicy_debug.cil"
+vendor_debug_versioned_policy="$vendor_selinux/plat_pub_versioned_debug.cil"
+vendor_policy_version="$vendor_selinux/plat_sepolicy_vers.txt"
+vendor_file_contexts="$vendor_selinux/vendor_file_contexts"
+precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_contexts"
 required_nfc_frameworks=(
 	"$project_dir/system_ext/framework/com.nxp.nfc.jar"
 	"$project_dir/system_ext/framework/com.nxp.nfc.nq.jar"
 	"$project_dir/system_ext/framework/com.xiaomi.nfc.jar"
 )
+
+for required_file in \
+	"$nxp_hal" \
+	"$nxp_hal_rc" \
+	"$nxp_manifest" \
+	"$selinux_bundle_manifest" \
+	"$selinux_policy_fragment" \
+	"$vendor_policy" \
+	"$vendor_versioned_policy" \
+	"$vendor_policy_version" \
+	"$vendor_file_contexts" \
+	"$precompiled_file_contexts"; do
+	check_file_exists "$required_file"
+	if [[ -L "$required_file" ]]; then
+		err_print "NFC 服务或 SELinux 契约输入不能是符号链接：$required_file"
+		exit 1
+	fi
+done
+
+load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"
+expected_bundle_requirements=(
+	odm/bin/hw/android.hardware.nfc-service.nxp
+	odm/etc/init/nfc-service-nxp.rc
+	odm/etc/vintf/manifest/nfc-service.xml
+)
+if (( ${#SELINUX_BUNDLE_REQUIREMENTS[@]} != ${#expected_bundle_requirements[@]} ||
+	${#SELINUX_BUNDLE_POLICY_FRAGMENTS[@]} != 1 ||
+	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 0 )); then
+	err_print "NFC SELinux bundle 的 requirement/policy 结构不完整"
+	exit 1
+fi
+for requirement_index in "${!expected_bundle_requirements[@]}"; do
+	if [[ "${SELINUX_BUNDLE_REQUIREMENTS[$requirement_index]}" != \
+		"${expected_bundle_requirements[$requirement_index]}" ]]; then
+		err_print "NFC SELinux bundle requirement 与服务契约不一致"
+		exit 1
+	fi
+done
+if [[ "${SELINUX_BUNDLE_POLICY_FRAGMENTS[0]}" != \
+	"$(realpath -e -- "$selinux_policy_fragment")" ]]; then
+	err_print "NFC SELinux bundle 没有引用模块自有策略片段"
+	exit 1
+fi
+
+api_version="$(tr -d '[:space:]' < "$vendor_policy_version")"
+if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
+	err_print "NFC SELinux bundle 无法识别目标 policy API：$api_version"
+	exit 1
+fi
+# shellcheck disable=SC2016 # API_VERSION 由 common/selinux_merge 在落盘前展开。
+expected_nfc_rule='(allow system_server_${API_VERSION} hal_nfc_default (process (signal)))'
+if ! grep -Fqx "$expected_nfc_rule" "$selinux_policy_fragment" ||
+	(( $(grep -Ec '^[[:space:]]*\(' "$selinux_policy_fragment") != 1 )); then
+	err_print "NFC SELinux 片段必须只包含已热测的 system_server -> hal_nfc_default signal 规则"
+	exit 1
+fi
+validate_nfc_policy_contract() {
+	local policy_file="${1:-}"
+	local versioned_policy_file="${2:-}"
+	local policy_label="${3:-vendor}"
+
+	if ! grep -Fqx '(type hal_nfc_default)' "$policy_file" ||
+		! grep -Fqx '(type hal_nfc_default_exec)' "$policy_file" ||
+		! grep -Fqx \
+			"(typetransition init_${api_version} hal_nfc_default_exec process hal_nfc_default)" \
+			"$policy_file" ||
+		! grep -Eq \
+			"(^|[^A-Za-z0-9_])system_server_${api_version}([^A-Za-z0-9_]|$)" \
+			"$versioned_policy_file"; then
+		err_print "$policy_label policy 缺少 NXP NFC 域转换或版本化 system_server 类型"
+		return 1
+	fi
+}
+
+validate_nfc_policy_contract "$vendor_policy" "$vendor_versioned_policy" "底包 normal"
+if [[ -e "$vendor_debug_policy" || -L "$vendor_debug_policy" ||
+	-e "$vendor_debug_versioned_policy" || -L "$vendor_debug_versioned_policy" ]]; then
+	for debug_policy_file in "$vendor_debug_policy" "$vendor_debug_versioned_policy"; do
+		check_file_exists "$debug_policy_file"
+		if [[ -L "$debug_policy_file" ]]; then
+			err_print "NFC debug SELinux 契约输入不能是符号链接：$debug_policy_file"
+			exit 1
+		fi
+	done
+	validate_nfc_policy_contract \
+		"$vendor_debug_policy" \
+		"$vendor_debug_versioned_policy" \
+		"底包 debug"
+fi
+if ! grep -Fqx \
+	'service vendor.nfc_hal_service /odm/bin/hw/android.hardware.nfc-service.nxp' \
+	"$nxp_hal_rc" ||
+	! grep -Fq '<name>vendor.nxp.nxpnfc_aidl</name>' "$nxp_manifest"; then
+	err_print "底包 NXP NFC RC/VINTF 服务契约不完整"
+	exit 1
+fi
+expected_exec_context='/(odm|vendor)/bin/hw/android\.hardware\.nfc-service\.nxp u:object_r:hal_nfc_default_exec:s0'
+for runtime_contexts in "$vendor_file_contexts" "$precompiled_file_contexts"; do
+	if ! grep -Fqx "$expected_exec_context" "$runtime_contexts"; then
+		err_print "底包缺少 NXP NFC executable 标签：$runtime_contexts"
+		exit 1
+	fi
+done
+check_selinux_bundle_requirements "$project_dir"
+if [[ "$SELINUX_BUNDLE_ACTIVE" != true ]]; then
+	err_print "NXP NFC 服务未形成完整 SELinux bundle requirement"
+	exit 1
+fi
 
 apk_update_ready=1
 replace_nfc_apk=0
@@ -45,8 +164,6 @@ fi
 if (( apk_update_ready == 1 )); then
 	check_file_exists "$nfc_apk_source"
 	check_file_exists "$nfc_apk_checksums"
-	check_file_exists "$nxp_hal"
-	check_file_exists "$nxp_manifest"
 	for framework_file in "${required_nfc_frameworks[@]}"; do
 		check_file_exists "$framework_file"
 	done
@@ -62,11 +179,6 @@ if (( apk_update_ready == 1 )); then
 		err_print "内置 XMNfcNci.apk 校验失败"
 		exit 1
 	fi
-	if ! grep -Fq '<name>vendor.nxp.nxpnfc_aidl</name>' "$nxp_manifest"; then
-		err_print "底包 NFC manifest 不是已支持的 NXP AIDL 栈：$nxp_manifest"
-		exit 1
-	fi
-
 	read -r nxp_apk_sha256 _ < <(sha256sum -- "$nfc_apk_source")
 	read -r target_apk_sha256 _ < <(sha256sum -- "$nfc_apk_target")
 	case "$target_apk_sha256" in
@@ -191,4 +303,5 @@ else
 	skip_print "Nfc_st.apk 已是目标 NXP/Xiaomi 版本"
 fi
 
+std_print "✅ 已登记 NXP NFC 最小 SELinux bundle，交由 common/fix_vendor_avc 统一合并"
 std_print "处理完成"

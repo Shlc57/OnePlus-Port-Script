@@ -18,11 +18,92 @@ manifests=(
 	"$patcher_dir/config/mi_vendor_sources.tsv"
 )
 exec_context_overrides="$patcher_dir/config/exec_context_overrides.tsv"
+# shellcheck disable=SC2154 # project_dir 由 init_port_env/tools.sh 导出。
 exec_transition_cil="$project_dir/system/system/etc/selinux/plat_sepolicy.cil"
+selinux_bundle_manifest="$patcher_dir/config/selinux_bundle.tsv"
 runtime_file_contexts=(
 	"$project_dir/odm/etc/selinux/precompiled_file_contexts"
 	"$project_dir/vendor/etc/selinux/vendor_file_contexts"
 )
+
+validate_selinux_bundle_sources() {
+	local requirement_path
+	local source_part
+	local target_part
+	local relative_path
+	local source_file
+	local manifest_file
+
+	for requirement_path in "${SELINUX_BUNDLE_REQUIREMENTS[@]}"; do
+		case "$requirement_path" in
+			odm/*)
+				source_part="mi_odm"
+				target_part="odm"
+				manifest_file="${manifests[0]}"
+				;;
+			vendor/*)
+				source_part="mi_vendor"
+				target_part="vendor"
+				manifest_file="${manifests[1]}"
+				;;
+			*)
+				err_print "账号 SELinux bundle 必需文件不属于 odm/vendor：$requirement_path"
+				return 1
+				;;
+		esac
+		relative_path="${requirement_path#"$target_part/"}"
+		source_file="$project_dir/$source_part/$relative_path"
+		check_file_exists "$source_file" || return 1
+		if [[ -L "$source_file" ]]; then
+			err_print "账号 SELinux bundle 来源不能是符号链接：$source_file"
+			return 1
+		fi
+		if ! awk -F '\t' -v wanted="$relative_path" '
+			$1 !~ /^#/ && $2 == wanted { found = 1 }
+			END { exit(found ? 0 : 1) }
+		' "$manifest_file"; then
+			err_print "账号 SELinux bundle 必需文件未列入来源清单：$requirement_path"
+			return 1
+		fi
+	done
+}
+
+validate_mtd_service_contract() {
+	local odm_root="${1:-}"
+	local mtd_service_rc="$odm_root/etc/init/vendor.xiaomi.hardware.aidl.mtdservice-service.rc"
+	local mtd_check_rc="$odm_root/etc/init/vendor.xiaomi.hardware.aidl.mtd_check-service.rc"
+	local mtkeysoter_service_rc="$odm_root/etc/init/vendor.xiaomi.hardware.aidl.mtkeysoter-service.rc"
+
+	for required_rc in "$mtd_service_rc" "$mtd_check_rc" "$mtkeysoter_service_rc"; do
+		check_file_exists "$required_rc" || return 1
+		if [[ -L "$required_rc" ]]; then
+			err_print "账号 mtdservice rc 不能是符号链接：$required_rc"
+			return 1
+		fi
+	done
+	if ! grep -Fqx 'service vendor.mtdservice /odm/bin/mtd' "$mtd_service_rc"; then
+		err_print "mtdservice rc 的服务入口与账号 SELinux bundle 不一致"
+		return 1
+	fi
+	if ! grep -Fqx 'service vendor.mtd_check /odm/bin/mtd_check' "$mtd_check_rc"; then
+		err_print "mtd_check rc 的服务入口与账号 SELinux bundle 不一致"
+		return 1
+	fi
+	if ! grep -Fqx '    mkdir /data/vendor/images 0770 system system' "$mtd_check_rc"; then
+		err_print "mtd_check rc 缺少 /data/vendor/images 初始化契约"
+		return 1
+	fi
+	if ! grep -Fqx 'service vendor.mtkeysoter /odm/bin/mtd_keysoter' "$mtkeysoter_service_rc"; then
+		err_print "mtkeysoter rc 的服务入口与账号 SELinux bundle 不一致"
+		return 1
+	fi
+	if ! grep -Fqx \
+		'    interface aidl vendor.xiaomi.hardware.aidl.mtkeysoter.IMTKeysoterService/default' \
+		"$mtkeysoter_service_rc"; then
+		err_print "mtkeysoter rc 缺少与 service_contexts 一致的 AIDL interface"
+		return 1
+	fi
+}
 
 validate_exec_context_overrides() {
 	local override_file="${1:-}"
@@ -116,6 +197,9 @@ merge_exec_context_overrides() {
 
 check_file_exists "$exec_context_overrides"
 check_file_exists "$exec_transition_cil"
+load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"
+validate_selinux_bundle_sources
+validate_mtd_service_contract "$project_dir/mi_odm"
 for runtime_contexts in "${runtime_file_contexts[@]}"; do
 	check_file_exists "$runtime_contexts"
 done
@@ -202,6 +286,14 @@ for runtime_contexts in "${runtime_file_contexts[@]}"; do
 		"$exec_context_overrides" \
 		"$runtime_contexts"
 done
-std_print "✅ Xiaomi 账号安全 daemon 执行上下文已映射到目标兼容域"
+std_print "✅ Xiaomi 账号其余兼容 daemon 执行上下文已映射到目标域"
+
+check_selinux_bundle_requirements "$project_dir"
+if [[ "$SELINUX_BUNDLE_ACTIVE" != true ]]; then
+	err_print "账号 SELinux bundle 未形成完整的目标交付物"
+	exit 1
+fi
+validate_mtd_service_contract "$project_dir/odm"
+std_print "✅ 已整理 mtd 独立域策略与 contexts bundle，交由下游 common/fix_vendor_avc 统一合并"
 
 std_print "处理完成"

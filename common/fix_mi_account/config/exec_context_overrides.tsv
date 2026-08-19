@@ -1,8 +1,5 @@
-# 账号安全链目标路径	兼容执行上下文
+# 账号安全链中尚未独立移植策略的目标路径	兼容执行上下文
 /odm/bin/fidoca	u:object_r:hal_allocator_default_exec:s0
 /odm/bin/idmanager	u:object_r:hal_allocator_default_exec:s0
 /odm/bin/mlipayd	u:object_r:hal_allocator_default_exec:s0
-/odm/bin/mtd	u:object_r:hal_allocator_default_exec:s0
-/odm/bin/mtd_check	u:object_r:hal_allocator_default_exec:s0
-/odm/bin/mtd_keysoter	u:object_r:hal_allocator_default_exec:s0
 /odm/bin/vendor\.xiaomi\.hardware\.mikeybag-service	u:object_r:hal_allocator_default_exec:s0

@@ -1,0 +1,9 @@
+# 一加 15 实机 Oplus HBP 双击亮屏参数。
+# features/fix_oplus_double_tap_wake 只消费这些目标硬件参数，不从小米原包推断。
+oplus.double_tap.panel_id=0
+oplus.double_tap.gesture_cfg_node=4100
+oplus.double_tap.gesture_enable_node=4101
+oplus.double_tap.gesture_cfg_value=2
+oplus.double_tap.input_device_name=touchpanel
+oplus.double_tap.scan_code=62
+oplus.double_tap.touchfeature_type=247

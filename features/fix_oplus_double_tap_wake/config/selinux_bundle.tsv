@@ -1,0 +1,12 @@
+# 类型	目标	相对 fix_oplus_double_tap_wake 目录的片段或项目内必需文件
+require	project	odm/bin/hw/vendor.dna.hardware.touchfeature-oplus-bridge
+require	project	odm/etc/init/vendor.dna.hardware.touchfeature-oplus-bridge.rc
+require	project	odm/etc/vintf/manifest/vendor.dna.hardware.touchfeature-oplus-bridge.xml
+policy	vendor_policy	config/selinux_policy.cil.in
+contexts	vendor_file_contexts	config/touchfeature_file_contexts
+contexts	precompiled_file_contexts	config/touchfeature_file_contexts
+contexts	odm_metadata_contexts	config/touchfeature_odm_contexts
+contexts	vendor_property_contexts	config/touchfeature_property_contexts
+contexts	precompiled_property_contexts	config/touchfeature_property_contexts
+contexts	vendor_service_contexts	config/touchfeature_service_contexts
+contexts	precompiled_service_contexts	config/touchfeature_service_contexts

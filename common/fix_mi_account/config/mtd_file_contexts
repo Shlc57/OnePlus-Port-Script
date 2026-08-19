@@ -1,0 +1,6 @@
+# mtd 运行时 executable/data 标签；由 common/fix_vendor_avc 同步到
+# vendor 与 ODM 的早期 file_contexts。
+/odm/bin/mtd u:object_r:hal_mtdservice_default_exec:s0
+/odm/bin/mtd_check u:object_r:hal_mtdservice_check_exec:s0
+/odm/bin/mtd_keysoter u:object_r:hal_mtkeysoter_default_exec:s0
+/data/vendor/images(/.*)? u:object_r:ta_data_file:s0

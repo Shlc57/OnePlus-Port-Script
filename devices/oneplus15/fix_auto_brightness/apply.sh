@@ -35,6 +35,19 @@ auto_curve_overlay_checksums="$patcher_dir/config/miui_framework_overlay.sha256"
 auto_curve_overlay_target="$project_dir/product/overlay/MiuiFrameworkResOverlay.apk"
 target_display_id="4630946903293830803"
 target_display_config="$product_displayconfig/display_id_${target_display_id}.xml"
+aligned_auto_curve_overlay=""
+auto_curve_overlay_install="$auto_curve_overlay"
+temporary_display_config=""
+
+cleanup() {
+	if [[ -n "$aligned_auto_curve_overlay" ]]; then
+		rm -f -- "$aligned_auto_curve_overlay"
+	fi
+	if [[ -n "$temporary_display_config" ]]; then
+		rm -f -- "$temporary_display_config"
+	fi
+}
+trap cleanup EXIT
 
 available_odm_build_props=()
 for build_prop in "${odm_build_props[@]}"; do
@@ -68,6 +81,32 @@ if ! command -v sha256sum >/dev/null 2>&1; then
 	err_print "缺少 sha256sum，无法校验启动亮度 Overlay"
 	exit 1
 fi
+zipalign_command=""
+if [[ -n "${ZIPALIGN:-}" ]]; then
+	if [[ ! -x "$ZIPALIGN" ]]; then
+		err_print "ZIPALIGN 不可执行：$ZIPALIGN"
+		exit 1
+	fi
+	zipalign_command="$ZIPALIGN"
+elif command -v zipalign >/dev/null 2>&1; then
+	zipalign_command="$(command -v zipalign)"
+else
+	for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROID_SDK:-}"; do
+		[[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
+		zipalign_candidate="$({
+			find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 \
+				-type f -name zipalign -perm -u+x -print
+		} | LC_ALL=C sort -V | tail -n 1)"
+		if [[ -n "$zipalign_candidate" ]]; then
+			zipalign_command="$zipalign_candidate"
+			break
+		fi
+	done
+fi
+if [[ -z "$zipalign_command" ]]; then
+	err_print "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
+	exit 1
+fi
 if ! (cd -- "$patcher_dir" && sha256sum -c -- "$boot_brightness_overlay_checksums"); then
 	err_print "启动亮度 Overlay 校验失败"
 	exit 1
@@ -75,6 +114,22 @@ fi
 if ! (cd -- "$patcher_dir" && sha256sum -c -- "$auto_curve_overlay_checksums"); then
 	err_print "自动亮度曲线 Overlay 校验失败"
 	exit 1
+fi
+if "$zipalign_command" -c 4 "$auto_curve_overlay" >/dev/null 2>&1; then
+	std_print "✅ 自动亮度曲线 Overlay 已通过 4 字节对齐校验"
+else
+	aligned_auto_curve_overlay="$(mktemp)"
+	if ! "$zipalign_command" -f 4 "$auto_curve_overlay" "$aligned_auto_curve_overlay"; then
+		err_print "自动亮度曲线 Overlay 对齐失败"
+		exit 1
+	fi
+	chmod --reference="$auto_curve_overlay" -- "$aligned_auto_curve_overlay"
+	if ! "$zipalign_command" -c 4 "$aligned_auto_curve_overlay"; then
+		err_print "自动亮度曲线 Overlay 对齐结果校验失败"
+		exit 1
+	fi
+	auto_curve_overlay_install="$aligned_auto_curve_overlay"
+	warn_print "预编译自动亮度曲线 Overlay 未对齐，已生成 4 字节对齐副本"
 fi
 
 if [[ ! -d "$vendor_displayconfig" || -L "$vendor_displayconfig" ]]; then
@@ -140,10 +195,6 @@ replace_file_if_different "$largest_display_config" "$target_display_config"
 std_print "✅ 已用 $(basename -- "$largest_display_config") 适配 Display ID $target_display_id"
 
 temporary_display_config="$(mktemp "${target_display_config}.tmp.XXXXXX")"
-cleanup() {
-	rm -f -- "$temporary_display_config"
-}
-trap cleanup EXIT
 
 brightness_summary="$(python3 - "$target_display_config" "$panel_brightness_config" "$temporary_display_config" <<'PY'
 import math
@@ -566,7 +617,7 @@ PY
 _install_generated_file "$temporary_display_config" "$target_display_config"
 std_print "✅ 已生成 135/1400/1800 nit 边界校准映射：$brightness_summary"
 
-replace_file_if_different "$auto_curve_overlay" "$auto_curve_overlay_target"
+replace_file_if_different "$auto_curve_overlay_install" "$auto_curve_overlay_target"
 std_print "✅ 已校准环境光默认曲线（0→2、30→40、600→70、5000→1060 逻辑 nit），保留 1060 逻辑上限"
 
 replace_file_if_different "$boot_brightness_overlay" "$boot_brightness_overlay_target"

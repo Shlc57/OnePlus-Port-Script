@@ -1,24 +1,26 @@
 ---
 name: android-selinux-port-policy
-description: 为本 HyperOS 移植工程先热测、再固化和验证永久 Android SELinux 修补。用于从 AVC、原包策略和服务契约恢复独立域，补齐 file/property/service contexts 与分区 metadata，并把已验证的业务策略 bundle 交给统一入口合并；不用于仅做 ksud live policy、全局 Permissive 或原系统写分区。
+description: 为本 HyperOS 移植工程判断 SELinux 拒绝的热测边界，并固化和验证永久策略修补。用于从 AVC、原包策略和服务契约恢复独立域，补齐 file/property/service contexts 与分区 metadata，并把业务策略 bundle 交给统一入口合并；尤其适用于区分可重放拒绝与只能通过静态检查、冷启动确认的早期启动拒绝，不用于仅做 ksud live policy、全局 Permissive 或原系统写分区。
 ---
 
 # Android SELinux port policy
 
-目标是得到经过 Enforcing 热测、可重复执行、可冷启动编译，且权限范围与真实服务契约一致的永久策略。运行时绕过只能提供证据，不能代替固化策略、contexts、metadata 与冷启动验证。
+目标是得到可重复执行、可完成冷启动等价编译，且权限范围与真实服务契约一致的永久策略。对能在当前启动中安全重放的拒绝，Enforcing 热测可以提供运行时证据；对发生在早期启动且无法重放的拒绝，热测不是有效性门槛。运行时绕过不能代替固化策略、contexts、metadata 与冷启动验证。
 
-## 默认顺序：先热测，再落盘
+## 默认顺序：先判断能否热测，再落盘
 
 ```text
-收集当前 AVC 与服务契约 -> 在工作树外整理最小候选规则
--> 已授权 DSU 上保持 Enforcing 热测 -> 收敛实际必要权限
--> 写入所属补丁的 CIL/contexts/metadata -> 完整策略静态验证 -> 冷启动确认
+收集 AVC、发生阶段与服务契约 -> 判断同一路径能否在当前启动安全重放
+-> 可重放：已授权 DSU 上保持 Enforcing 热测并收敛最小权限
+-> 不可重放：依据完整契约固化候选，并执行冷启动等价静态验证
+-> 写入所属补丁的 CIL/contexts/metadata -> 干净冷启动确认
 ```
 
-- 修补 allow、标签或服务契约时，默认先不修改仓库中的 CIL、contexts 或 bundle。进入设备步骤时使用 `$runtime-hot-patch`，先完成 adb 授权、DSU、root、Enforcing、工具和恢复边界检查，再用当前 DSU 的 `ksud sepolicy check` 与临时 `patch`/`apply` 验证候选 allow。
+- 修补 allow、标签或服务契约时，先记录 AVC 所在启动阶段、消费者生命周期，以及注入规则后能否重放同一个被拒绝操作。只有能安全重放时，才使用 `$runtime-hot-patch` 完成 adb 授权、DSU、root、Enforcing、工具和恢复边界检查，再用当前 DSU 的 `ksud sepolicy check` 与临时 `patch`/`apply` 验证候选 allow。
+- 拒绝发生在 `adb`/`ksud` 可用前、只经过一次的 early-init/init 启动路径、不能安全重启的关键消费者，或修复依赖开机装载的新类型、标签、domain transition 时，当前启动中的 live policy 不能证明补丁修复了原始拒绝。可以热测能够独立重放的下游行为，但必须将其标为局部证据；永久补丁是否有效只能由完整 split policy 静态验证和未携带临时规则的干净冷启动确认。
 - 热测必须复现同一个最小业务操作，确认原 AVC 消失、功能成功且没有新增下游 AVC；每轮只加入当前证据支持的最小规则。live policy 是直到重启的加法状态，若误加宽规则导致测试被污染，不得把后续结果当作最小权限证明。
-- 只有热测确认为必要的规则才转成所属业务补丁的 CIL，并补齐 contexts 与 metadata。这里的“落盘”专指修改本项目的永久策略输入并交给统一入口生成，不是写入 KernelSU `profile set-sepolicy`。
-- 若没有已授权设备、设备不是 DSU、当前 DSU 缺少可用 `ksud`，或候选涉及无法热加载的新类型/domain transition，记录无法热测的具体原因后才进行静态落盘，并把 Enforcing 热测列为未完成；不得把静态编译结果表述为热测通过。
+- 可热测规则只有在热测确认为必要后才转成所属业务补丁的 CIL。不可热测的早期规则必须由原始 AVC、正确标签、原包同版本策略、init/VINTF/服务契约和完整策略编译共同约束后再落盘，并明确保留冷启动待确认项。这里的“落盘”专指修改本项目的永久策略输入并交给统一入口生成，不是写入 KernelSU `profile set-sepolicy`。
+- 若没有已授权设备、设备不是 DSU、当前 DSU 缺少可用 `ksud`，或拒绝没有安全且等价的热测路径，记录具体原因后进行静态落盘，并把 Enforcing 热测标为未完成或不适用；不得把静态编译结果或不等价的下游热测表述为原始拒绝已验证修复。
 
 ## 先确定所有权
 

@@ -49,6 +49,8 @@ allow hal_example_default surfaceflinger binder call
 
 ## 3. 先检查，再注入，再复现
 
+只有同一个被拒绝操作能在注入后安全且等价地重放，才进入本节。若 AVC 来自 `adb`/`ksud` 可用前或一次性 early-init/init 路径，当前启动已经越过原始状态；此时 `check` 只能验证语法，启动后的 `patch`/`apply` 或下游功能成功都不能证明早期补丁有效，应改做完整策略静态验证并等待干净冷启动确认。
+
 单条规则：
 
 ```bash

@@ -52,6 +52,8 @@ description: 在本项目已授权的 Android DSU 上规划、执行和验证运
 
 遇到 AVC 时读取 [references/ksud-selinux.md](references/ksud-selinux.md)。保持全局 Enforcing，只根据实际 `scontext`、`tcontext`、`tclass` 和权限添加最小 allow。先用 `ksud sepolicy check` 验证语法，再 `patch`/`apply`；不得以 `setenforce 0`、wildcard allow、整域 permissive、`dontaudit` 或盲目 `audit2allow` 代替分析。
 
+注入前先确认同一个被拒绝操作能在当前启动中安全重放。发生在 `adb`/`ksud` 可用前、只执行一次的早期启动路径，或依赖开机装载新类型、contexts、标签和 domain transition 的拒绝，不能用启动后的 live policy 判定永久补丁是否有效；停止该热测分支，转交 `$android-selinux-port-policy` 做完整策略静态验证并保留干净冷启动确认。能够独立重放的下游行为仍可热测，但只能作为局部证据。
+
 当前 DSU 与原系统不共享 `/data`；只探测当前 DSU 的 `ksud`。若当前环境没有可执行的 ksud 或该版本没有 `sepolicy` 子命令，报告阻塞并停止该分支，不要从 host APK 临时抽取陌生 `ksud` 到设备执行。
 
 ## 验证与交付

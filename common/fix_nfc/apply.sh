@@ -36,6 +36,8 @@ vendor_file_contexts="$vendor_selinux/vendor_file_contexts"
 precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_contexts"
 vendor_property_contexts="$vendor_selinux/vendor_property_contexts"
 precompiled_property_contexts="$project_dir/odm/etc/selinux/precompiled_property_contexts"
+vendor_service_contexts="$vendor_selinux/vendor_service_contexts"
+precompiled_service_contexts="$project_dir/odm/etc/selinux/precompiled_service_contexts"
 required_nfc_frameworks=(
 	"$project_dir/system_ext/framework/com.nxp.nfc.jar"
 	"$project_dir/system_ext/framework/com.nxp.nfc.nq.jar"
@@ -54,7 +56,9 @@ for required_file in \
 	"$vendor_file_contexts" \
 	"$precompiled_file_contexts" \
 	"$vendor_property_contexts" \
-	"$precompiled_property_contexts"; do
+	"$precompiled_property_contexts" \
+	"$vendor_service_contexts" \
+	"$precompiled_service_contexts"; do
 	check_file_exists "$required_file"
 	if [[ -L "$required_file" ]]; then
 		err_print "NFC 服务或 SELinux 契约输入不能是符号链接：$required_file"
@@ -70,7 +74,7 @@ expected_bundle_requirements=(
 )
 if (( ${#SELINUX_BUNDLE_REQUIREMENTS[@]} != ${#expected_bundle_requirements[@]} ||
 	${#SELINUX_BUNDLE_POLICY_FRAGMENTS[@]} != 1 ||
-	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 2 )); then
+	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 4 )); then
 	err_print "NFC SELinux bundle 的 requirement/policy 结构不完整"
 	exit 1
 fi
@@ -78,6 +82,20 @@ for requirement_index in "${!expected_bundle_requirements[@]}"; do
 	if [[ "${SELINUX_BUNDLE_REQUIREMENTS[$requirement_index]}" != \
 		"${expected_bundle_requirements[$requirement_index]}" ]]; then
 		err_print "NFC SELinux bundle requirement 与服务契约不一致"
+		exit 1
+	fi
+done
+expected_service_fragment="$(realpath -e -- "$patcher_dir/config/nfc_service_contexts")"
+for service_context_target in vendor_service_contexts precompiled_service_contexts; do
+	service_context_found=0
+	for context_index in "${!SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]}"; do
+		if [[ "${SELINUX_BUNDLE_CONTEXT_TARGETS[$context_index]}" == "$service_context_target" &&
+			"${SELINUX_BUNDLE_CONTEXT_FRAGMENTS[$context_index]}" == "$expected_service_fragment" ]]; then
+			((service_context_found += 1))
+		fi
+	done
+	if (( service_context_found != 1 )); then
+		err_print "NFC SELinux bundle 缺少 $service_context_target service contexts 片段"
 		exit 1
 	fi
 done
@@ -141,6 +159,11 @@ fi
 if ! grep -Fqx 'ro.vendor.nfc. u:object_r:vendor_nfc_mi_prop:s0' "$patcher_dir/config/nfc_property_contexts" ||
 	(( $(grep -Ec '^[[:space:]]*[^#[:space:]]' "$patcher_dir/config/nfc_property_contexts") != 1 )); then
 	err_print "NFC property contexts 片段必须只声明 ro.vendor.nfc."
+	exit 1
+fi
+if ! grep -Fqx 'mi_nfc u:object_r:nfc_service:s0' "$patcher_dir/config/nfc_service_contexts" ||
+	(( $(grep -Ec '^[[:space:]]*[^#[:space:]]' "$patcher_dir/config/nfc_service_contexts") != 1 )); then
+	err_print "NFC service contexts 片段必须只声明 mi_nfc"
 	exit 1
 fi
 validate_nfc_policy_contract() {

@@ -198,5 +198,7 @@
 (allow system_app_${API_VERSION} vendor_cpuid_prop (file (read getattr map open)))
 (allow shell_${API_VERSION} vendor_payment_security_prop (file (read getattr map open)))
 (allow rild vendor_cpuid_prop (file (read getattr map open)))
+(allow rild vendor_deviceid_prop (file (read getattr map open)))
+(allow rild vendor_deviceid_prop (property_service (set)))
 (allow vendor_init_${API_VERSION} vendor_deviceid_prop (property_service (set)))
 (allow system_server_${API_VERSION} hal_mtdservice_default (process (signal)))

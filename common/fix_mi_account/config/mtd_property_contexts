@@ -13,6 +13,12 @@ persist.vendor.sys.biokey_check.status u:object_r:vendor_payment_security_prop:s
 persist.vendor.sys.caikey.status u:object_r:vendor_payment_security_prop:s0
 ro.vendor.oem.serialno u:object_r:vendor_deviceid_prop:s0
 ro.vendor.oem.boot_completed u:object_r:vendor_deviceid_prop:s0
+# 原包 rild 的 IMEI/MEID/EID 缓存属性契约。
+persist.vendor.radio.imei u:object_r:vendor_deviceid_prop:s0
+ro.vendor.oem.imei u:object_r:vendor_deviceid_prop:s0
+persist.vendor.radio.meid u:object_r:vendor_deviceid_prop:s0
+ro.vendor.oem.meid u:object_r:vendor_deviceid_prop:s0
+persist.vendor.eid.record u:object_r:vendor_deviceid_prop:s0
 persist.vendor.sys.rkp.status u:object_r:vendor_payment_security_prop:s0
 persist.vendor.sys.wv_rkp.status u:object_r:vendor_payment_security_prop:s0
 persist.vendor.sys.ese_provision.status u:object_r:vendor_payment_security_prop:s0

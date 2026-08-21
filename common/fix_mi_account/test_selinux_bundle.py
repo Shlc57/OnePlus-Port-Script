@@ -139,9 +139,36 @@ def test_aidl_and_runtime_data_contract() -> None:
     assert "/data/vendor/images(/.*)?" not in odm_contexts
 
 
+def test_device_identifier_property_contract() -> None:
+    policy = POLICY.read_text(encoding="utf-8")
+    property_contexts = dict(
+        active_context_records(CONFIG_DIR / "mtd_property_contexts")
+    )
+    expected_keys = {
+        "persist.vendor.radio.imei",
+        "ro.vendor.oem.imei",
+        "persist.vendor.radio.meid",
+        "ro.vendor.oem.meid",
+        "persist.vendor.eid.record",
+    }
+    assert {
+        key
+        for key, context in property_contexts.items()
+        if key in expected_keys and context == "u:object_r:vendor_deviceid_prop:s0"
+    } == expected_keys
+    assert (
+        "(allow rild vendor_deviceid_prop (file (read getattr map open)))" in policy
+    )
+    assert "(allow rild vendor_deviceid_prop (property_service (set)))" in policy
+    assert "persist.vendor.radio. u:object_r:vendor_deviceid_prop:s0" not in (
+        CONFIG_DIR / "mtd_property_contexts"
+    ).read_text(encoding="utf-8")
+
+
 if __name__ == "__main__":
     test_bundle_ownership_and_targets()
     test_requirements_are_owned_by_source_manifest()
     test_context_types_and_independent_domains()
     test_aidl_and_runtime_data_contract()
+    test_device_identifier_property_contract()
     print("fix_mi_account SELinux bundle tests passed")

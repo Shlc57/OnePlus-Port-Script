@@ -115,7 +115,7 @@ bash OP15_port.sh
 | [`common/fix_mi_mtp_kill_self`](common/fix_mi_mtp_kill_self/README.md) | `system` | 将 MTP 服务从 `android.process.media` 隔离。 |
 | [`common/fix_modem_xts`](common/fix_modem_xts/README.md) | `system` | 短路不兼容的 Oplus modem/Xiaomi OEM Hook 调用。 |
 | [`common/fix_mtp`](common/fix_mtp/README.md) | `system` | 替换匹配底包 USB 栈的 configfs rc。 |
-| [`common/fix_nfc`](common/fix_nfc/README.md) | `system`、`odm` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
+| [`common/fix_nfc`](common/fix_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
 | [`common/fix_pangu`](common/fix_pangu/README.md) | `product`、`system` | 将 `product/pangu/system` 迁移到最终 system。 |
 | [`common/fix_settings_haptic`](common/fix_settings_haptic/README.md) | `system_ext` | 修复 Settings 的触感能力判断。 |
 | [`common/fix_vendor_avc`](common/fix_vendor_avc/README.md) | `vendor`、`odm` | 统一合并 vendor 策略、模块片段与 SELinux bundle。 |

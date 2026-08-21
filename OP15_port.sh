@@ -6,6 +6,8 @@ port="$script_dir/port_main.sh"
 oneplus15_config_dir="$script_dir/devices/oneplus15/config"
 # 一加 15 流程明确选用的可选 SKU 附加配置；缺失时只警告并继续。
 export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
+# 一加 15 组合流程固定覆盖原包机型显示名。
+export DEVICE_DISPLAY_NAME='OnePlus 15'
 # Android framework 使用的物理 Display ID；调用方可在环境中显式覆盖。
 export PORT_TARGET_DISPLAY_ID="4630946903293830803"
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"

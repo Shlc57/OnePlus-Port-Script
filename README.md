@@ -69,8 +69,8 @@ bash port_main.sh --project-dir /path/to/project common/fix_launcher
 # 可选指定同目录下的 SKU 附加 prop；文件缺失时弱警告并继续
 DEVICE_IDENTITY_PROP=nezha_5.9.9.prop bash port_main.sh common/fix_device_identity
 
-# 默认使用底包 ro.vendor.oplus.market.name，也可显式覆盖设备显示名
-DEVICE_DISPLAY_NAME='一加15' bash port_main.sh common/fix_device_identity
+# 可选覆盖原包设备显示名；未设置时沿用 mi_odm 的原包属性
+DEVICE_DISPLAY_NAME='OnePlus 15' bash port_main.sh common/fix_device_identity
 
 # 一加 15 当前整套流程
 bash OP15_port.sh
@@ -80,7 +80,7 @@ bash OP15_port.sh
 
 执行首个补丁前，`init_port_env` 会从尚未修改的分区树识别底包与原包设备，并把同一份身份快照传给全部下游补丁。底包优先读取 `odm/etc/<ro.separate.soft>/build.default.prop`；没有该配置时，只在 `odm/etc/*/build.default.prop` 唯一时采用它，随后再按 `odm/build.prop`、`odm/etc/build.prop`、`vendor/build.prop` 回退。原包优先按 `mi_odm/etc/build.prop`、`mi_odm/build.prop`，再按 `product` 与 `system` 的 build.prop 识别；`mi_vendor` 仅是来源标记目录，不参与设备代号推断。补丁不得自行重读已可能被修改的 ODM 身份，也不得写死原包设备代号。
 
-下游统一使用 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*` 变量；原包机型 XML 路径由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。底包 `ro.vendor.oplus.market.name` 另存为 `PORT_BASE_OPLUS_MARKET_NAME`，供显示名写入使用。SKU 附加 prop 不属于设备识别结果，也不会按代号自动猜选；需要时由组合入口通过 `DEVICE_IDENTITY_PROP` 明确指定文件名，再交给 `common/fix_device_identity`。指定文件不存在时只输出弱警告并忽略附加配置，`mi_odm/etc/build.prop` 的基础设备标识写入继续执行。`common/fix_device_identity` 会把 `ro.product.odm.marketname` 默认改为身份快照中的底包 `ro.vendor.oplus.market.name`；如需自定义显示名，可通过 `DEVICE_DISPLAY_NAME` 显式覆盖，其他原包身份和认证字段不受影响。
+下游统一使用 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*` 变量；原包机型 XML 路径由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。SKU 附加 prop 不属于设备识别结果，也不会按代号自动猜选；需要时由组合入口通过 `DEVICE_IDENTITY_PROP` 明确指定文件名，再交给 `common/fix_device_identity`。指定文件不存在时只输出弱警告并忽略附加配置，`mi_odm/etc/build.prop` 的基础设备标识写入继续执行。`common/fix_device_identity` 只有在显式提供 `DEVICE_DISPLAY_NAME` 时才覆盖 `ro.product.odm.marketname`，未提供时沿用 `mi_odm` 基础属性或附加 prop，其他原包身份和认证字段不受影响。
 
 `tools.sh` 统一管理配置目录、contexts 与 fsconfig 名称模板，只识别工程根目录下的以下两套格式；两者同时存在时优先使用 `DNA_config`：
 
@@ -107,7 +107,7 @@ bash OP15_port.sh
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
-| [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份和可选 SKU 属性，并使用底包机型显示名。 |
+| [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
 | [`common/fix_linear_haptic`](common/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |

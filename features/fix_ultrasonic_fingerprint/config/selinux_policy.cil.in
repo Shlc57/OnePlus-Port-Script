@@ -1,3 +1,6 @@
+;; Restore the missing public-policy ABI link used by the Oplus property contexts.
+(typeattributeset oppo_fingerprint_prop_${API_VERSION} (oppo_fingerprint_prop))
+
 ;; Compatibility property contract for the target ultrasonic fingerprint flow.
 (type vendor_ultrasonic_fp_compat_prop)
 (roletype object_r vendor_ultrasonic_fp_compat_prop)

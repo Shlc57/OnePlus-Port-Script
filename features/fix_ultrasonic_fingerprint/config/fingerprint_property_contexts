@@ -3,7 +3,7 @@ ro.hardware.fp.fod. u:object_r:vendor_ultrasonic_fp_compat_prop:s0
 ro.hardware.fp.fod u:object_r:vendor_ultrasonic_fp_compat_prop:s0
 persist.vendor.sys.fp.vendor u:object_r:vendor_ultrasonic_fp_compat_prop:s0
 persist.vendor.sys.fp.fod. u:object_r:vendor_ultrasonic_fp_compat_prop:s0
-# Enforcing AVC properties written by the target Oplus HAL reuse its existing type.
+# Oplus properties keep their existing public type; the policy fragment restores its ABI mapping.
 vendor.fingerprint.aidl.support u:object_r:oppo_fingerprint_prop:s0
 persist.vendor.fingerprint.optical.support u:object_r:oppo_fingerprint_prop:s0
 oplus.fingerprint.gf.package.version u:object_r:oppo_fingerprint_prop:s0

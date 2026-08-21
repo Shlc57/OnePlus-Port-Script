@@ -104,6 +104,7 @@ if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 if ! grep -Fqx '(type hal_fingerprint_oppo)' "$vendor_policy" ||
+	! grep -Fqx '(type oppo_fingerprint_prop)' "$vendor_versioned_policy" ||
 	! grep -Fqx "(typeattribute oppo_fingerprint_prop_${api_version})" "$vendor_versioned_policy" ||
 	! grep -Fqx "(typeattribute powerctl_prop_${api_version})" "$vendor_versioned_policy" ||
 	! grep -Eq "(^|[^A-Za-z0-9_])system_server_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy" ||
@@ -111,7 +112,9 @@ if ! grep -Fqx '(type hal_fingerprint_oppo)' "$vendor_policy" ||
 	err_print "底包缺少超声波指纹 HAL、属性类型或版本化系统域契约"
 	exit 1
 fi
+# shellcheck disable=SC2016 # ${API_VERSION} is expanded by selinux_merge, not this shell.
 for expected_statement in \
+	'(typeattributeset oppo_fingerprint_prop_${API_VERSION} (oppo_fingerprint_prop))' \
 	'(type vendor_ultrasonic_fp_compat_prop)' \
 	'(roletype object_r vendor_ultrasonic_fp_compat_prop)' \
 	'(typeattributeset property_type (vendor_ultrasonic_fp_compat_prop))' \

@@ -64,6 +64,7 @@ def test_policy_is_narrow_and_versioned() -> None:
         if line.strip().startswith("(")
     ]
     assert statements == [
+        "(typeattributeset oppo_fingerprint_prop_${API_VERSION} (oppo_fingerprint_prop))",
         "(type vendor_ultrasonic_fp_compat_prop)",
         "(roletype object_r vendor_ultrasonic_fp_compat_prop)",
         "(typeattributeset property_type (vendor_ultrasonic_fp_compat_prop))",
@@ -131,6 +132,8 @@ def test_apply_uses_the_bundle_before_writing_properties() -> None:
     assert 'load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"' in apply_source
     assert 'check_selinux_bundle_requirements "$project_dir"' in apply_source
     assert "(type hal_fingerprint_oppo)" in apply_source
+    assert "(type oppo_fingerprint_prop)" in apply_source
+    assert "oppo_fingerprint_prop_${api_version}" in apply_source
     assert "vendor_ultrasonic_fp_compat_prop" in apply_source
     assert 'patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"' in apply_source
     assert apply_source.index("load_selinux_bundle_manifest") < apply_source.index(

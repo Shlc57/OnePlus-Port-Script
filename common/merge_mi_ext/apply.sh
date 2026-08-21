@@ -212,9 +212,10 @@ else
 		END { exit(found ? 0 : 3) }
 		' "$mi_ext_build_prop"; then
 			append_unique_lines "$product_tail" "$product_build_prop"
+			ensure_prop "$product_build_prop" "$marker_key" true
 			chmod --reference="$mi_ext_build_prop" -- "$mi_ext_head"
 			replace_file_if_different "$mi_ext_head" "$mi_ext_build_prop"
-			std_print "✅ 卸载属性标记后的内容已迁移到 product"
+			std_print "✅ 卸载属性标记及其后内容已迁移到 product"
 		else
 			awk_status=$?
 			if (( awk_status == 3 )); then

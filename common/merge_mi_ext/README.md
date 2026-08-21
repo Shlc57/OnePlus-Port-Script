@@ -13,7 +13,7 @@
 
 ## 模块说明
 
-模块将 mi_ext 中的 product、system_ext、system 与 etc 内容映射到真实目标路径，同时迁移 contexts、fsconfig 和属性。它还会迁移 CustFeatureResolve 启用属性，并建立运行时 `/mi_ext/product -> /product` 兼容路径。
+模块将 mi_ext 中的 product、system_ext、system 与 etc 内容映射到真实目标路径，同时迁移 contexts、fsconfig 和属性。属性分段标记 `ro.miui.support.system.app.uninstall.v2=true` 会与其后内容一并写入 `product/etc/build.prop`，供主题商店入口判断系统应用卸载能力；模块还会迁移 CustFeatureResolve 启用属性，并建立运行时 `/mi_ext/product -> /product` 兼容路径。
 
 所有目标分区、来源 metadata 与路径转换会在复制前校验。只有文件和 metadata 全部成功合并后才删除 `mi_ext` 源目录；重复执行时，来源已不存在会安全跳过。
 

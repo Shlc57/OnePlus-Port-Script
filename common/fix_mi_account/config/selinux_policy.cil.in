@@ -85,6 +85,7 @@
 (allow hal_mtdservice_check vendor_persist_drm_file (file (ioctl read write create getattr setattr lock relabelto append map unlink rename open watch watch_reads)))
 (allow hal_mtdservice_check mnt_vendor_file_${API_VERSION} (dir (ioctl read write create getattr setattr lock relabelfrom rename open watch watch_reads add_name remove_name reparent search rmdir)))
 (allow hal_mtdservice_check file_contexts_file_${API_VERSION} (file (ioctl read getattr lock map open watch watch_reads)))
+(allow hal_mtdservice_check self (qipcrtr_socket (create)))
 (allow hal_mtdservice_check firmware_file (dir (ioctl read getattr lock open watch watch_reads search)))
 (allow hal_mtdservice_check firmware_file (file (ioctl read getattr lock map open watch watch_reads)))
 (allow hal_mtdservice_check tee_device_${API_VERSION} (chr_file (ioctl read write getattr lock append map open watch watch_reads)))

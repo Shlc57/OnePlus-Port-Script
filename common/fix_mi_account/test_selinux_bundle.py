@@ -124,6 +124,7 @@ def test_context_types_and_independent_domains() -> None:
 
 def test_aidl_and_runtime_data_contract() -> None:
     policy = POLICY.read_text(encoding="utf-8")
+    assert "(allow hal_mtdservice_check self (qipcrtr_socket (create)))" in policy
     assert (
         "(allow hal_mtdservice_server hal_mtdservice_service "
         "(service_manager (add find)))"

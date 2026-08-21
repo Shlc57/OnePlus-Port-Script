@@ -1,0 +1,11 @@
+# DisplayFeature/RGB properties observed on the target device.
+ro.vendor.colorpick_adjust u:object_r:vendor_display_prop:s0
+ro.vendor.all_modes.colorpick_adjust u:object_r:vendor_display_prop:s0
+vendor.panel.color u:object_r:vendor_display_prop:s0
+ro.oplus.display.rgb_ball_min_value u:object_r:vendor_display_prop:s0
+ro.oplus.display.rgb_ball_max_value u:object_r:vendor_display_prop:s0
+ro.oplus.display.colormode.vivid u:object_r:vendor_display_prop:s0
+ro.oplus.display.smarteyecare.v5 u:object_r:vendor_display_prop:s0
+ro.oplus.display.lcd_eyeprotect_module u:object_r:vendor_display_prop:s0
+ro.oplus.display.screenSizeInches.primary u:object_r:vendor_display_prop:s0
+ro.oplus.display.screenSizeCentimeter.primary u:object_r:vendor_display_prop:s0

@@ -75,8 +75,18 @@ def test_registry() -> None:
             "config/selinux_bundle.tsv",
         ),
         (
+            "fix_displayfeature_bridge",
+            "features/fix_displayfeature_bridge",
+            "config/selinux_bundle.tsv",
+        ),
+        (
             "fix_oplus_double_tap_wake",
             "features/fix_oplus_double_tap_wake",
+            "config/selinux_bundle.tsv",
+        ),
+        (
+            "fix_ultrasonic_fingerprint",
+            "features/fix_ultrasonic_fingerprint",
             "config/selinux_bundle.tsv",
         ),
     ]

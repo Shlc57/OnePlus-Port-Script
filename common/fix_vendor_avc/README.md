@@ -17,10 +17,14 @@
 
 - 已安装的 `features/fix_displayfeature_bridge` 服务及其策略片段。
 - `common/fix_mi_account` 完整交付的 mtd 策略与 contexts bundle。
-- `common/fix_nfc` 验证过 NXP HAL 契约后交付的 ANR signal 策略 bundle。
+- `common/fix_nfc` 验证过 NXP HAL 契约后交付的 ANR signal、NFC 属性策略与 contexts bundle。
+- `features/fix_displayfeature_bridge` 交付的 RGB/色温属性 contexts bundle。
 - `features/fix_oplus_double_tap_wake` 完整交付的 TouchFeature bridge bundle。
+- `features/fix_ultrasonic_fingerprint` 交付的 FOD 与实机 AVC 指纹属性策略及 contexts bundle。
 
 bundle 注册表只声明可消费模块；目录和清单必须使用安全相对路径，并在解析后仍位于当前 `port` 与对应 bundle 目录内。只有 requirement 完整满足时才会启用。半套 requirement、未知 contexts 目标、缺失类型、同一逻辑目标内跨 bundle 的重复 key（转义形式视为同一 key）、非幂等结果或 normal/debug 结果不一致都会在落盘前失败。业务策略归各模块所有，不会下沉到通用 merger。
+
+contexts 类型可由最终 vendor CIL、目标 `plat_pub_versioned.cil` 或平台 CIL 提供；统一入口只复用完整 split policy 中已存在的公共类型，不会为了通过校验重复声明平台类型。
 
 模块还会精确重标 MI-SF/DFPS 的 `vendor_display_prop` contexts，保留 qguard/BSG 标签处理，并同步 vendor/ODM 早期 contexts。删除 ODM 中旧 `precompiled_sepolicy*` 会迫使 init 基于当前 split CIL 重新编译完整策略。
 
@@ -35,6 +39,7 @@ bash port_main.sh common/fix_mi_account \
   common/fix_nfc \
   features/fix_displayfeature_bridge \
   features/fix_oplus_double_tap_wake \
+  features/fix_ultrasonic_fingerprint \
   common/fix_vendor_avc
 ```
 

@@ -25,9 +25,11 @@ persist.vendor.sys.fp.fod.delay.fingerdown.ms
 
 模块需要 Python 3。目标属性或显示配置缺失时只警告并跳过；参数文件缺失或无效时会失败。
 
+模块同时登记一个只覆盖已确认指纹链路的 SELinux bundle：精确 `ro.hardware.fp.fod`、`ro.hardware.fp.fod.*`、`persist.vendor.sys.fp.vendor` 和 `persist.vendor.sys.fp.fod.*` 使用自有窄属性类型，并同步交付 vendor 与 precompiled property contexts。设备日志中被 `hal_fingerprint_oppo` 拒绝写入的 Oplus 指纹属性逐项复用底包已有的 `oppo_fingerprint_prop`；`persist.vendor.rpmb.enable.state` 复用支付 HAL 已有的 `powerctl_prop`。`vendor_init` 只获得新 FOD 类型的写入权限，系统服务、SurfaceFlinger、zygote 与底包指纹 HAL仅获得读取权限；不会采用 ZIP 中过宽的 `exported_default_prop` 或 rawdata 类型，也不会扩大成整个 `vendor.fingerprint.*`/`persist.vendor.fingerprint.*` 前缀。`common/fix_vendor_avc` 必须在本模块之后运行。
+
 ## 执行
 
 ```bash
 ULTRASONIC_FP_PROPERTIES_FILE=/path/to/fingerprint.props \
-bash port_main.sh features/fix_ultrasonic_fingerprint
+bash port_main.sh features/fix_ultrasonic_fingerprint common/fix_vendor_avc
 ```

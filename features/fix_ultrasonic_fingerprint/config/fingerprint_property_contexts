@@ -1,0 +1,27 @@
+# Feature-owned FOD properties use a narrow compatibility type.
+ro.hardware.fp.fod. u:object_r:vendor_ultrasonic_fp_compat_prop:s0
+ro.hardware.fp.fod u:object_r:vendor_ultrasonic_fp_compat_prop:s0
+persist.vendor.sys.fp.vendor u:object_r:vendor_ultrasonic_fp_compat_prop:s0
+persist.vendor.sys.fp.fod. u:object_r:vendor_ultrasonic_fp_compat_prop:s0
+# Enforcing AVC properties written by the target Oplus HAL reuse its existing type.
+vendor.fingerprint.aidl.support u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.support u:object_r:oppo_fingerprint_prop:s0
+oplus.fingerprint.gf.package.version u:object_r:oppo_fingerprint_prop:s0
+oplus.fingerprint.qrcode.support u:object_r:oppo_fingerprint_prop:s0
+oplus.fingerprint.qrcode.value u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.brightness.strategy u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.brightness.threshold u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.fp_id u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.circlenumber u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.iconlocation u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.iconnumber u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.iconsize u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.sensorlocation u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.optical.sensorrotation u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.sensor_type u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.fingerprint.version u:object_r:oppo_fingerprint_prop:s0
+persist.vendor.side.fp.near.feature.support u:object_r:oppo_fingerprint_prop:s0
+vendor.fingerprint.cali u:object_r:oppo_fingerprint_prop:s0
+vendor.fingerprint.meminfo u:object_r:oppo_fingerprint_prop:s0
+# The payment HAL already owns the target power-control property contract.
+persist.vendor.rpmb.enable.state u:object_r:powerctl_prop:s0

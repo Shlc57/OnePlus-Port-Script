@@ -18,11 +18,11 @@
 
 原系统 `Nfc_st.apk` 只支持 `/dev/st21nfc`，而目标底包可提供 `/dev/nq-nci` 与 NXP AIDL HAL。模块保留原 APK 路径和 metadata，只替换 APK 内容；NFC 能力属性由目标设备流程显式提供，不再从小米原包推断。一加 15 使用 `devices/oneplus15/config/nfc.props`。
 
-模块还拥有 NXP NFC 的最小 SELinux bundle。它先验证 `nfc-service-nxp.rc`、VINTF、`hal_nfc_default_exec` 标签、init 域转换以及当前 policy API，再登记一条版本化规则：允许 `system_server` 的 ANR 消费线程向 `hal_nfc_default` 发送普通 `signal`。不授予 wildcard、permissive、`dontaudit` 或额外文件权限。`common/fix_vendor_avc` 必须在本模块之后运行，负责把该片段幂等合并到 normal/debug vendor CIL 并清理 stale precompiled policy。
+模块还拥有 NXP NFC 的最小 SELinux bundle。它先验证 `nfc-service-nxp.rc`、VINTF、`hal_nfc_default_exec` 标签、init 域转换以及当前 policy API，再登记版本化规则：允许 `system_server` 的 ANR 消费线程向 `hal_nfc_default` 发送普通 `signal`，并恢复原包 `ro.vendor.nfc.*` 的 `vendor_nfc_mi_prop` 类型、HAL/系统消费者读写契约和 property socket 连接。该窄前缀同步写入 vendor 与 precompiled property contexts；不使用 `vendor_default_prop`、wildcard、permissive 或 `dontaudit`。`common/fix_vendor_avc` 必须在本模块之后运行，负责把该片段幂等合并到 normal/debug vendor CIL 并清理 stale precompiled policy。
 
 配置或属性目标缺失只跳过属性子步骤，不影响 APK 子步骤；APK 目标缺失也只跳过替换。替换前会校验原 ST APK、内置 APK、NXP HAL manifest 和所需 framework。模块不替换底包 HAL、固件或射频配置，也不携带与目标 boot image 绑定的 oat。
 
-既有一加 15 DSU 测试曾验证 NFC 设置、NXP HAL 初始化、实体卡识别和 Tag Intent 分发。2026-08-19 的 Enforcing DSU 热测中，目标 AVC 在注入前约每 15 秒出现一次；仅临时加入 `system_server_202504 -> hal_nfc_default:process signal` 后连续多个周期增量为 0，NFC HAL 与 `com.android.nfc` 仍在运行且没有新增 NFC AVC。随后重载服务时另观察到 `MiNfcAdapter` 抛出 `UnsupportedOperationException: Doesn't support MI NFC APIs`；这是独立的 Framework/API 兼容问题，本 SELinux 规则不处理，也不能据本轮 AVC 热测宣称 NFC 整体功能已经恢复。固化 CIL 已通过 Android 16 normal/debug 完整 split policy 静态编译与基线 neverallow 对比，仍待下一次未污染 DSU 冷启动确认。
+既有一加 15 DSU 测试曾验证 NFC 设置、NXP HAL 初始化、实体卡识别和 Tag Intent 分发。2026-08-19 的 Enforcing DSU 热测中，目标 AVC 在注入前约每 15 秒出现一次；仅临时加入 `system_server_202504 -> hal_nfc_default:process signal` 后连续多个周期增量为 0，NFC HAL 与 `com.android.nfc` 仍在运行且没有新增 NFC AVC。当前日志又确认 `ro.vendor.nfc.*` 在 Enforcing 下被拒，且用户确认 Permissive 下 NFC 可用；新增 property 类型涉及开机装载，仍须下一次未污染 DSU 软重启确认，不能以当前静态结果宣称永久修复已经实机生效。
 
 ## 执行
 

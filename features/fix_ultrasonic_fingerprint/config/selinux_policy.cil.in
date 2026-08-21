@@ -1,0 +1,14 @@
+;; Compatibility property contract for the target ultrasonic fingerprint flow.
+(type vendor_ultrasonic_fp_compat_prop)
+(roletype object_r vendor_ultrasonic_fp_compat_prop)
+(typeattributeset property_type (vendor_ultrasonic_fp_compat_prop))
+(typeattributeset vendor_property_type (vendor_ultrasonic_fp_compat_prop))
+(typeattributeset vendor_public_property_type (vendor_ultrasonic_fp_compat_prop))
+
+(allow vendor_init_${API_VERSION} vendor_ultrasonic_fp_compat_prop (property_service (set)))
+(allow vendor_init_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow system_server_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow system_app_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow surfaceflinger_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow hal_fingerprint_oppo vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow zygote_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))

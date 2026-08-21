@@ -34,6 +34,8 @@ vendor_debug_versioned_policy="$vendor_selinux/plat_pub_versioned_debug.cil"
 vendor_policy_version="$vendor_selinux/plat_sepolicy_vers.txt"
 vendor_file_contexts="$vendor_selinux/vendor_file_contexts"
 precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_contexts"
+vendor_property_contexts="$vendor_selinux/vendor_property_contexts"
+precompiled_property_contexts="$project_dir/odm/etc/selinux/precompiled_property_contexts"
 required_nfc_frameworks=(
 	"$project_dir/system_ext/framework/com.nxp.nfc.jar"
 	"$project_dir/system_ext/framework/com.nxp.nfc.nq.jar"
@@ -50,7 +52,9 @@ for required_file in \
 	"$vendor_versioned_policy" \
 	"$vendor_policy_version" \
 	"$vendor_file_contexts" \
-	"$precompiled_file_contexts"; do
+	"$precompiled_file_contexts" \
+	"$vendor_property_contexts" \
+	"$precompiled_property_contexts"; do
 	check_file_exists "$required_file"
 	if [[ -L "$required_file" ]]; then
 		err_print "NFC 服务或 SELinux 契约输入不能是符号链接：$required_file"
@@ -66,7 +70,7 @@ expected_bundle_requirements=(
 )
 if (( ${#SELINUX_BUNDLE_REQUIREMENTS[@]} != ${#expected_bundle_requirements[@]} ||
 	${#SELINUX_BUNDLE_POLICY_FRAGMENTS[@]} != 1 ||
-	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 0 )); then
+	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 2 )); then
 	err_print "NFC SELinux bundle 的 requirement/policy 结构不完整"
 	exit 1
 fi
@@ -82,6 +86,20 @@ if [[ "${SELINUX_BUNDLE_POLICY_FRAGMENTS[0]}" != \
 	err_print "NFC SELinux bundle 没有引用模块自有策略片段"
 	exit 1
 fi
+expected_property_fragment="$(realpath -e -- "$patcher_dir/config/nfc_property_contexts")"
+for property_context_target in vendor_property_contexts precompiled_property_contexts; do
+	property_context_found=0
+	for context_index in "${!SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]}"; do
+		if [[ "${SELINUX_BUNDLE_CONTEXT_TARGETS[$context_index]}" == "$property_context_target" &&
+			"${SELINUX_BUNDLE_CONTEXT_FRAGMENTS[$context_index]}" == "$expected_property_fragment" ]]; then
+			((property_context_found += 1))
+		fi
+	done
+	if (( property_context_found != 1 )); then
+		err_print "NFC SELinux bundle 缺少 $property_context_target property contexts 片段"
+		exit 1
+	fi
+done
 
 api_version="$(tr -d '[:space:]' < "$vendor_policy_version")"
 if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
@@ -90,9 +108,39 @@ if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
 fi
 # shellcheck disable=SC2016 # API_VERSION 由 common/selinux_merge 在落盘前展开。
 expected_nfc_rule='(allow system_server_${API_VERSION} hal_nfc_default (process (signal)))'
-if ! grep -Fqx "$expected_nfc_rule" "$selinux_policy_fragment" ||
-	(( $(grep -Ec '^[[:space:]]*\(' "$selinux_policy_fragment") != 1 )); then
-	err_print "NFC SELinux 片段必须只包含已热测的 system_server -> hal_nfc_default signal 规则"
+# shellcheck disable=SC2016 # Array entries preserve API_VERSION for the merger.
+expected_nfc_policy_statements=(
+	"$expected_nfc_rule"
+	'(type vendor_nfc_mi_prop)'
+	'(roletype object_r vendor_nfc_mi_prop)'
+	'(typeattributeset property_type (vendor_nfc_mi_prop))'
+	'(typeattributeset vendor_property_type (vendor_nfc_mi_prop))'
+	'(typeattributeset vendor_public_property_type (vendor_nfc_mi_prop))'
+	'(allow hal_nfc_default vendor_nfc_mi_prop (property_service (set)))'
+	'(allow hal_nfc_default vendor_nfc_mi_prop (file (read getattr map open)))'
+	'(allow hal_nfc_default property_socket_${API_VERSION} (sock_file (write)))'
+	'(allow hal_nfc_default init_${API_VERSION} (unix_stream_socket (connectto)))'
+	'(allow hal_secure_element_default vendor_nfc_mi_prop (property_service (set)))'
+	'(allow hal_secure_element_default vendor_nfc_mi_prop (file (read getattr map open)))'
+	'(allow nfc_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))'
+	'(allow secure_element_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))'
+	'(allow system_app_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))'
+	'(allow vendor_init_${API_VERSION} vendor_nfc_mi_prop (property_service (set)))'
+	'(allow vendor_init_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))'
+)
+for expected_statement in "${expected_nfc_policy_statements[@]}"; do
+	if ! grep -Fqx "$expected_statement" "$selinux_policy_fragment"; then
+		err_print "NFC SELinux 片段缺少预期策略条目：$expected_statement"
+		exit 1
+	fi
+done
+if (( $(grep -Ec '^[[:space:]]*\(' "$selinux_policy_fragment") != ${#expected_nfc_policy_statements[@]} )); then
+	err_print "NFC SELinux 片段包含未声明的额外策略条目"
+	exit 1
+fi
+if ! grep -Fqx 'ro.vendor.nfc. u:object_r:vendor_nfc_mi_prop:s0' "$patcher_dir/config/nfc_property_contexts" ||
+	(( $(grep -Ec '^[[:space:]]*[^#[:space:]]' "$patcher_dir/config/nfc_property_contexts") != 1 )); then
+	err_print "NFC property contexts 片段必须只声明 ro.vendor.nfc."
 	exit 1
 fi
 validate_nfc_policy_contract() {

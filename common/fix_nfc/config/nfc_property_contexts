@@ -1,0 +1,2 @@
+# Xiaomi/NXP NFC compatibility properties used by the NXP NFC and secure-element HALs.
+ro.vendor.nfc. u:object_r:vendor_nfc_mi_prop:s0

@@ -22,6 +22,7 @@ system_ext_selinux="$project_dir/system_ext/etc/selinux"
 odm_selinux="$project_dir/odm/etc/selinux"
 vendor_file_contexts="$vendor_selinux/vendor_file_contexts"
 vendor_property_contexts="$vendor_selinux/vendor_property_contexts"
+vendor_versioned_policy="$vendor_selinux/plat_pub_versioned.cil"
 vendor_service_contexts="$vendor_selinux/vendor_service_contexts"
 precompiled_file_contexts="$odm_selinux/precompiled_file_contexts"
 precompiled_property_contexts="$odm_selinux/precompiled_property_contexts"
@@ -32,8 +33,6 @@ odm_metadata_fsconfig="$(get_part_fsconfig_path odm)"
 policy_patcher="$patcher_dir/patch_vendor_avc_policy.py"
 # shellcheck disable=SC2154 # port_dir is exported by init_port_env/tools.sh.
 selinux_merger="$port_dir/common/selinux_merge/selinux_merge.py"
-display_patch_dir="$port_dir/features/fix_displayfeature_bridge"
-display_policy_fragment="$display_patch_dir/config/selinux_policy.cil.in"
 display_service_rc="$project_dir/vendor/etc/init/vendor.xiaomi.hardware.displayfeature_aidl-service.rc"
 bundle_registry="$patcher_dir/config/selinux_bundles.tsv"
 
@@ -166,7 +165,9 @@ validate_context_fragment() {
 		fi
 		seen_keys["$normalized_context_key"]=1
 		context_type="${BASH_REMATCH[1]}"
-		if ! grep -Fqx "(type $context_type)" "$policy_file"; then
+		if ! grep -Fqx "(type $context_type)" "$policy_file" &&
+			! grep -Fqx "(type $context_type)" "$vendor_versioned_policy" &&
+			! grep -Fqx "(type $context_type)" "$system_selinux/plat_sepolicy.cil"; then
 			err_print "生成的 vendor policy 缺少 context 类型：$context_type"
 			return 1
 		fi
@@ -412,12 +413,10 @@ if [[ -e "$display_service_rc" || -L "$display_service_rc" ]]; then
 		err_print "DisplayFeature 服务 rc 缺少 AIDL interface，拒绝套用其 SELinux 片段"
 		exit 1
 	fi
-	check_file_exists "$display_policy_fragment"
-	if [[ -L "$display_policy_fragment" ]]; then
-		err_print "DisplayFeature SELinux 片段不能是符号链接：$display_policy_fragment"
+	if [[ ! " ${enabled_bundle_names[*]} " =~ [[:space:]]fix_displayfeature_bridge[[:space:]] ]]; then
+		err_print "DisplayFeature 服务已安装，但 SELinux bundle 未启用"
 		exit 1
 	fi
-	policy_fragments+=("$display_policy_fragment")
 	display_enabled=true
 fi
 

@@ -88,6 +88,7 @@ bash "$port" common/merge_mi_ext \
 	common/fix_nfc \
 	features/fix_displayfeature_bridge \
 	features/fix_oplus_double_tap_wake \
+	features/fix_ultrasonic_fingerprint \
 	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
@@ -97,7 +98,6 @@ bash "$port" common/merge_mi_ext \
 	common/fix_modem_xts \
 	common/fix_mtp \
 	common/fix_mi_mtp_kill_self \
-	features/fix_ultrasonic_fingerprint \
 	features/fix_oplus_fingerprint_protocol \
 	devices/oneplus15/fix_auto_brightness \
 	common/fix_boot_refresh_rate \

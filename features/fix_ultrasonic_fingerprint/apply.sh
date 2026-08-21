@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
 std_print "配置超声波屏下指纹"
@@ -52,6 +53,11 @@ fingerdown_delay_ms="$(read_fingerprint_parameter ultrasonic.fp.fingerdown.delay
 # shellcheck disable=SC2154
 odm_build_prop="$project_dir/odm/build.prop"
 display_resolution_config="$project_dir/odm/etc/sdm_display_resolution_extn.xml"
+selinux_bundle_manifest="$patcher_dir/config/selinux_bundle.tsv"
+selinux_policy_fragment="$patcher_dir/config/selinux_policy.cil.in"
+vendor_selinux="$project_dir/vendor/etc/selinux"
+vendor_policy="$vendor_selinux/vendor_sepolicy.cil"
+vendor_versioned_policy="$vendor_selinux/plat_pub_versioned.cil"
 prop_patch_ready=1
 if [[ -L "$odm_build_prop" ]]; then
 	err_print "不支持直接修改符号链接：$odm_build_prop"
@@ -77,6 +83,45 @@ if (( prop_patch_ready == 0 )); then
 	std_print "处理完成"
 	exit 0
 fi
+for required_selinux_file in "$vendor_policy" "$vendor_versioned_policy"; do
+	check_file_exists "$required_selinux_file"
+	if [[ -L "$required_selinux_file" ]]; then
+		err_print "指纹 SELinux 契约输入不能是符号链接：$required_selinux_file"
+		exit 1
+	fi
+done
+load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"
+check_selinux_bundle_requirements "$project_dir"
+if [[ "$SELINUX_BUNDLE_ACTIVE" != true ||
+	${#SELINUX_BUNDLE_POLICY_FRAGMENTS[@]} != 1 ||
+	${#SELINUX_BUNDLE_CONTEXT_FRAGMENTS[@]} != 2 ]]; then
+	err_print "超声波指纹 SELinux bundle requirement 不完整"
+	exit 1
+fi
+api_version="$(tr -d '[:space:]' < "$vendor_selinux/plat_sepolicy_vers.txt")"
+if [[ ! "$api_version" =~ ^[0-9]+$ ]]; then
+	err_print "指纹 SELinux bundle 无法识别目标 policy API：$api_version"
+	exit 1
+fi
+if ! grep -Fqx '(type hal_fingerprint_oppo)' "$vendor_policy" ||
+	! grep -Fqx "(typeattribute oppo_fingerprint_prop_${api_version})" "$vendor_versioned_policy" ||
+	! grep -Fqx "(typeattribute powerctl_prop_${api_version})" "$vendor_versioned_policy" ||
+	! grep -Eq "(^|[^A-Za-z0-9_])system_server_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy" ||
+	! grep -Eq "(^|[^A-Za-z0-9_])zygote_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy"; then
+	err_print "底包缺少超声波指纹 HAL、属性类型或版本化系统域契约"
+	exit 1
+fi
+for expected_statement in \
+	'(type vendor_ultrasonic_fp_compat_prop)' \
+	'(roletype object_r vendor_ultrasonic_fp_compat_prop)' \
+	'(typeattributeset property_type (vendor_ultrasonic_fp_compat_prop))' \
+	'(typeattributeset vendor_property_type (vendor_ultrasonic_fp_compat_prop))' \
+	'(typeattributeset vendor_public_property_type (vendor_ultrasonic_fp_compat_prop))'; do
+	if ! grep -Fqx "$expected_statement" "$selinux_policy_fragment"; then
+		err_print "指纹 SELinux 片段缺少预期类型声明：$expected_statement"
+		exit 1
+	fi
+done
 if ! command -v python3 >/dev/null 2>&1; then
 	err_print "缺少 Python 3，无法解析显示配置并换算指纹坐标"
 	exit 1

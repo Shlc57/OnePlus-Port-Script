@@ -27,6 +27,8 @@
 
 桥库已在一加 15 DSU 上通过 tmpfs 热替换验证三档 RGB/PCC 与 RenderIntent 切换；上层权限链已用 KSU 临时规则在 Enforcing 下验证，固化 CIL 仍需冷启动确认。
 
+本模块还登记 DisplayFeature/RGB 属性 contexts bundle，将目标设备实际拒绝的色温、RGB 球、色彩模式、护眼和面板信息属性精确标为底包已有的 `vendor_display_prop`。不引入宽泛 `default_prop` 或新的显示权限；由 `common/fix_vendor_avc` 在本模块之后统一写入 vendor 与 precompiled property contexts。
+
 ## 执行顺序
 
 ```bash

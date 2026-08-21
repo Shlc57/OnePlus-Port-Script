@@ -1,4 +1,6 @@
 # bundle 名称	补丁目录（相对 port 根目录）	manifest（相对补丁目录）
 fix_mi_account	common/fix_mi_account	config/selinux_bundle.tsv
 fix_nfc	common/fix_nfc	config/selinux_bundle.tsv
+fix_displayfeature_bridge	features/fix_displayfeature_bridge	config/selinux_bundle.tsv
 fix_oplus_double_tap_wake	features/fix_oplus_double_tap_wake	config/selinux_bundle.tsv
+fix_ultrasonic_fingerprint	features/fix_ultrasonic_fingerprint	config/selinux_bundle.tsv

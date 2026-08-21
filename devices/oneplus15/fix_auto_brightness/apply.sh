@@ -33,11 +33,13 @@ boot_brightness_overlay_target="$project_dir/product/overlay/OnePlus15BootBright
 auto_curve_overlay="$patcher_dir/prebuilt/product/overlay/MiuiFrameworkResOverlay.apk"
 auto_curve_overlay_checksums="$patcher_dir/config/miui_framework_overlay.sha256"
 auto_curve_overlay_target="$project_dir/product/overlay/MiuiFrameworkResOverlay.apk"
-target_display_id="4630946903293830803"
+target_display_id="${PORT_TARGET_DISPLAY_ID:-}"
 target_display_config="$product_displayconfig/display_id_${target_display_id}.xml"
 aligned_auto_curve_overlay=""
 auto_curve_overlay_install="$auto_curve_overlay"
 temporary_display_config=""
+target_contexts_patch=""
+target_fsconfig_patch=""
 
 cleanup() {
 	if [[ -n "$aligned_auto_curve_overlay" ]]; then
@@ -46,8 +48,33 @@ cleanup() {
 	if [[ -n "$temporary_display_config" ]]; then
 		rm -f -- "$temporary_display_config"
 	fi
+	if [[ -n "$target_contexts_patch" ]]; then
+		rm -f -- "$target_contexts_patch"
+	fi
+	if [[ -n "$target_fsconfig_patch" ]]; then
+		rm -f -- "$target_fsconfig_patch"
+	fi
 }
 trap cleanup EXIT
+
+if [[ ! "$target_display_id" =~ ^[1-9][0-9]{0,19}$ ]]; then
+	err_print "PORT_TARGET_DISPLAY_ID 必须是 uint64 范围内的正十进制 Display ID：${target_display_id:-<未设置>}"
+	exit 1
+fi
+# shellcheck disable=SC2071 # 固定长度十进制需按字典序比较，避免 Bash 有符号整数溢出。
+if (( ${#target_display_id} == 20 )) && \
+	[[ "$target_display_id" > "18446744073709551615" ]]; then
+	err_print "PORT_TARGET_DISPLAY_ID 超出 uint64 范围：$target_display_id"
+	exit 1
+fi
+
+target_contexts_patch="$(mktemp)"
+target_fsconfig_patch="$(mktemp)"
+printf '/product/etc/displayconfig/display_id_%s\\.xml u:object_r:system_file:s0\n' \
+	"$target_display_id" > "$target_contexts_patch"
+printf 'product/etc/displayconfig/display_id_%s.xml 0 0 0644\n' \
+	"$target_display_id" > "$target_fsconfig_patch"
+std_print "目标物理 Display ID：$target_display_id"
 
 available_odm_build_props=()
 for build_prop in "${odm_build_props[@]}"; do
@@ -630,5 +657,7 @@ merge_translated_fsconfig_prefix \
 	product/etc/displayconfig
 merge_fsconfig_file "$product_fsconfig_patch" "$product_fsconfig"
 merge_contexts_file "$contexts_patch" "$product_contexts"
+merge_contexts_file "$target_contexts_patch" "$product_contexts"
+merge_fsconfig_file "$target_fsconfig_patch" "$product_fsconfig"
 std_print "✅ product fsconfig 与 SELinux 文件上下文合并完成"
 std_print "处理完成"

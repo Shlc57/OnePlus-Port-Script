@@ -6,9 +6,10 @@ port="$script_dir/port_main.sh"
 oneplus15_config_dir="$script_dir/devices/oneplus15/config"
 # 一加 15 流程明确选用的可选 SKU 附加配置；缺失时只警告并继续。
 export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
-# 依赖目标实际硬件的属性由一加 15 组合入口提供，不从小米原包提取。
-export BOOT_REFRESH_RATE_ODM_PROPERTIES_FILE="$oneplus15_config_dir/refresh_odm.props"
-export BOOT_REFRESH_RATE_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/refresh_vendor.props"
+# Android framework 使用的物理 Display ID；调用方可在环境中显式覆盖。
+export PORT_TARGET_DISPLAY_ID="4630946903293830803"
+export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
+export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
 export NFC_PROPERTIES_FILE="$oneplus15_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$oneplus15_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
@@ -88,7 +89,6 @@ bash "$port" common/merge_mi_ext \
 	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
-	common/fix_boot_refresh_rate \
 	features/fix_ltpo \
 	common/fix_wechat_safe_mode \
 	common/fix_settings_haptic \
@@ -98,5 +98,5 @@ bash "$port" common/merge_mi_ext \
 	features/fix_ultrasonic_fingerprint \
 	features/fix_oplus_fingerprint_protocol \
 	devices/oneplus15/fix_auto_brightness \
-	devices/oneplus15/fix_refresh_rate_switch \
+	common/fix_boot_refresh_rate \
 	common/fix_linear_haptic

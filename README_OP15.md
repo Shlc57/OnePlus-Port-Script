@@ -37,7 +37,9 @@
 
 5. 确认小米原包至少包含 `mi_odm/etc/build.prop`。脚本会在修改分区前自动识别底包与原包设备；一加 15 组合流程还会明确尝试合并额外配置 `mi_odm/etc/nezha_5.9.9.prop`，该文件不存在时只输出弱警告并忽略，不影响基础设备标识写入和后续补丁。
 
-6. 一加 15 的刷新率、NFC、线性触感、超声波指纹和双击亮屏硬件参数均保存在 `port/devices/oneplus15/config/` 下的 `.props` 文件，由 `OP15_port.sh` 显式传给对应补丁；其中指纹参数集中在 `fingerprint.props`，双击亮屏参数集中在 `double_tap_wake.props`，都不会从小米原包推断。更换底包或目标机型时必须重新核对这些目标设备配置，不能照搬。
+6. 一加 15 的其余显示/触控策略、NFC、线性触感、超声波指纹和双击亮屏硬件参数保存在 `port/devices/oneplus15/config/` 下的 `.props` 文件，由 `OP15_port.sh` 显式传给对应补丁；4 个刷新率数值属性和分辨率由 `common/fix_boot_refresh_rate` 自动读取底包显示栈生成，`display_odm.props` 与 `display_vendor.props` 中不维护这些值。更换底包或目标机型时应重新核对目标设备配置和底包显示能力，不能照搬旧列表。
+
+7. 自动亮度模块通过 `PORT_TARGET_DISPLAY_ID` 接收目标设备的物理 Display ID。`OP15_port.sh` 默认使用当前一加 15 实机值 `4630946903293830803`；更换面板或底包时应使用实机 `dumpsys SurfaceFlinger --display-id` 的主屏结果覆盖该值。
 
 ## 电脑 Linux 使用方法
 

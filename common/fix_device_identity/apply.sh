@@ -12,6 +12,25 @@ source_build_prop="$project_dir/mi_odm/etc/build.prop"
 override_prop_name="${DEVICE_IDENTITY_PROP:-}"
 override_prop_file=""
 source_prop_files=()
+if [[ -n "${DEVICE_DISPLAY_NAME+x}" && -z "$DEVICE_DISPLAY_NAME" ]]; then
+	err_print "DEVICE_DISPLAY_NAME 不能为空"
+	exit 1
+elif [[ -n "${DEVICE_DISPLAY_NAME+x}" ]]; then
+	device_display_name="$DEVICE_DISPLAY_NAME"
+	device_display_name_source="参数 DEVICE_DISPLAY_NAME"
+else
+	device_display_name="${PORT_BASE_OPLUS_MARKET_NAME:-}"
+	device_display_name_source="底包 ro.vendor.oplus.market.name"
+fi
+if [[ -n "$device_display_name" && \
+	( "$device_display_name" == *$'\n'* || "$device_display_name" == *$'\r'* ) ]]; then
+	err_print "设备显示名不能包含换行符"
+	exit 1
+elif [[ -z "$device_display_name" ]]; then
+	warn_print "未取得底包设备显示名，保留原包 ro.product.odm.marketname"
+else
+	std_print "设备显示名：$device_display_name（来源：$device_display_name_source）"
+fi
 if [[ -L "$source_build_prop" ]]; then
 	err_print "不支持从符号链接读取属性：$source_build_prop"
 	exit 1
@@ -120,6 +139,9 @@ if (( ${#source_prop_files[@]} > 0 )); then
 		fi
 		identity_values["$prop_key"]="$prop_value"
 	done
+fi
+if [[ -n "$device_display_name" ]]; then
+	identity_values[ro.product.odm.marketname]="$device_display_name"
 fi
 
 prop_write_performed=0

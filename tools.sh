@@ -413,6 +413,7 @@ _port_detect_identity_role() {
 	local _port_identity_name=""
 	local _port_identity_model=""
 	local _port_identity_market_name=""
+	local _port_identity_oplus_market_name=""
 	local _port_identity_fingerprint=""
 
 	case "$role" in
@@ -443,6 +444,8 @@ _port_detect_identity_role() {
 				ro.product.vendor.marketname \
 				ro.product.odm.marketname \
 				ro.product.marketname || return 1
+			_port_identity_pick_field oplus_market_name \
+				ro.vendor.oplus.market.name || return 1
 			_port_identity_pick_field fingerprint \
 				ro.vendor.build.fingerprint \
 				ro.odm.build.fingerprint \
@@ -511,6 +514,9 @@ _port_detect_identity_role() {
 	printf -v "PORT_${role_prefix}_DEVICE_NAME" '%s' "${_port_identity_name:-}"
 	printf -v "PORT_${role_prefix}_DEVICE_MODEL" '%s' "${_port_identity_model:-}"
 	printf -v "PORT_${role_prefix}_DEVICE_MARKET_NAME" '%s' "${_port_identity_market_name:-}"
+	if [[ "$role" == base ]]; then
+		PORT_BASE_OPLUS_MARKET_NAME="${_port_identity_oplus_market_name:-}"
+	fi
 }
 
 _port_export_device_identities() {
@@ -521,7 +527,7 @@ _port_export_device_identities() {
 
 	export \
 		PORT_BASE_DEVICE_CODE PORT_BASE_DEVICE_NAME PORT_BASE_DEVICE_MODEL \
-		PORT_BASE_DEVICE_MARKET_NAME \
+		PORT_BASE_DEVICE_MARKET_NAME PORT_BASE_OPLUS_MARKET_NAME \
 		PORT_SOURCE_DEVICE_CODE PORT_SOURCE_DEVICE_NAME PORT_SOURCE_DEVICE_MODEL \
 		PORT_SOURCE_DEVICE_MARKET_NAME PORT_SOURCE_DEVICE_FEATURE_FILE
 }
@@ -540,6 +546,7 @@ _port_detect_device_identities() {
 	PORT_BASE_DEVICE_NAME=""
 	PORT_BASE_DEVICE_MODEL=""
 	PORT_BASE_DEVICE_MARKET_NAME=""
+	PORT_BASE_OPLUS_MARKET_NAME=""
 	PORT_SOURCE_DEVICE_CODE=""
 	PORT_SOURCE_DEVICE_NAME=""
 	PORT_SOURCE_DEVICE_MODEL=""

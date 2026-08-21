@@ -1,12 +1,7 @@
-# 一加 15 组合流程选择的目标面板/显示栈配置。
-# common/fix_boot_refresh_rate 只合并此显式配置，不读取小米原包显示属性。
+# 一加 15 组合流程选择的目标显示/触控策略；4 个刷新率数值属性由底包自动生成。
 ro.vendor.fps.switch.default=true
 ro.vendor.fps.switch.thermal=true
 ro.vendor.dfps.enable=false
-ro.vendor.display.default_fps=60
-ro.vendor.display.fod_monitor_default_fps=120
-ro.vendor.display.dynamic_refresh_rate=120,90,60,30:100,60,5
-ro.vendor.mi_sf.new_dynamic_refresh_rate=120,60:5
 ro.vendor.mi_sf.video_or_camera_fps.support=true
 persist.vendor.disable_idle_fps.threshold=0
 ro.vendor.display.set_fps_stat_timer_ms=250

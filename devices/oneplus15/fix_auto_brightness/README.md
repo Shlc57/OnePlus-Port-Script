@@ -11,7 +11,7 @@
 
 ## 模块说明
 
-模块禁用一加 15 的 `ro.vendor.oplus.sensor.high_pwm_rgb` 属性，把底包 `vendor/etc/displayconfig` 的缺失项补入原包 `product/etc/displayconfig`，并以底包中内容最大的 `display_id_*.xml` 适配实机 Display ID `4630946903293830803`。复制时同步把 vendor fsconfig 前缀转换到 product，并写入本模块提供的 product contexts/fsconfig。
+模块禁用一加 15 的 `ro.vendor.oplus.sensor.high_pwm_rgb` 属性，把底包 `vendor/etc/displayconfig` 的缺失项补入原包 `product/etc/displayconfig`，并以底包中内容最大的 `display_id_*.xml` 适配环境变量 `PORT_TARGET_DISPLAY_ID` 指定的实机物理 Display ID。复制时同步把 vendor fsconfig 前缀转换到 product，并为目标 ID 动态写入 product contexts/fsconfig。
 
 亮度映射保留 Xiaomi `1..1060` 的逻辑 nit 上限，只根据真机 P3 表扩展物理高亮段：普通/HBM 分界为 1400 nit，HBM 末端为 1800 nit。当前预编译 `MiuiFrameworkResOverlay.apk` 的 `config_defaultLogicalCurve` 为 `0→2、30→40、600→70、5000→1060`，只校准环境光到逻辑 nit 的室内映射，不把物理 P3 nit 写入逻辑坐标。
 
@@ -28,5 +28,8 @@
 ## 执行
 
 ```bash
-bash port_main.sh devices/oneplus15/fix_auto_brightness
+PORT_TARGET_DISPLAY_ID=4630946903293830803 \
+  bash port_main.sh devices/oneplus15/fix_auto_brightness
 ```
+
+`PORT_TARGET_DISPLAY_ID` 必须是 uint64 范围内的正十进制 ID。完整一加 15 组合流程会提供当前默认值，也可以在调用 `OP15_port.sh` 时从外部覆盖。

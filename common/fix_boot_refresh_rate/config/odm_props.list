@@ -1,11 +1,7 @@
-# 每行一个允许写入最终 ODM 的属性名。值必须由目标设备流程显式配置，缺失项警告后跳过。
+# 每行一个允许写入最终 ODM 的其余显示/触控策略属性。4 个刷新率数值属性由底包自动生成。
 ro.vendor.fps.switch.default
 ro.vendor.fps.switch.thermal
 ro.vendor.dfps.enable
-ro.vendor.display.default_fps
-ro.vendor.display.fod_monitor_default_fps
-ro.vendor.display.dynamic_refresh_rate
-ro.vendor.mi_sf.new_dynamic_refresh_rate
 ro.vendor.mi_sf.video_or_camera_fps.support
 persist.vendor.disable_idle_fps.threshold
 ro.vendor.display.set_fps_stat_timer_ms

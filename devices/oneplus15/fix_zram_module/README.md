@@ -4,9 +4,9 @@
 
 | 分区 | 改动 |
 | --- | --- |
-| `vendor` | 仅修改 `bin/vendor_modprobe.sh` 的 blocklist。 |
+| `vendor` | 修改 `bin/vendor_modprobe.sh` 的 blocklist，并修改 `bin/system_dlkm_modprobe.sh`，显式加载 system_dlkm 的 `zsmalloc.ko` 与 `zram.ko`。 |
 
-`gki.modprobe` 会先加载 `/system_dlkm/lib/modules`，随后 `vendor.modprobe` 才处理 `/vendor_dlkm/lib/modules`。本模块在 vendor 脚本中屏蔽 `zram` 和 `zsmalloc`，因此 vendor_dlkm 中的同名模块不会再次加载，实际使用 system_dlkm 已有的正常版本。
+`gki.modprobe` 会先加载 `/system_dlkm/lib/modules`，随后 `vendor.modprobe` 才处理 `/vendor_dlkm/lib/modules`。本模块在 system_dlkm 脚本的通用扫描前显式按 `zsmalloc.ko -> zram.ko` 顺序加载依赖，再在 vendor 脚本中屏蔽同名 vendor 模块，因此实际使用 system_dlkm 已有版本。
 
 同时保留并幂等补齐以下 Oplus 优化模块拦截：
 
@@ -18,7 +18,7 @@ oplus_exit_mm_optimize
 oplus_bsp_zsmalloc
 ```
 
-本方案不再安装固定 `zram.ko`，不修改 `vendor_dlkm`，不使用 bind mount，也不需要新增 SELinux mount 权限。
+本方案不再安装固定 `zram.ko`，不修改 `vendor_dlkm`，不使用 bind mount，也不需要新增 SELinux mount 权限。system_dlkm 模块文件缺失或显式加载失败时只跳过该依赖步骤，不阻断其它 system_dlkm 模块扫描。
 
 ## 执行
 

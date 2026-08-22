@@ -1,0 +1,2 @@
+# Xiaomi NFC framework service registered by com.android.nfc.
+mi_nfc u:object_r:nfc_service:s0

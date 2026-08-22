@@ -77,6 +77,7 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
   }
 }'
 bash "$port" common/merge_mi_ext \
+	devices/oneplus15/fix_zram_module \
 	features/disable_mi_vulkan \
 	common/disable_odm_imports \
 	common/fake_device_params \

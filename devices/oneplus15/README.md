@@ -4,14 +4,13 @@
 
 ## 改动分区
 
-本目录下的专属补丁主要改动 `odm`、`product`，`fix_zram_module` 另直接改动底包 `vendor`；共享模块消费本目录参数时，实际目标分区以各自模块 README 为准。
+本目录下的专属补丁主要改动 `odm`、`product`；共享模块消费本目录参数时，实际目标分区以各自模块 README 为准。
 
 ## 专属模块
 
 | 模块 | 改动分区 | 说明 |
 | --- | --- | --- |
 | [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配一加 15 的传感器属性、显示配置、自动亮度曲线与启动亮度。 |
-| [`fix_zram_module`](fix_zram_module/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 
 ## 共享模块参数
 

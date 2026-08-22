@@ -105,6 +105,7 @@ bash OP15_port.sh
 | --- | --- | --- |
 | [`common/disable_odm_imports`](common/disable_odm_imports/README.md) | `odm` | 禁用 ODM 对项目专属和 `my_manifest` 属性文件的外部导入。 |
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
+| [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 | [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
 | [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
@@ -141,7 +142,6 @@ bash OP15_port.sh
 | 模块 | 改动分区 | 用途 |
 | --- | --- | --- |
 | [`devices/oneplus15/fix_auto_brightness`](devices/oneplus15/fix_auto_brightness/README.md) | `odm`、`product` | 适配自动亮度曲线、物理亮度边界和启动亮度。 |
-| [`devices/oneplus15/fix_zram_module`](devices/oneplus15/fix_zram_module/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 
 启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
 

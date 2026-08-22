@@ -23,8 +23,8 @@ oplus_bsp_zsmalloc
 ## 执行
 
 ```bash
-bash port_main.sh devices/oneplus15/fix_zram_module
-# 一加 15 完整流程会自动执行该模块
+bash port_main.sh common/fuck_oplus_hybridzram
+# 当前设备组合流程会自动执行该模块
 bash OP15_port.sh
 ```
 

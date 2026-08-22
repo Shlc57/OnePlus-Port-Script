@@ -95,10 +95,17 @@ def test_policy_has_independent_minimal_domain() -> None:
         "(hal_touchfeature_oplus_bridge))",
         "(allow system_server_${API_VERSION} "
         "hal_touchfeature_oplus_bridge (binder (call)))",
+        "(allow system_app_${API_VERSION} "
+        "hal_touchfeature_oplus_bridge (binder (call)))",
         "(allow system_server_${API_VERSION} "
         "vendor_touchfeature_compat_prop (file (read getattr map open)))",
     ):
         assert required in policy
+    assert not re.search(
+        r"\(allow system_app_\$\{API_VERSION\} "
+        r"hal_touchfeature_oplus_bridge \(binder \([^)]*transfer",
+        policy,
+    )
     assert "hal_touchfeature_xiaomi_default" not in policy
     assert not re.search(r"/dev/(?:hbp|tp)|proc_touchpanel|sysfs_touch", policy)
 

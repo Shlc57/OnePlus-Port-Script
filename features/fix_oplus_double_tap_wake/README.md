@@ -53,6 +53,7 @@ oplus.double_tap.touchfeature_type=
 - HyperOS 消费端以 `ro.vendor.touchfeature.type & 1` 判断能力，并通过 Xiaomi TouchFeature transaction `9` 发送 `(touchId=0, mode=14, value)`。
 - 当前进程无法热刷新已经缓存的 VINTF 清单，因此热测使用只位于 tmpfs 的测试 shim 跳过 `AIBinder_markVintfStability`，成功注册临时 Xiaomi TouchFeature service。transaction `9` 的 value `1/0` 均被 bridge 正确转发，Oplus HAL 日志分别确认 `4100=2`、`4101=1/0`。
 - 重载底包 init service `vendor.touch-aidl-2` 后，Oplus service 重新注册，bridge 在下一次请求时自动丢弃死亡 Binder 并重连成功；没有观察到新增的 bridge 相关 AVC。
+- `system_app` 是息屏指纹解锁补丁的 bridge 调用方；已在 Enforcing 下验证其到 bridge 的 `binder call` 最小权限，bundle 仅固化该单向调用，不额外授予 Binder transfer 或 service 查找权限。
 - 把相同的 `key 62 F4 WAKE` 候选内容提供给新枚举的虚拟输入设备后，系统从 `Dozing` 记录 `WAKE_REASON_WAKE_KEY, details=android.policy:KEY`，证明该 WAKE 映射可以唤醒 framework。
 - 真实 `/dev/input/event7` 在热挂载前已由 InputReader 打开并缓存旧 keylayout；实际双击仍同时出现 `detect double tap gesture` 与 `KEY_F4`，但 framework 没有收到 `KEYCODE_F4`，因此没有亮屏。单文件 bind mount 不能刷新已打开输入设备，这不是 bridge 转发失败。
 

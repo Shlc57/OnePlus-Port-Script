@@ -315,7 +315,8 @@ for expected_fragment_line in \
 	'(type vendor_touchfeature_compat_prop)' \
 	'(typeattributeset hal_oplus_touch_aidl_client (hal_touchfeature_oplus_bridge))' \
 	'(typetransition init_${API_VERSION} hal_touchfeature_oplus_bridge_exec process hal_touchfeature_oplus_bridge)' \
-	'(allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))'; do
+	'(allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))' \
+	'(allow system_app_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))'; do
 	if ! grep -Fqx "$expected_fragment_line" "$bundle_policy"; then
 		err_print "双击亮屏 SELinux 片段缺少契约：$expected_fragment_line"
 		exit 1

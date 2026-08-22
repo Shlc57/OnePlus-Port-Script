@@ -41,8 +41,10 @@
 (allow hal_touchfeature_oplus_bridge servicemanager_${API_VERSION} (fd (use)))
 (allow hal_touchfeature_oplus_bridge hal_touchfeature_oplus_bridge_service (service_manager (add find)))
 
-;; HyperOS framework client and touch capability property.
+;; HyperOS framework and fingerprint system-app clients, plus the touch
+;; capability property.  Keep each Binder client permission at call-only.
 (allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge_service (service_manager (find)))
 (allow system_server_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))
+(allow system_app_${API_VERSION} hal_touchfeature_oplus_bridge (binder (call)))
 (allow system_server_${API_VERSION} vendor_touchfeature_compat_prop (file (read getattr map open)))
 (allow vendor_init_${API_VERSION} vendor_touchfeature_compat_prop (property_service (set)))

@@ -12,6 +12,7 @@
 (allow vendor_init_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
 (allow system_server_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
 (allow system_app_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
+(allow platform_app_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
 (allow surfaceflinger_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
 (allow hal_fingerprint_oppo vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))
 (allow zygote_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))

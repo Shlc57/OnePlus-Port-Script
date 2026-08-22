@@ -3,8 +3,8 @@ set -euo pipefail
 
 init_port_env "${1:-}"
 
-std_print "启用 MI SurfaceFlinger LTPO 能力"
-std_print "注意：仅开放上层 LTPO 策略，不补充面板、HWC 或 DynFPS 底层实现"
+std_print "补全 MI SurfaceFlinger 与 Oplus ADFR LTPO 链路"
+std_print "注意：仅补充显示栈属性，不替换面板、HWC 或 DynFPS 底层实现"
 std_print
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
@@ -24,4 +24,6 @@ fi
 
 ensure_prop "$odm_build_prop" ro.vendor.mi_sf.ltpo.support true
 std_print "✅ 已写入：ro.vendor.mi_sf.ltpo.support=true"
+ensure_prop "$odm_build_prop" persist.oplus.display.vrr.adfr 1
+std_print "✅ 已写入：persist.oplus.display.vrr.adfr=1"
 std_print "处理完成"

@@ -108,6 +108,7 @@ if ! grep -Fqx '(type hal_fingerprint_oppo)' "$vendor_policy" ||
 	! grep -Fqx "(typeattribute oppo_fingerprint_prop_${api_version})" "$vendor_versioned_policy" ||
 	! grep -Fqx "(typeattribute powerctl_prop_${api_version})" "$vendor_versioned_policy" ||
 	! grep -Eq "(^|[^A-Za-z0-9_])system_server_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy" ||
+	! grep -Eq "(^|[^A-Za-z0-9_])platform_app_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy" ||
 	! grep -Eq "(^|[^A-Za-z0-9_])zygote_${api_version}([^A-Za-z0-9_]|$)" "$vendor_versioned_policy"; then
 	err_print "底包缺少超声波指纹 HAL、属性类型或版本化系统域契约"
 	exit 1

@@ -129,10 +129,10 @@ bash OP15_port.sh
 | [`features/disable_mi_vulkan`](features/disable_mi_vulkan/README.md) | `product` | 禁用不兼容的 Xiaomi Vulkan pipeline cache 属性。 |
 | [`features/enable_hyperos_features`](features/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
 | [`features/fix_displayfeature_bridge`](features/fix_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并修复 RGB/色温属性 contexts。 |
-| [`features/fix_ltpo`](features/fix_ltpo/README.md) | `odm` | 开放 MI SurfaceFlinger 上层 LTPO 策略。 |
+| [`features/fix_ltpo`](features/fix_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
-| [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts。 |
+| [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限。 |
 
 ### 一加 15 专属模块（`devices/oneplus15`）
 

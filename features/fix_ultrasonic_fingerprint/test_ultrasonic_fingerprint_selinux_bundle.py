@@ -74,6 +74,7 @@ def test_policy_is_narrow_and_versioned() -> None:
         "(allow vendor_init_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
         "(allow system_server_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
         "(allow system_app_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
+        "(allow platform_app_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
         "(allow surfaceflinger_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
         "(allow hal_fingerprint_oppo vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
         "(allow zygote_${API_VERSION} vendor_ultrasonic_fp_compat_prop (file (read getattr map open)))",
@@ -134,6 +135,7 @@ def test_apply_uses_the_bundle_before_writing_properties() -> None:
     assert "(type hal_fingerprint_oppo)" in apply_source
     assert "(type oppo_fingerprint_prop)" in apply_source
     assert "oppo_fingerprint_prop_${api_version}" in apply_source
+    assert "platform_app_${api_version}" in apply_source
     assert "vendor_ultrasonic_fp_compat_prop" in apply_source
     assert 'patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"' in apply_source
     assert apply_source.index("load_selinux_bundle_manifest") < apply_source.index(

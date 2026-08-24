@@ -1,4 +1,4 @@
 interface:
   display_name: "Android SELinux Port Policy"
   short_description: "判断热测边界并固化 HyperOS 移植 SELinux 策略"
-  default_prompt: "使用 $android-selinux-port-policy 分析这个 Android SELinux 拒绝，先判断启动阶段和可重放性；可热测时验证最小规则，早期不可重放时通过完整静态检查与干净冷启动确认。"
+  default_prompt: "使用 $android-selinux-port-policy 分析这个 Android SELinux 拒绝，优先判断并尝试热修补；先用有边界的较大规则确认可用，再逐步收敛为小规则，早期不可重放时通过完整静态检查与干净冷启动确认。"

@@ -60,12 +60,29 @@ def test_policy_keeps_display_bridge_rules_only() -> None:
         "(allow servicemanager_${API_VERSION} vendor_hal_display_color_server (binder (call)))",
         "(allow vendor_hal_display_color_default surfaceflinger_${API_VERSION} (binder (call)))",
         "(allow vendor_hal_display_color_default surfaceflinger_service_${API_VERSION} (service_manager (find)))",
+        "(allow vendor_hal_display_color_default oplus_hal_displaypanelfeature (binder (call)))",
+        "(allow vendor_hal_display_color_default oplus_hal_displaypanel_service (service_manager (find)))",
         "(typeattributeset vendor_hal_display_color_client (system_server_${API_VERSION}))",
     ]
+
+
+def test_displayfeature_bridge_contains_panel_dimming_mapping() -> None:
+    source = (PATCH_DIR / "src/displayfeature_bridge.cpp").read_text(encoding="utf-8")
+    for expected in (
+        'constexpr int32_t kDimmingMode = 20;',
+        'constexpr int32_t kDisplayPanelDimDcAlphaFeature = 0x0e;',
+        'constexpr int32_t kDisplayPanelPwmTurboFeature = 0xc7;',
+        'constexpr uint32_t kSetDisplayPanelFeatureValueCommand = 2;',
+        'kVintfBinderTransactionFlags = 0x10000000U;',
+        'set_panel_feature_value_locked(kPrimaryDisplayId, first_feature, first_value)',
+        'set_panel_feature_value_locked(kPrimaryDisplayId, second_feature, second_value)',
+    ):
+        assert expected in source
 
 
 if __name__ == "__main__":
     test_display_property_contexts_are_exact()
     test_bundle_registers_both_property_context_targets()
     test_policy_keeps_display_bridge_rules_only()
+    test_displayfeature_bridge_contains_panel_dimming_mapping()
     print("display property bundle tests passed")

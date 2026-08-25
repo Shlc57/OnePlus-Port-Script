@@ -5,4 +5,6 @@
 (allow servicemanager_${API_VERSION} vendor_hal_display_color_server (binder (call)))
 (allow vendor_hal_display_color_default surfaceflinger_${API_VERSION} (binder (call)))
 (allow vendor_hal_display_color_default surfaceflinger_service_${API_VERSION} (service_manager (find)))
+(allow vendor_hal_display_color_default oplus_hal_displaypanelfeature (binder (call)))
+(allow vendor_hal_display_color_default oplus_hal_displaypanel_service (service_manager (find)))
 (typeattributeset vendor_hal_display_color_client (system_server_${API_VERSION}))

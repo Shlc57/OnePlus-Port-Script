@@ -41,6 +41,10 @@
 
 7. 自动亮度模块通过 `PORT_TARGET_DISPLAY_ID` 接收目标设备的物理 Display ID。`OP15_port.sh` 默认使用当前一加 15 实机值 `4630946903293830803`；更换面板或底包时应使用实机 `dumpsys SurfaceFlinger --display-id` 的主屏结果覆盖该值。
 
+8. `devices/oneplus15/fix_refresh_rate_switch` 复用 MISettings 的 DC/PWM 链路：关闭 Pro 时完整保留 60/90/120/144/165Hz，底层面板按刷新率使用 60–120Hz DC、144/165Hz PWM；开启 Pro 时保留原有 mode 20 全局 PWM 请求。补丁只保留 144/165Hz 与显式 DC 状态的既有互斥链路，移除 `mimotion_pwm_enable` 对列表和刷新率写入的过滤/120Hz 回退。该策略已完成主机静态迁移检查，真实设备仍需重启后验证 Pro 开关对应的面板调光结果。
+
+9. `features/fix_displayfeature_bridge` 的 Xiaomi mode 20 会通过底包 `vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default` 设置 DC Alpha (`0x0e`) 与 PWM Turbo (`0xc7`)，每次请求显式关闭另一模式。该 AIDL/feature 映射已完成静态和主机交叉编译验证，面板 `0/1` 最终语义及 SELinux 冷启动仍待真实设备确认。
+
 ## 电脑 Linux 使用方法
 
 进入 `port` 目录，执行整套一加 15 修补脚本：

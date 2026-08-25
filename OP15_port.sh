@@ -102,4 +102,5 @@ bash "$port" common/merge_mi_ext \
 	features/fix_oplus_fingerprint_protocol \
 	devices/oneplus15/fix_auto_brightness \
 	common/fix_boot_refresh_rate \
+	devices/oneplus15/fix_refresh_rate_switch \
 	common/fix_linear_haptic

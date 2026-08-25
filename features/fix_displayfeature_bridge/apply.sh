@@ -37,6 +37,8 @@ vendor_policy="$project_dir/vendor/etc/selinux/vendor_sepolicy.cil"
 vendor_policy_debug="$project_dir/vendor/etc/selinux/vendor_sepolicy_debug.cil"
 plat_sepolicy_version="$project_dir/vendor/etc/selinux/plat_sepolicy_vers.txt"
 vndservice_contexts="$project_dir/vendor/etc/selinux/vndservice_contexts"
+panel_feature_service_name="vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default"
+panel_feature_service_context="u:object_r:oplus_hal_displaypanel_service:s0"
 
 calculate_bridge_input_hash() {
 	sha256sum \
@@ -153,6 +155,19 @@ validate_service_context_overrides() {
 	fi
 }
 
+validate_panel_feature_service_contexts() {
+	local contexts_file
+	local expected_line="${panel_feature_service_name} ${panel_feature_service_context}"
+
+	for contexts_file in "$vendor_service_contexts" "$precompiled_service_contexts"; do
+		check_file_exists "$contexts_file" || return 1
+		if ! grep -Fqx "$expected_line" "$contexts_file"; then
+			err_print "底包缺少 Oplus Panel Feature service context：$contexts_file"
+			return 1
+		fi
+	done
+}
+
 merge_file_context_overrides() {
 	local override_file="${1:-}"
 	local destination_contexts="${2:-}"
@@ -225,6 +240,14 @@ validate_displayfeature_policy() {
 			return 1
 		fi
 	done
+	for panel_symbol in \
+		'(type oplus_hal_displaypanelfeature)' \
+		'(type oplus_hal_displaypanel_service)'; do
+		if ! grep -Fqx "$panel_symbol" "$policy_file"; then
+			err_print "底包策略缺少 Oplus Panel Feature 符号：$panel_symbol"
+			return 1
+		fi
+	done
 	mapfile -t client_attribute_lines < <(
 		grep -E '^\(typeattributeset vendor_hal_display_color_client \(.*\)\)$' "$policy_file"
 	)
@@ -283,6 +306,8 @@ validate_displayfeature_fragment() {
 		'(allow servicemanager_${API_VERSION} vendor_hal_display_color_server (binder (call)))' \
 		'(allow vendor_hal_display_color_default surfaceflinger_${API_VERSION} (binder (call)))' \
 		'(allow vendor_hal_display_color_default surfaceflinger_service_${API_VERSION} (service_manager (find)))' \
+		'(allow vendor_hal_display_color_default oplus_hal_displaypanelfeature (binder (call)))' \
+		'(allow vendor_hal_display_color_default oplus_hal_displaypanel_service (service_manager (find)))' \
 		'(typeattributeset vendor_hal_display_color_client (system_server_${API_VERSION}))'; do
 		if ! grep -Fqx "$expected_rule" "$fragment_file"; then
 			err_print "DisplayFeature SELinux 片段缺少受控规则：$expected_rule"
@@ -368,7 +393,9 @@ for required_file in \
 	"$vndservice_contexts" \
 	"$project_dir/vendor/lib64/libqservice.so" \
 	"$project_dir/vendor/lib64/libsdmclient.so" \
-	"$project_dir/vendor/lib64/libsdm-disp-vndapis.so"; do
+	"$project_dir/vendor/lib64/libsdm-disp-vndapis.so" \
+	"$project_dir/odm/bin/hw/vendor.oplus.hardware.displaypanelfeature-service" \
+	"$project_dir/odm/etc/vintf/manifest/manifest_oplus_displaypanelfeature_aidl.xml"; do
 	check_file_exists "$required_file"
 done
 
@@ -411,6 +438,7 @@ validate_translated_fsconfig \
 	vendor
 validate_file_context_overrides "$file_context_overrides"
 validate_service_context_overrides "$service_context_overrides"
+validate_panel_feature_service_contexts
 validate_qdcm_render_intents
 
 if grep -Eq 'mi_display|/vendor/bin/displayfeature|restart[[:space:]]+displayfeature|hist_event|mipi_reg|tracing_mark_write' "$clean_rc"; then

@@ -3,6 +3,7 @@
 
 #include <android/binder_ibinder.h>
 #include <android/binder_parcel.h>
+#include <android/binder_status.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -48,11 +49,18 @@ constexpr char kModuleId[] = "displayfeature";
 constexpr char kDeviceName[] = "displayfeature-color";
 constexpr char kQServiceName[] = "display.qservice";
 constexpr char kQServiceDescriptor[] = "android.display.IQService";
+constexpr char kPanelFeatureServiceName[] =
+        "vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default";
+constexpr char kPanelFeatureDescriptor[] =
+        "vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature";
 constexpr char kSurfaceFlingerServiceName[] = "SurfaceFlinger";
 constexpr char kSurfaceComposerDescriptor[] = "android.ui.ISurfaceComposer";
 constexpr char kBpBinderTransactSymbol[] =
         "_ZN7android8BpBinder8transactEjRKNS_6ParcelEPS1_j";
 constexpr uint32_t kSetColorModeWithRenderIntentCommand = 39;
+constexpr uint32_t kSetDisplayPanelFeatureValueCommand = 2;
+// Generated VINTF AIDL clients use this private vendor transaction flag.
+constexpr uint32_t kVintfBinderTransactionFlags = 0x10000000U;
 constexpr uint32_t kSetSurfaceFlingerColorMatrixCommand = 1015;
 constexpr int32_t kPrimaryDisplayId = 0;
 constexpr int32_t kSrgbColorMode = 7;
@@ -60,6 +68,13 @@ constexpr int32_t kDeadObjectStatus = -EPIPE;
 constexpr int32_t kEyeCareMode = 3;
 constexpr int32_t kColorTemperatureMode = 23;
 constexpr int32_t kPaperTextureColorMode = 31;
+constexpr int32_t kDimmingMode = 20;
+constexpr int32_t kDimmingDcValue = 1;
+constexpr int32_t kDimmingPwmValue = 0;
+constexpr int32_t kDisplayPanelDimDcAlphaFeature = 0x0e;
+constexpr int32_t kDisplayPanelPwmTurboFeature = 0xc7;
+constexpr uint32_t kDisplayPanelFeatureIdMask = 0xfffU;
+constexpr uint32_t kDisplayPanelFeatureDisplayShift = 12U;
 constexpr int32_t kBrightnessNotifyMessageId = 5;
 constexpr uint32_t kMessageIdMask = 0xffU;
 constexpr uint32_t kMessageDisplayIdShift = 16U;
@@ -124,6 +139,13 @@ enum RequestStage : int32_t {
     kStageQtiSetPcc = 13,
     kStageQtiComplete = 14,
     kStageQtiDeinit = 15,
+    kStagePanelFeatureClass = 16,
+    kStagePanelFeatureService = 17,
+    kStagePanelFeatureAssociate = 18,
+    kStagePanelFeatureWrite = 19,
+    kStagePanelFeatureTransact = 20,
+    kStagePanelFeatureStatus = 21,
+    kStagePanelFeatureResult = 22,
 };
 
 struct PccDiagonal {
@@ -200,6 +222,16 @@ struct BridgeState {
     int retry_thread_status = -ENODEV;
     AIBinder_Class* surface_composer_class = nullptr;
     AIBinder* surface_flinger = nullptr;
+    AIBinder_Class* panel_feature_class = nullptr;
+    AIBinder* panel_feature = nullptr;
+    int current_dimming_mode = -1;
+    int current_dc_alpha = -1;
+    int current_pwm_turbo = -1;
+    int last_panel_feature_id = -1;
+    int last_panel_feature_value = -1;
+    int last_panel_feature_result = -1;
+    int last_panel_feature_status = -ENODEV;
+    uint32_t panel_feature_applies = 0;
 };
 
 BridgeState g_state;
@@ -457,6 +489,243 @@ int ensure_bp_binder_transact_locked() {
                             "无法解析 Vendor BpBinder::transact");
         return -ENOSYS;
     }
+    return 0;
+}
+
+void* panel_feature_on_create(void*) {
+    return nullptr;
+}
+
+void panel_feature_on_destroy(void*) {}
+
+binder_status_t panel_feature_on_transact(AIBinder*, transaction_code_t,
+                                            const AParcel*, AParcel*) {
+    return STATUS_UNKNOWN_TRANSACTION;
+}
+
+int ensure_panel_feature_class_locked() {
+    if (g_state.panel_feature_class != nullptr) {
+        return 0;
+    }
+
+    g_state.last_stage = kStagePanelFeatureClass;
+    g_state.panel_feature_class = AIBinder_Class_define(
+            kPanelFeatureDescriptor, panel_feature_on_create, panel_feature_on_destroy,
+            panel_feature_on_transact);
+    if (g_state.panel_feature_class == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                            "无法定义 Oplus Panel Feature Binder 接口类");
+        return -ENOMEM;
+    }
+    return 0;
+}
+
+void release_panel_feature_locked() {
+    if (g_state.panel_feature != nullptr) {
+        AIBinder_decStrong(g_state.panel_feature);
+        g_state.panel_feature = nullptr;
+    }
+}
+
+AIBinder* get_panel_feature_locked() {
+    if (g_state.panel_feature != nullptr) {
+        g_state.last_stage = kStagePanelFeatureService;
+        return g_state.panel_feature;
+    }
+
+    int status = ensure_panel_feature_class_locked();
+    if (status != 0) {
+        g_state.last_panel_feature_status = status;
+        return nullptr;
+    }
+
+    g_state.last_stage = kStagePanelFeatureService;
+    AIBinder* panel_feature = AServiceManager_checkService(kPanelFeatureServiceName);
+    if (panel_feature == nullptr) {
+        g_state.last_panel_feature_status = -ENODEV;
+        __android_log_print(
+                ANDROID_LOG_ERROR, kLogTag,
+                "Vendor ServiceManager 中不存在或不允许访问 Oplus Panel Feature 服务");
+        return nullptr;
+    }
+
+    g_state.last_stage = kStagePanelFeatureAssociate;
+    if (!AIBinder_associateClass(panel_feature, g_state.panel_feature_class)) {
+        g_state.last_panel_feature_status = -EPROTO;
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                            "Oplus Panel Feature Binder 无法关联 AIDL 接口类");
+        AIBinder_decStrong(panel_feature);
+        return nullptr;
+    }
+
+    g_state.panel_feature = panel_feature;
+    g_state.last_stage = kStagePanelFeatureService;
+    return g_state.panel_feature;
+}
+
+int normalize_panel_feature_status(binder_status_t status) {
+    if (status == STATUS_OK) {
+        return 0;
+    }
+    return status < 0 ? status : -EIO;
+}
+
+int normalize_panel_feature_result(int result) {
+    if (result == 0) {
+        return 0;
+    }
+    return result < 0 ? result : -EIO;
+}
+
+int read_panel_feature_status(AParcel* output) {
+    if (output == nullptr) {
+        return -EIO;
+    }
+
+    AStatus* aidl_status = nullptr;
+    const binder_status_t read_status = AParcel_readStatusHeader(output, &aidl_status);
+    if (read_status != STATUS_OK) {
+        if (aidl_status != nullptr) {
+            AStatus_delete(aidl_status);
+        }
+        return normalize_panel_feature_status(read_status);
+    }
+    if (aidl_status == nullptr) {
+        return -EPROTO;
+    }
+
+    int status = 0;
+    if (!AStatus_isOk(aidl_status)) {
+        const binder_status_t binder_status = AStatus_getStatus(aidl_status);
+        if (binder_status != 0) {
+            status = normalize_panel_feature_status(binder_status);
+        } else {
+            status = normalize_panel_feature_result(
+                    AStatus_getServiceSpecificError(aidl_status));
+            if (status == 0) {
+                status = -EIO;
+            }
+        }
+    }
+    AStatus_delete(aidl_status);
+    return status;
+}
+
+int set_panel_feature_value_locked(int display_id, int feature_id, int value) {
+    if (display_id < 0 || feature_id < 0 ||
+        static_cast<uint32_t>(feature_id) > kDisplayPanelFeatureIdMask) {
+        return -EINVAL;
+    }
+
+    AIBinder* binder = get_panel_feature_locked();
+    if (binder == nullptr) {
+        return g_state.last_panel_feature_status != 0 ? g_state.last_panel_feature_status
+                                                       : -ENODEV;
+    }
+
+    g_state.last_panel_feature_id = feature_id;
+    g_state.last_panel_feature_value = value;
+    g_state.last_panel_feature_result = -1;
+
+    AParcel* input = nullptr;
+    g_state.last_stage = kStagePanelFeatureWrite;
+    binder_status_t binder_status = AIBinder_prepareTransaction(binder, &input);
+    if (binder_status == STATUS_OK) {
+        const uint32_t feature_word =
+                (static_cast<uint32_t>(display_id) << kDisplayPanelFeatureDisplayShift) |
+                static_cast<uint32_t>(feature_id);
+        binder_status = AParcel_writeInt32(input, static_cast<int32_t>(feature_word));
+    }
+    if (binder_status == STATUS_OK) {
+        const int32_t array_value = value;
+        binder_status = AParcel_writeInt32Array(input, &array_value, 1);
+    }
+    if (binder_status != STATUS_OK) {
+        if (input != nullptr) {
+            AParcel_delete(input);
+        }
+        const int status = normalize_panel_feature_status(binder_status);
+        g_state.last_panel_feature_status = status;
+        return status;
+    }
+
+    AParcel* output = nullptr;
+    g_state.last_stage = kStagePanelFeatureTransact;
+    binder_status = AIBinder_transact(
+            binder, kSetDisplayPanelFeatureValueCommand, &input, &output,
+            kVintfBinderTransactionFlags);
+    if (binder_status == STATUS_DEAD_OBJECT) {
+        release_panel_feature_locked();
+    }
+    if (binder_status != STATUS_OK) {
+        if (output != nullptr) {
+            AParcel_delete(output);
+        }
+        const int status = normalize_panel_feature_status(binder_status);
+        g_state.last_panel_feature_status = status;
+        return status;
+    }
+
+    g_state.last_stage = kStagePanelFeatureStatus;
+    int status = read_panel_feature_status(output);
+    if (status == 0) {
+        if (output == nullptr) {
+            status = -EIO;
+        } else {
+            int32_t remote_result = -1;
+            binder_status = AParcel_readInt32(output, &remote_result);
+            if (binder_status != STATUS_OK) {
+                status = normalize_panel_feature_status(binder_status);
+            } else {
+                g_state.last_stage = kStagePanelFeatureResult;
+                g_state.last_panel_feature_result = remote_result;
+                status = normalize_panel_feature_result(remote_result);
+            }
+        }
+    }
+    if (output != nullptr) {
+        AParcel_delete(output);
+    }
+
+    g_state.last_panel_feature_status = status;
+    if (status == 0) {
+        ++g_state.panel_feature_applies;
+        if (feature_id == kDisplayPanelDimDcAlphaFeature) {
+            g_state.current_dc_alpha = value;
+        } else if (feature_id == kDisplayPanelPwmTurboFeature) {
+            g_state.current_pwm_turbo = value;
+        }
+    }
+    return status;
+}
+
+int apply_dimming_mode_locked(int value) {
+    if (value != kDimmingDcValue && value != kDimmingPwmValue) {
+        return -EINVAL;
+    }
+
+    const bool dc_enabled = value == kDimmingDcValue;
+    // Disable the currently incompatible path first, then enable the requested
+    // path. This keeps DC Alpha and PWM Turbo mutually exclusive even if the
+    // panel service observes the two requests in separate transactions.
+    const int first_feature = dc_enabled ? kDisplayPanelPwmTurboFeature
+                                         : kDisplayPanelDimDcAlphaFeature;
+    const int first_value = 0;
+    const int second_feature = dc_enabled ? kDisplayPanelDimDcAlphaFeature
+                                          : kDisplayPanelPwmTurboFeature;
+    const int second_value = 1;
+
+    int status = set_panel_feature_value_locked(kPrimaryDisplayId, first_feature, first_value);
+    if (status != 0) {
+        return status;
+    }
+    status = set_panel_feature_value_locked(kPrimaryDisplayId, second_feature, second_value);
+    if (status != 0) {
+        g_state.current_dimming_mode = -1;
+        return status;
+    }
+
+    g_state.current_dimming_mode = value;
     return 0;
 }
 
@@ -855,6 +1124,38 @@ int set_feature(displayfeature_device_t*, int display_id, int mode, int value, i
         return -EOPNOTSUPP;
     }
 
+    if (mode == kDimmingMode) {
+        pthread_mutex_lock(&g_state.mutex);
+        g_state.last_request_mode = mode;
+        g_state.last_display_id = display_id;
+        g_state.last_value = value;
+        g_state.last_cookie = cookie;
+        const int status = apply_dimming_mode_locked(value);
+        g_state.last_status = status;
+        const int last_stage = g_state.last_stage;
+        const int dc_alpha = g_state.current_dc_alpha;
+        const int pwm_turbo = g_state.current_pwm_turbo;
+        const int current_mode = g_state.current_dimming_mode;
+        const int panel_status = g_state.last_panel_feature_status;
+        const uint32_t panel_feature_applies = g_state.panel_feature_applies;
+        pthread_mutex_unlock(&g_state.mutex);
+
+        if (status == 0) {
+            __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                "DC/PWM 调光已投递：xiaomiMode=%d value=%d "
+                                "dcAlpha=%d pwmTurbo=%d panelFeatureApplies=%u",
+                                mode, value, dc_alpha, pwm_turbo, panel_feature_applies);
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                                "DC/PWM 调光投递失败：xiaomiMode=%d value=%d "
+                                "currentMode=%d dcAlpha=%d pwmTurbo=%d "
+                                "status=%d panelStatus=%d stage=%d",
+                                mode, value, current_mode, dc_alpha, pwm_turbo, status,
+                                panel_status, last_stage);
+        }
+        return status;
+    }
+
     if (mode == kPaperTextureColorMode) {
         __android_log_print(ANDROID_LOG_WARN, kLogTag,
                             "纸张纹理色型没有对应的 QTI 接口：mode=%d value=%d cookie=%d",
@@ -1027,6 +1328,9 @@ void dump_state(displayfeature_device_t*, bool detail, void* output) {
              "qserviceCached=%d colorMatrixBackend=system-libbinder-ndk/SurfaceFlinger "
              "surfaceFlingerCached=%d surfaceFlingerStatus=%d surfaceFlingerApplies=%u "
              "qtiBackend=libsdm-disp-vndapis qtiInitialized=%d "
+             "panelFeatureBackend=raw-ndk-aidl panelFeatureCached=%d "
+             "panelFeatureStatus=%d panelFeatureApplies=%u "
+             "dimmingMode=%d dcAlpha=%d pwmTurbo=%d "
              "legacyGlobalPccCleared=%d legacyUserColorBalanceCleared=%d "
              "pccConfigured=%d pccEnabled=%d pccApplyPending=%d "
              "pcc=(%.4f,%.4f,%.4f) actualPccValid=%d actualPccEnabled=%d "
@@ -1036,6 +1340,8 @@ void dump_state(displayfeature_device_t*, bool detail, void* output) {
              "eyeCareValue=%d eyeCareWarmth=%d eyeCarePcc=(%.4f,%.4f,%.4f) "
              "xiaomiMode=%d colorMode=%d renderIntent=%d lastRequestMode=%d "
              "lastStage=%d lastStatus=%d lastQtiStatus=%d "
+             "lastPanelFeatureId=%d lastPanelFeatureValue=%d "
+             "lastPanelFeatureResult=%d "
              "lastBrightnessStatus=%d lastBrightness=%d lastDisplay=%d lastValue=%d "
              "lastCookie=%d brightnessNotifications=%u pendingRetryPolls=%u "
              "retryThreadStarted=%d retryThreadStatus=%d ignoredMessages=%u "
@@ -1044,6 +1350,12 @@ void dump_state(displayfeature_device_t*, bool detail, void* output) {
              g_state.last_surface_flinger_status,
              g_state.surface_flinger_color_matrix_applies,
              g_state.qti_initialized ? 1 : 0,
+             g_state.panel_feature != nullptr ? 1 : 0,
+             g_state.last_panel_feature_status,
+             g_state.panel_feature_applies,
+             g_state.current_dimming_mode,
+             g_state.current_dc_alpha,
+             g_state.current_pwm_turbo,
              g_state.legacy_global_pcc_cleared ? 1 : 0,
              g_state.legacy_user_color_balance_cleared ? 1 : 0,
              g_state.pcc_configured ? 1 : 0, g_state.pcc_enabled ? 1 : 0,
@@ -1061,6 +1373,8 @@ void dump_state(displayfeature_device_t*, bool detail, void* output) {
              g_state.current_xiaomi_mode, kSrgbColorMode,
              g_state.current_render_intent, g_state.last_request_mode,
              g_state.last_stage, g_state.last_status, g_state.last_qti_status,
+             g_state.last_panel_feature_id, g_state.last_panel_feature_value,
+             g_state.last_panel_feature_result,
              g_state.last_brightness_status, g_state.last_brightness,
              g_state.last_display_id, g_state.last_value, g_state.last_cookie,
              g_state.brightness_notifications, g_state.pcc_pending_retry_polls,
@@ -1144,12 +1458,20 @@ int close_device(hw_device_t*) {
     g_state.actual_pcc = {1.0, 1.0, 1.0};
     g_state.current_xiaomi_mode = -1;
     g_state.current_render_intent = -1;
+    g_state.current_dimming_mode = -1;
+    g_state.current_dc_alpha = -1;
+    g_state.current_pwm_turbo = -1;
     g_state.last_request_mode = -1;
     g_state.last_display_id = -1;
     g_state.last_value = -1;
     g_state.last_cookie = -1;
     g_state.last_status = status;
     g_state.last_qti_status = deinit_status;
+    g_state.last_panel_feature_id = -1;
+    g_state.last_panel_feature_value = -1;
+    g_state.last_panel_feature_result = -1;
+    g_state.last_panel_feature_status = -ENODEV;
+    g_state.panel_feature_applies = 0;
     g_state.last_brightness = -1;
     g_state.last_brightness_status = -ENODEV;
     g_state.brightness_notifications = 0;
@@ -1158,6 +1480,7 @@ int close_device(hw_device_t*) {
     g_state.legacy_user_color_balance_cleared = false;
     release_surface_flinger_locked();
     release_qservice_locked();
+    release_panel_feature_locked();
     pthread_mutex_unlock(&g_state.mutex);
 
     if (reset_status != 0 || deinit_status != 0 || retry_status != 0) {

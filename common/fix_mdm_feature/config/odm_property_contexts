@@ -1,0 +1,4 @@
+# mdm_feature 原包契约：IMEISV/SVN 与 OTA 版本属性对所有需要读取的域公开。
+ro.build.version.svn.c u:object_r:exported_default_prop:s0
+ro.build.version.svn u:object_r:exported_default_prop:s0
+ro.build.version.ota u:object_r:exported_default_prop:s0

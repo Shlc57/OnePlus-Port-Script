@@ -89,6 +89,11 @@ def test_registry() -> None:
             "features/fix_ultrasonic_fingerprint",
             "config/selinux_bundle.tsv",
         ),
+        (
+            "fix_oplusreserve_context",
+            "devices/oneplus15/fix_oplusreserve_context",
+            "config/selinux_bundle.tsv",
+        ),
     ]
     assert len(records) == len(set(records))
     for name, relative_dir, relative_manifest in records:

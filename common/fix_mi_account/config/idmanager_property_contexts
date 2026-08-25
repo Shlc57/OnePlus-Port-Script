@@ -1,0 +1,8 @@
+# Xiaomi ID Manager identity and attestation property contract.
+ro.vendor.oem.sno u:object_r:vendor_sno_prop:s0
+ro.vendor.oem.psno u:object_r:vendor_sno_prop:s0
+ro.vendor.oem.ctacode u:object_r:vendor_sno_prop:s0
+persist.vendor.sys.idmgr.attestation.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.idmgr.attestation.se.status u:object_r:vendor_payment_security_prop:s0
+persist.vendor.sys.idmgr.secid.status u:object_r:vendor_payment_security_prop:s0
+ro.vendor.idmgr.initialized u:object_r:vendor_payment_security_prop:s0

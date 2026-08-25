@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配一加 15 的传感器属性、显示配置、自动亮度曲线与启动亮度。 |
 | [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
+| [`fix_oplusreserve_context`](fix_oplusreserve_context/README.md) | `vendor`、`odm` | 修复一加 15 Oplus reserve 块设备的 oppo_block_device 标签，供 Enforcing 下的基带身份读取链使用。 |
 
 ## 共享模块参数
 

@@ -1,0 +1,2 @@
+vendor.xiaomi.hardware.idmanager.IIdManagerService/default u:object_r:hal_idmanager_service:s0
+vendor.xiaomi.hardware.idmanager.ISecidService/default u:object_r:hal_idmanager_service:s0

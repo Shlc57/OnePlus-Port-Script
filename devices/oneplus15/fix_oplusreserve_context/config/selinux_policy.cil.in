@@ -1,0 +1,8 @@
+;; OnePlus 15 /dev/block/sdf2 is explicitly labelled oppo_block_device.
+;; ueventd is the only process that creates this devtmpfs node; Enforcing boot
+;; evidence showed the exact create denial before the node became available.
+;; Use concrete types: the Oplus private type has no platform mapping entry
+;; for oppo_block_device_${API_VERSION}.
+(allow ueventd oppo_block_device (blk_file (create getattr setattr)))
+(allow oppo_block_device tmpfs (filesystem (associate)))
+(allow mdm_feature oppo_block_device (blk_file (open read write)))

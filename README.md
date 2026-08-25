@@ -143,6 +143,7 @@ bash OP15_port.sh
 | --- | --- | --- |
 | [`devices/oneplus15/fix_auto_brightness`](devices/oneplus15/fix_auto_brightness/README.md) | `odm`、`product` | 适配自动亮度曲线、物理亮度边界和启动亮度。 |
 | [`devices/oneplus15/fix_refresh_rate_switch`](devices/oneplus15/fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
+| [`devices/oneplus15/fix_oplusreserve_context`](devices/oneplus15/fix_oplusreserve_context/README.md) | `vendor`、`odm` | 修复实际 Oplus reserve 块设备的 oppo_block_device 标签，供 Enforcing 下的基带身份读取链使用。 |
 
 启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
 

@@ -105,6 +105,31 @@ validate_mtd_service_contract() {
 	fi
 }
 
+validate_idmanager_service_contract() {
+	local odm_root="${1:-}"
+	local idmanager_rc="$odm_root/etc/init/vendor.xiaomi.hardware.idmanager.rc"
+	local idmanager_manifest="$odm_root/etc/vintf/manifest/vendor.xiaomi.hardware.idmanager.xml"
+
+	check_file_exists "$idmanager_rc" || return 1
+	check_file_exists "$idmanager_manifest" || return 1
+	if [[ -L "$idmanager_rc" || -L "$idmanager_manifest" ]]; then
+		err_print "idmanager rc/manifest 不能是符号链接"
+		return 1
+	fi
+	if ! grep -Fqx 'service vendor.idmanger /odm/bin/idmanager' "$idmanager_rc"; then
+		err_print "idmanager rc 的服务入口与目标 contexts 不一致"
+		return 1
+	fi
+	for idmanager_interface in \
+		'    interface aidl vendor.xiaomi.hardware.idmanager.IIdManagerService/default' \
+		'    interface aidl vendor.xiaomi.hardware.idmanager.ISecidService/default'; do
+		if ! grep -Fqx "$idmanager_interface" "$idmanager_rc"; then
+			err_print "idmanager rc 缺少 AIDL 接口：$idmanager_interface"
+			return 1
+		fi
+	done
+}
+
 validate_exec_context_overrides() {
 	local override_file="${1:-}"
 	local policy_contexts="${2:-}"
@@ -200,6 +225,7 @@ check_file_exists "$exec_transition_cil"
 load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"
 validate_selinux_bundle_sources
 validate_mtd_service_contract "$project_dir/mi_odm"
+validate_idmanager_service_contract "$project_dir/mi_odm"
 for runtime_contexts in "${runtime_file_contexts[@]}"; do
 	check_file_exists "$runtime_contexts"
 done
@@ -294,6 +320,7 @@ if [[ "$SELINUX_BUNDLE_ACTIVE" != true ]]; then
 	exit 1
 fi
 validate_mtd_service_contract "$project_dir/odm"
+validate_idmanager_service_contract "$project_dir/odm"
 std_print "✅ 已整理 mtd 独立域策略与 contexts bundle，交由下游 common/fix_vendor_avc 统一合并"
 
 std_print "处理完成"

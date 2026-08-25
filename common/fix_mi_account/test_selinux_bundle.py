@@ -52,12 +52,23 @@ def test_bundle_ownership_and_targets() -> None:
     records = parse_tsv(BUNDLE, 3)
     requirements = {path for kind, target, path in records if kind == "require" and target == "project"}
     assert requirements == {
+        "odm/bin/idmanager",
         "odm/bin/mtd",
         "odm/bin/mtd_check",
         "odm/bin/mtd_keysoter",
+        "odm/etc/init/vendor.xiaomi.hardware.idmanager.rc",
         "odm/etc/init/vendor.xiaomi.hardware.aidl.mtdservice-service.rc",
         "odm/etc/init/vendor.xiaomi.hardware.aidl.mtd_check-service.rc",
         "odm/etc/init/vendor.xiaomi.hardware.aidl.mtkeysoter-service.rc",
+        "odm/etc/vintf/manifest/vendor.xiaomi.hardware.idmanager.xml",
+        "odm/lib64/libidprovision.so",
+        "odm/lib64/libsecid.so",
+        "odm/lib64/vendor.xiaomi.hardware.idmanager-V1-ndk.so",
+        "vendor/lib64/hw/libEseUtils.so",
+        "vendor/lib64/libQSEEComAPI.so",
+        "vendor/lib64/libminkdescriptor.so",
+        "vendor/lib64/libprovisioner_qti.so",
+        "vendor/lib64/vendor.xiaomi.hardware.misys.core-V1-ndk.so",
     }
     policies = [(target, path) for kind, target, path in records if kind == "policy"]
     assert policies == [("vendor_policy", "config/selinux_policy.cil.in")]
@@ -70,6 +81,13 @@ def test_bundle_ownership_and_targets() -> None:
         ("precompiled_property_contexts", "config/mtd_property_contexts"),
         ("vendor_service_contexts", "config/mtd_service_contexts"),
         ("precompiled_service_contexts", "config/mtd_service_contexts"),
+        ("vendor_file_contexts", "config/idmanager_file_contexts"),
+        ("precompiled_file_contexts", "config/idmanager_file_contexts"),
+        ("odm_metadata_contexts", "config/idmanager_file_contexts"),
+        ("vendor_property_contexts", "config/idmanager_property_contexts"),
+        ("precompiled_property_contexts", "config/idmanager_property_contexts"),
+        ("vendor_service_contexts", "config/idmanager_service_contexts"),
+        ("precompiled_service_contexts", "config/idmanager_service_contexts"),
     ]
     for _, relative_path in policies + contexts:
         fragment = PATCH_DIR / relative_path
@@ -105,6 +123,7 @@ def test_context_types_and_independent_domains() -> None:
         ("hal_mtdservice_check", "hal_mtdservice_check_exec"),
         ("hal_mtdservice_default", "hal_mtdservice_default_exec"),
         ("hal_mtkeysoter_default", "hal_mtkeysoter_default_exec"),
+        ("hal_idmanager_default", "hal_idmanager_default_exec"),
     ):
         assert f"(type {domain})" in policy
         assert f"(type {executable})" in policy
@@ -118,7 +137,12 @@ def test_context_types_and_independent_domains() -> None:
         encoding="utf-8"
     )
     overrides = (CONFIG_DIR / "exec_context_overrides.tsv").read_text(encoding="utf-8")
-    for binary in ("/odm/bin/mtd", "/odm/bin/mtd_check", "/odm/bin/mtd_keysoter"):
+    for binary in (
+        "/odm/bin/mtd",
+        "/odm/bin/mtd_check",
+        "/odm/bin/mtd_keysoter",
+        "/odm/bin/idmanager",
+    ):
         assert binary not in overrides
 
 
@@ -165,10 +189,76 @@ def test_device_identifier_property_contract() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_idmanager_contract() -> None:
+    policy = POLICY.read_text(encoding="utf-8")
+    file_contexts = dict(active_context_records(CONFIG_DIR / "idmanager_file_contexts"))
+    property_contexts = dict(
+        active_context_records(CONFIG_DIR / "idmanager_property_contexts")
+    )
+    service_contexts = dict(
+        active_context_records(CONFIG_DIR / "idmanager_service_contexts")
+    )
+    assert file_contexts["/odm/bin/idmanager"] == (
+        "u:object_r:hal_idmanager_default_exec:s0"
+    )
+    assert property_contexts["ro.vendor.oem.sno"] == (
+        "u:object_r:vendor_sno_prop:s0"
+    )
+    assert property_contexts["ro.vendor.oem.psno"] == (
+        "u:object_r:vendor_sno_prop:s0"
+    )
+    assert service_contexts[
+        "vendor.xiaomi.hardware.idmanager.IIdManagerService/default"
+    ] == "u:object_r:hal_idmanager_service:s0"
+    assert service_contexts[
+        "vendor.xiaomi.hardware.idmanager.ISecidService/default"
+    ] == "u:object_r:hal_idmanager_service:s0"
+    assert "(type hal_idmanager_default)" in policy
+    assert "(type hal_idmanager_default_exec)" in policy
+    assert "(type hal_idmanager_service)" in policy
+    assert "(type vendor_sno_prop)" in policy
+    # The source policy also has an unbound legacy `idmanager` coredomain.
+    # It has no executable, init service, or context consumer, so it must not
+    # be conflated with /odm/bin/idmanager's HAL server domain.
+    assert "(type idmanager)" not in policy
+    assert "(allow idmanager servicemanager_${API_VERSION}" not in policy
+    assert "(expandtypeattribute (hal_idmanager) true)" in policy
+    assert re.search(
+        r"\(typeattributeset hal_secure_element_client \([^)]*\bhal_idmanager_default\b[^)]*\)\)",
+        policy,
+    )
+    assert (
+        "(typetransition init_${API_VERSION} hal_idmanager_default_exec "
+        "process hal_idmanager_default)"
+    ) in policy
+    assert (
+        "(typeattributeset hal_idmanager_client "
+        "(platform_app_${API_VERSION} system_app_${API_VERSION} "
+        "hal_mtdservice_default))"
+    ) in policy
+    assert "hal_misyscore_default" not in policy
+    assert "hal_misyscore_service" not in policy
+    assert "secinfo_block_device" not in policy
+
+    bundle_text = BUNDLE.read_text(encoding="utf-8")
+    assert "vendor.xiaomi.hardware.misys.core-service" not in bundle_text
+    assert "/dev/block/by-name/secinfo" not in bundle_text
+    assert "vendor/lib64/vendor.xiaomi.hardware.misys.core-V1-ndk.so" in bundle_text
+
+    vendor_sources = (CONFIG_DIR / "mi_vendor_sources.tsv").read_text(
+        encoding="utf-8"
+    )
+    assert "bin/hw/vendor.xiaomi.hardware.misys.core-service" not in vendor_sources
+    assert "etc/init/vendor.xiaomi.hardware.misys.core-service.rc" not in vendor_sources
+    assert "etc/vintf/manifest/vendor.xiaomi.hardware.misys.core.xml" not in vendor_sources
+    assert "lib64/vendor.xiaomi.hardware.misys.core-V1-ndk.so" in vendor_sources
+
+
 if __name__ == "__main__":
     test_bundle_ownership_and_targets()
     test_requirements_are_owned_by_source_manifest()
     test_context_types_and_independent_domains()
     test_aidl_and_runtime_data_contract()
     test_device_identifier_property_contract()
+    test_idmanager_contract()
     print("fix_mi_account SELinux bundle tests passed")

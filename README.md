@@ -113,6 +113,7 @@ bash OP15_port.sh
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
 | [`common/fix_linear_haptic`](common/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
 | [`common/fix_mi_account`](common/fix_mi_account/README.md) | `odm`、`vendor` | 迁移账号、支付与安全环境资源并登记 SELinux bundle。 |
+| [`common/fix_xiaomi_psno`](common/fix_xiaomi_psno/README.md) | `system_ext` | 仅在 Xiaomi Phone SN 为空时，以目标 `ro.serialno` 作为展示 fallback，不改 IMEI、PCB SN 或 Factory ID。 |
 | [`common/fix_mi_mtp_kill_self`](common/fix_mi_mtp_kill_self/README.md) | `system` | 将 MTP 服务从 `android.process.media` 隔离。 |
 | [`common/fix_modem_xts`](common/fix_modem_xts/README.md) | `system` | 短路不兼容的 Oplus modem/Xiaomi OEM Hook 调用。 |
 | [`common/fix_mtp`](common/fix_mtp/README.md) | `system` | 替换匹配底包 USB 栈的 configfs rc。 |

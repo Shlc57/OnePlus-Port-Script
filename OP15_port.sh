@@ -83,6 +83,7 @@ bash "$port" common/merge_mi_ext \
 	common/fake_device_params \
 	common/fix_pangu \
 	common/fix_mi_account \
+	common/fix_xiaomi_psno \
 	devices/oneplus15/fix_oplusreserve_context \
 	features/enable_hyperos_features \
 	common/fix_camera_mr \

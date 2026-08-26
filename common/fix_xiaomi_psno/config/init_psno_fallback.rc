@@ -1,0 +1,8 @@
+# BEGIN common xiaomi psno fallback
+# Display fallback for Xiaomi DeviceInfoQR Phone SN.
+# It only fills an empty Xiaomi Phone SN field after boot from the target
+# serial number; it does not claim a Xiaomi OEM NV PSNO and does not alter
+# IMEI, PCB SN, or Factory ID.
+on property:sys.boot_completed=1 && property:ro.ril.oem.psno=
+    setprop ro.ril.oem.psno ${ro.serialno}
+# END common xiaomi psno fallback

@@ -1,8 +1,43 @@
-;; OnePlus 15 /dev/block/sdf2 is explicitly labelled oppo_block_device.
-;; ueventd is the only process that creates this devtmpfs node; Enforcing boot
-;; evidence showed the exact create denial before the node became available.
-;; Use concrete types: the Oplus private type has no platform mapping entry
-;; for oppo_block_device_${API_VERSION}.
+;; OnePlus 15 Oplus lower-layer compatibility rules, all from Enforcing DSU
+;; AVCs. /dev/block/sdf2 is explicitly labelled oppo_block_device, but the
+;; original Oplus policy grants its clients only the versioned public type.
+;; Keep the fallback on the concrete unversioned type used by this port.
 (allow ueventd oppo_block_device (blk_file (create getattr setattr)))
 (allow oppo_block_device tmpfs (filesystem (associate)))
 (allow mdm_feature oppo_block_device (blk_file (open read write)))
+(allow hal_charger_oplus oppo_block_device (blk_file (open read)))
+(allow oplus_hal_engineer_default oppo_block_device (blk_file (open read)))
+(allow oplus_hal_engineer_default oppo_reserve_file (dir (search)))
+(allow hal_oplus_sensor_aidl_default oppo_block_device (blk_file (open read)))
+(allow hal_oplus_misc_aidl_default oppo_block_device (blk_file (open read)))
+(allow hal_vibrator_default oppo_block_device (blk_file (open read)))
+(allow subsystem_daemon oppo_block_device (blk_file (open read)))
+
+;; The Oplus gameopt service enumerates /proc/<pid> directories and reads their
+;; comm files.  Both are labelled with the owning process domain.
+(allow hal_gameopt_oplus_aidl domain (dir (search)))
+(allow hal_gameopt_oplus_aidl domain (file (read)))
+
+;; The reserve partition is relabelled and mounted by init/vendor_init during
+;; boot. Its system and media subdirectories have separate concrete labels.
+(allow init oppo_reserve_file (dir (relabelfrom)))
+(allow vendor_init oppo_reserve_file (dir (read relabelfrom)))
+(allow vendor_init oppo_reserve_file (file (getattr)))
+(allow vendor_init oppo_reserve_system_file (dir (search getattr setattr)))
+(allow vendor_init oppo_reserve_media_file (dir (search getattr setattr)))
+(allow vendor_init oppo_reserve_system_config (dir (getattr setattr)))
+(allow vendor_init oppo_reserve_media_log (dir (search getattr setattr)))
+(allow vendor_init oppo_reserve_system_file (dir (read relabelfrom)))
+(allow vendor_init oppo_reserve_media_file (dir (read relabelfrom)))
+
+;; Exact Oplus lower-layer denials observed on the OnePlus 15 DSU.
+(allow qsguard kmsg_device (chr_file (write)))
+(allow wlchg kmsg_device (chr_file (write)))
+(allow wlchg kmsg_device (chr_file (open)))
+(allow hal_urcc_default vendor_latency_device (chr_file (open)))
+(allow servicemanager vendor_hal_sensorscalibrate_qti_default (binder (call)))
+(allow cameramind_app vendor_hal_perf_default (binder (call)))
+(allow cameramind_app zygote (unix_stream_socket (getopt)))
+(allow vendor_wlc_app zygote (unix_stream_socket (getopt)))
+(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))
+(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))

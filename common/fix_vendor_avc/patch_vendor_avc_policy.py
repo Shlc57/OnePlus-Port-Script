@@ -53,7 +53,7 @@ def render_rules(api_version: str) -> list[str]:
         "(allow occe_create vendor_hal_qspmhal_default (binder (call)))",
         "(allow hal_nfc_default system_suspend (binder (call)))",
         "(allow system_suspend hal_nfc_default (binder (transfer)))",
-        "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (read)))",
+        "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (read open)))",
         f"(allow servicemanager_{api_version} vendor_hal_poweroptservice_qti (binder (call)))",
         "(allow init oppo_reserve_file (dir (getattr)))",
         "(allow vendor_init oppo_reserve_file (dir (search getattr setattr)))",

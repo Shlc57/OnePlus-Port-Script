@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -12,6 +13,12 @@ SPEC = importlib.util.spec_from_file_location("patch_vendor_avc_policy", MODULE_
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+MERGER_PATH = MODULE_PATH.parent.parent / "selinux_merge" / "selinux_merge.py"
+MERGER_SPEC = importlib.util.spec_from_file_location("selinux_merge", MERGER_PATH)
+assert MERGER_SPEC and MERGER_SPEC.loader
+MERGER = importlib.util.module_from_spec(MERGER_SPEC)
+sys.modules[MERGER_SPEC.name] = MERGER
+MERGER_SPEC.loader.exec_module(MERGER)
 
 
 API = "202504"
@@ -55,6 +62,10 @@ def test_patch_is_complete_and_idempotent() -> None:
     for statement in MODULE.render_statements(API):
         assert patched.count(statement) == 1
     assert "(allow vendor_init vendor_logdump_partition (lnk_file (setattr)))" in patched
+    assert (
+        "(allow hal_graphics_composer_default vendor_smmu_proxy_device "
+        "(chr_file (read open)))"
+    ) in patched
     assert "(allow surfaceflinger vendor_hal_qspmhal_default (binder (call)))" in patched
     assert (
         "(typeattributeset vendor_hal_qspmhal_client "
@@ -93,6 +104,44 @@ def test_unified_policy_accepts_extended_attribute_set() -> None:
         "vendor_hal_qspmhal_client",
         ("bootanim", "surfaceflinger", "occe_create"),
     )
+
+
+def test_context_generation_uses_the_merged_temporary_policy() -> None:
+    old_rules = MODULE.render_rules(API)
+    old_rules[8] = (
+        "(allow hal_graphics_composer_default vendor_smmu_proxy_device "
+        "(chr_file (read)))"
+    )
+    effective_policy = (
+        VENDOR
+        + "\n"
+        + MODULE.UNIFIED_BEGIN_MARKER
+        + "\n"
+        + "\n".join([*old_rules, *MODULE.render_attribute_extensions()])
+        + "\n"
+        + MODULE.UNIFIED_END_MARKER
+        + "\n"
+    )
+    merged_policy, _, _, _ = MERGER.merge_policy_fragments(
+        effective_policy, [MODULE.build_fragment_body(API)], API
+    )
+
+    try:
+        MODULE.patch_policy(effective_policy, PLATFORM, VERSIONED, API, SYSTEM_EXT)
+    except MODULE.PolicyError as error:
+        assert "vendor_smmu_proxy_device" in str(error)
+    else:
+        raise AssertionError("pre-merge policy was accepted for context generation")
+    assert MODULE.patch_policy(merged_policy, PLATFORM, VERSIONED, API, SYSTEM_EXT) == merged_policy
+
+    apply_source = MODULE_PATH.with_name("apply.sh").read_text(encoding="utf-8")
+    context_generation = apply_source.split(
+        'temporary_precompiled_service_contexts=""', 1
+    )[1].split(
+        "# ODM precompiled contexts are loaded early.", 1
+    )[0]
+    assert context_generation.count('--policy "${temporary_policy_files[0]}"') == 3
+    assert '--policy "$effective_vendor_policy"' not in context_generation
 
 
 def test_old_managed_fragment_is_upgraded() -> None:
@@ -354,6 +403,7 @@ if __name__ == "__main__":
     test_patch_is_complete_and_idempotent()
     test_fragment_body_is_marker_free_for_unified_merge()
     test_unified_policy_accepts_extended_attribute_set()
+    test_context_generation_uses_the_merged_temporary_policy()
     test_old_managed_fragment_is_upgraded()
     test_unmanaged_duplicate_is_rejected()
     test_marker_errors_are_rejected()

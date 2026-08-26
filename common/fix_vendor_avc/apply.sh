@@ -469,15 +469,18 @@ if [[ "$precompiled_service_contexts_enabled" == true ]]; then
 	temporary_files+=("$temporary_precompiled_service_contexts")
 fi
 
+# Context/property patching must validate against the fully merged temporary
+# policy.  ``effective_vendor_policy`` is only the pre-patch source merge and
+# still contains the old unified block when this module is rerun.
 python3 "$policy_patcher" \
-	--policy "$effective_vendor_policy" \
+	--policy "${temporary_policy_files[0]}" \
 	"${common_patcher_args[@]}" \
 	--contexts "$effective_vendor_file_contexts" \
 	--contexts-output "$temporary_vendor_file_contexts" \
 	--property-contexts "$effective_vendor_property_contexts" \
 	--property-contexts-output "$temporary_vendor_property_contexts"
 python3 "$policy_patcher" \
-	--policy "$effective_vendor_policy" \
+	--policy "${temporary_policy_files[0]}" \
 	"${common_patcher_args[@]}" \
 	--contexts "$precompiled_file_contexts" \
 	--contexts-output "$temporary_precompiled_file_contexts" \
@@ -490,7 +493,7 @@ if [[ "$precompiled_service_contexts_enabled" == true ]]; then
 	cp -p -- "$precompiled_service_contexts" "$temporary_precompiled_service_contexts"
 fi
 python3 "$policy_patcher" \
-	--policy "$effective_vendor_policy" \
+	--policy "${temporary_policy_files[0]}" \
 	"${common_patcher_args[@]}" \
 	--contexts "$vendor_metadata_contexts" \
 	--contexts-output "$temporary_vendor_metadata_contexts" \

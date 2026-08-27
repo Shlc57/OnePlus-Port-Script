@@ -55,24 +55,33 @@ def test_ueventd_create_policy_contract() -> None:
         "(allow subsystem_daemon oppo_block_device (blk_file (open read)))",
         "(allow hal_gameopt_oplus_aidl domain (dir (search)))",
         "(allow hal_gameopt_oplus_aidl domain (file (read)))",
+        "(allow hal_gameopt_oplus_aidl domain (file (open)))",
+        "(allow hal_gameopt_oplus_aidl domain (file (getattr)))",
         "(allow init oppo_reserve_file (dir (relabelfrom)))",
         "(allow vendor_init oppo_reserve_file (dir (read relabelfrom)))",
         "(allow vendor_init oppo_reserve_file (file (getattr)))",
+        "(allow vendor_init oppo_reserve_file (file (relabelfrom)))",
         "(allow vendor_init oppo_reserve_system_file (dir (search getattr setattr)))",
         "(allow vendor_init oppo_reserve_media_file (dir (search getattr setattr)))",
         "(allow vendor_init oppo_reserve_system_config (dir (getattr setattr)))",
         "(allow vendor_init oppo_reserve_media_log (dir (search getattr setattr)))",
         "(allow vendor_init oppo_reserve_system_file (dir (read relabelfrom)))",
         "(allow vendor_init oppo_reserve_media_file (dir (read relabelfrom)))",
+        "(allow vendor_init oppo_reserve_system_config (dir (read relabelfrom)))",
+        "(allow vendor_init oppo_reserve_media_log (dir (read relabelfrom)))",
+        "(allow vendor_init oppo_reserve_system_config (file (getattr)))",
+        "(allow vendor_init oppo_reserve_media_log (file (getattr)))",
         "(allow qsguard kmsg_device (chr_file (write)))",
         "(allow wlchg kmsg_device (chr_file (write)))",
         "(allow wlchg kmsg_device (chr_file (open)))",
         "(allow hal_urcc_default vendor_latency_device (chr_file (open)))",
+        "(allow hal_charger_oplus oppo_block_device (blk_file (write)))",
         "(allow servicemanager vendor_hal_sensorscalibrate_qti_default (binder (call)))",
         "(allow cameramind_app vendor_hal_perf_default (binder (call)))",
         "(allow cameramind_app zygote (unix_stream_socket (getopt)))",
         "(allow vendor_wlc_app zygote (unix_stream_socket (getopt)))",
         "(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))",
+        "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))",
         "(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))",
     ]
     assert statements[0].endswith("(blk_file (create getattr setattr)))")
@@ -83,9 +92,12 @@ def test_ueventd_create_policy_contract() -> None:
     assert "(allow mdm_feature oppo_block_device (blk_file (open read write)))" in policy
     assert "(allow hal_gameopt_oplus_aidl domain (dir (search)))" in policy
     assert "(allow hal_gameopt_oplus_aidl domain (file (read)))" in policy
+    assert "(allow hal_gameopt_oplus_aidl domain (file (open)))" in policy
+    assert "(allow hal_gameopt_oplus_aidl domain (file (getattr)))" in policy
     assert "(allow qsguard kmsg_device (chr_file (write)))" in policy
     assert "(allow servicemanager vendor_hal_sensorscalibrate_qti_default (binder (call)))" in policy
     assert "(allow cameramind_app vendor_hal_perf_default (binder (call)))" in policy
+    assert "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))" in policy
     assert "(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))" in policy
     apply_source = APPLY.read_text(encoding="utf-8")
     assert 'load_selinux_bundle_manifest "$selinux_bundle_manifest" "$patcher_dir"' in apply_source

@@ -79,6 +79,8 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
 bash "$port" common/merge_mi_ext \
 	common/fuck_oplus_hybridzram \
 	features/disable_mi_vulkan \
+	features/fix_audio_appname \
+	features/fix_lhdc \
 	common/disable_odm_imports \
 	common/fake_device_params \
 	common/fix_pangu \

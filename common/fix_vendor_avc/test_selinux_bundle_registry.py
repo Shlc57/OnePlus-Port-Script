@@ -90,6 +90,11 @@ def test_registry() -> None:
             "config/selinux_bundle.tsv",
         ),
         (
+            "fix_millet_core_bridge",
+            "features/fix_millet_core_bridge",
+            "config/selinux_bundle.tsv",
+        ),
+        (
             "fix_oplusreserve_context",
             "devices/oneplus15/fix_oplusreserve_context",
             "config/selinux_bundle.tsv",

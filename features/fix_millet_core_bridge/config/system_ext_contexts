@@ -1,0 +1,2 @@
+/system_ext/lib64/modules u:object_r:system_lib_file:s0
+/system_ext/lib64/modules/millet_core\.ko u:object_r:system_lib_file:s0

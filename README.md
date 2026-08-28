@@ -134,6 +134,7 @@ bash OP15_port.sh
 | [`features/fix_displayfeature_bridge`](features/fix_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
 | [`features/fix_lhdc`](features/fix_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
 | [`features/fix_ltpo`](features/fix_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
+| [`features/fix_millet_core_bridge`](features/fix_millet_core_bridge/README.md) | `system_ext`、`vendor` | 接入 Millet 核心桥预编译 KO、init.rc 和 SELinux bundle；KO 存放在 `system_ext/lib64/modules`，由 `KMI` 选择仓库内 KMI。 |
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
 | [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限。 |
@@ -158,7 +159,7 @@ bash OP15_port.sh
 
 | 贡献者 | 联系方式 | 提供内容 |
 | --- | --- | --- |
-| 牢大 | `2806379025` | 蓝牙 LHDC 与声音卡顿修复方案 |
+| 牢大 | `2806379025` | 蓝牙 LHDC、声音卡顿与 Millet 核心桥方案；本次 `features/fix_millet_core_bridge` 补丁来源于牢大提供的方案 |
 
 ### 主要参考帖子
 

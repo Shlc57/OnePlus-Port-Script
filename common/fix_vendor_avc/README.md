@@ -21,6 +21,7 @@
 - `features/fix_displayfeature_bridge` 交付的 RGB/色温属性 contexts bundle。
 - `features/fix_oplus_double_tap_wake` 完整交付的 TouchFeature bridge bundle。
 - `features/fix_ultrasonic_fingerprint` 交付的 FOD 与实机 AVC 指纹属性策略及 contexts bundle。
+- `features/fix_millet_core_bridge` 交付的 Millet netlink 补充规则。
 - `devices/oneplus15/fix_oplusreserve_context` 交付的实际 reserve 块节点 context，以及由 Enforcing 启动 AVC 证明所需的 ueventd 精确创建规则。
 
 bundle 注册表只声明可消费模块；目录和清单必须使用安全相对路径，并在解析后仍位于当前 `port` 与对应 bundle 目录内。只有 requirement 完整满足时才会启用。半套 requirement、未知 contexts 目标、缺失类型、同一逻辑目标内跨 bundle 的重复 key（转义形式视为同一 key）、非幂等结果或 normal/debug 结果不一致都会在落盘前失败。业务策略归各模块所有，不会下沉到通用 merger。

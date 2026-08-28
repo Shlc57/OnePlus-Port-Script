@@ -1,0 +1,3 @@
+;; The existing system_ext Millet domain owns the user-space contract.
+;; Keep only the additional netlink socket operations from the archive.
+(allow millet millet (netlink_socket (getopt setopt)))

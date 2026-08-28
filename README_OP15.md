@@ -49,6 +49,8 @@
 
 11. 组合流程还会直接重打包 `system/system/apex/com.android.bt.apex`，从当前 APEX 提取并轻量修改其 `libbluetooth_jni.so`，再注入项目自带的 LHDC V5 backend、wrapper 与 cold bridge；同时在 `system/system/build.prop` 幂等设置 `log.tag.BTAudioSessionAidl=S` 以压低重复日志。它不会使用工具包中另一 OTA 的 JNI，也不会生成 KSU/Mountify 覆盖；补丁只按动态结构和本次输入判定状态，不保存固定文件元信息。payload 会使用项目 `features/fix_lhdc/keys/com.android.bt.avb.pem` 重新生成 AVB hashtree/vbmeta/footer，并将对应公钥写入 `apex_pubkey`。这是预装 APEX 自洽通过 apeXd AVB 校验所需的最小信任变更，不改系统 CA 或 `apexkeys.txt`；外层 `META-INF` 与 APK v2/v3 Signing Block 会原样保留，以便 PMS 仍能识别 APK Signature Scheme v2；这些旧签名内容本身不重新生成，完整性校验可能失效。本轮只包含主机临时副本检查，不包含设备、apeXd、PMS、耳机播放或冷启动验证。
 
+12. Millet 核心桥由 `features/fix_millet_core_bridge` 接入。`OP15_port.sh` 固定导出 `KMI=android16-6.12`，从仓库对应目录把预编译 KO 安装到普通 `system_ext/lib64/modules`，并把归档 KernelSU 的加载动作转换为 vendor `init.rc`；不会写入 `/system/lib64/modules`、`/vendor/lib64/modules` 所指向的 DLKM 物理分区，其 SELinux 规则随后由 `common/fix_vendor_avc` 统一合并。
+
 ## 电脑 Linux 使用方法
 
 进入 `port` 目录，执行整套一加 15 修补脚本：

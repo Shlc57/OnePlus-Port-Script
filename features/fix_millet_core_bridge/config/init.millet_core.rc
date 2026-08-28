@@ -1,0 +1,9 @@
+on post-fs-data
+    setprop sys.millet.bridge.ready 0
+    insmod /system_ext/lib64/modules/millet_core.ko enable_pkg=1 enable_signal=1 enable_binder=1
+    restorecon /proc/millet /proc/millet/* /sys/module/millet_core/parameters /sys/module/millet_core/parameters/*
+    chmod 0644 /sys/module/millet_core/parameters/millet_debug /sys/module/millet_core/parameters/frozen_uid_min /sys/module/millet_core/parameters/binder_warn_ahead_space /sys/module/millet_core/parameters/millet_binder_switch
+    chmod 0660 /sys/module/millet_core/parameters/millet_freeze_switch
+    setprop sys.millet.bridge.error ""
+    setprop sys.millet.bridge.ready 1
+    setprop sys.millet.monitor 1

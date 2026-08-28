@@ -1,0 +1,4 @@
+obj-m += millet_core.o
+millet_core-y := src/millet_oplus_bridge.o
+
+ccflags-y += -Wall -I$(srctree)/drivers/android -I$(src)/src

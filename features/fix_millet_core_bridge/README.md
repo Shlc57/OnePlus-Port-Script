@@ -35,4 +35,4 @@ KMI=android16-6.12 bash build.sh
 
 ## SELinux / init 说明
 
-归档中的 `allow millet millet netlink_socket { getopt setopt }` 通过 `common/fix_vendor_avc` 的 bundle 机制合并；已有 `millet` 域、文件类型和 monitor 服务契约直接复用。KernelSU 的冲突探测、等待循环、卸载脚本和 live `magiskpolicy` 不再保留，默认启动条件成立时由 `init.millet_core.rc` 完成一次加载。
+归档中的 `allow millet millet netlink_socket { getopt setopt }` 以及 init 从 `system_ext` 加载 KO 所需的 `vendor_init -> system_lib_file:system module_load` 规则，通过 `common/fix_vendor_avc` 的 bundle 机制合并；已有 `millet` 域、文件类型和 monitor 服务契约直接复用。KernelSU 的冲突探测、等待循环、卸载脚本和 live `magiskpolicy` 不再保留，默认启动条件成立时由 `init.millet_core.rc` 完成一次加载。

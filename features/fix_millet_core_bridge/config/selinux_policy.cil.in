@@ -1,3 +1,5 @@
 ;; The existing system_ext Millet domain owns the user-space contract.
 ;; Keep only the additional netlink socket operations from the archive.
 (allow millet millet (netlink_socket (getopt setopt)))
+;; init loads the KO from system_ext; grant only the observed module_load right.
+(allow vendor_init system_lib_file (system (module_load)))

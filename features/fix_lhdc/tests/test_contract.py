@@ -219,7 +219,10 @@ class LhdcApexContract(unittest.TestCase):
             'system_build_prop="$project_dir/system/system/build.prop"',
             apply_script,
         )
-        self.assertIn(
+        # The target build.prop is an assembled system file, not a standalone
+        # override fragment; unrelated pre-existing duplicate keys must not
+        # block this patch's independent log-property update.
+        self.assertNotIn(
             'validate_prop_file "$system_build_prop"',
             apply_script,
         )

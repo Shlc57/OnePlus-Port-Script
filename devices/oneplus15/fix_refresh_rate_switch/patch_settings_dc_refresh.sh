@@ -115,10 +115,11 @@ if before_names.count(target_entry) != 1:
 for index, (before_name, before_method, before_data) in enumerate(before):
     _after_name, after_method, after_data = after[index]
     if before_name == target_entry:
-        if before_method != zipfile.ZIP_STORED:
-            raise SystemExit(f"原目标条目不是 ZIP_STORED：{target_entry}")
-        if after_method != zipfile.ZIP_STORED:
-            raise SystemExit(f"目标条目未使用 ZIP_STORED：{target_entry}")
+        if before_method != after_method:
+            raise SystemExit(
+                f"目标条目压缩方式发生变化：{target_entry}："
+                f"{before_method} -> {after_method}"
+            )
         continue
     if before_method != after_method:
         raise SystemExit(f"非目标条目压缩方式发生变化：{before_name}")
@@ -410,6 +411,7 @@ PATCHED_APK="$WORK_DIR/Settings.apk.patched"
 ALIGNED_APK="$WORK_DIR/Settings.apk.aligned"
 SIGNING_BLOCK_BEFORE="$WORK_DIR/signing-block.before"
 SIGNING_BLOCK_AFTER="$WORK_DIR/signing-block.after"
+TARGET_ZIP_OPTIONS=()
 
 python3 - "$APK_PATH" "$APK_DEX_ENTRY" <<'PY'
 import sys
@@ -424,6 +426,24 @@ try:
 except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
     raise SystemExit(f"无法读取 Settings.apk ZIP：{error}") from error
 PY
+TARGET_COMPRESS_TYPE=$(python3 - "$APK_PATH" "$APK_DEX_ENTRY" <<'PY'
+import sys
+import zipfile
+
+apk_path, target_entry = sys.argv[1:]
+with zipfile.ZipFile(apk_path) as archive:
+    compress_type = archive.getinfo(target_entry).compress_type
+if compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+    raise SystemExit(
+        f"不支持 {target_entry} 的 ZIP 压缩方式：{compress_type}，"
+        "仅支持 ZIP_STORED 或 ZIP_DEFLATED"
+    )
+print(compress_type)
+PY
+)
+if [[ "$TARGET_COMPRESS_TYPE" == 0 ]]; then
+	TARGET_ZIP_OPTIONS=(-0)
+fi
 python3 "$SIGNING_BLOCK_TOOL" extract "$APK_PATH" "$SIGNING_BLOCK_BEFORE" >/dev/null
 
 mkdir -p -- "$TARGET_ARCHIVE_DIR"
@@ -473,7 +493,7 @@ unzip -p "$REBUILT_TARGET_ARCHIVE" "$APKTOOL_DEX_ENTRY" > "$DEX_DIR/$APK_DEX_ENT
 cp -a -- "$APK_PATH" "$PATCHED_APK"
 (
 	cd -- "$DEX_DIR"
-	zip -q -0 "$PATCHED_APK" "$APK_DEX_ENTRY"
+	zip -q "${TARGET_ZIP_OPTIONS[@]}" "$PATCHED_APK" "$APK_DEX_ENTRY"
 )
 "$ZIPALIGN_COMMAND" -f -P 16 4 "$PATCHED_APK" "$ALIGNED_APK" || fail 'zipalign 失败'
 mv -- "$ALIGNED_APK" "$PATCHED_APK"

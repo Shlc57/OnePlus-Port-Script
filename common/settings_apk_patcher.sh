@@ -18,6 +18,7 @@ METHOD_NAME=''
 PATCH_DESCRIPTION=''
 
 WORK_DIR=''
+WORK_PARENT=''
 REPLACEMENT_PATH=''
 
 log() {
@@ -865,7 +866,14 @@ resolve_zipalign
 APK_PATH=$(cd -- "$(dirname -- "$APK_PATH")" && pwd)/$(basename -- "$APK_PATH")
 APK_DIR=$(dirname -- "$APK_PATH")
 
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/settings-apk-patcher.${PATCH_KIND}.XXXXXX")
+
+# Apktool 与 zip 增量回写会同时占用多个 APK 级别的临时副本。默认放在
+# APK 所在工作树，避免带用户配额的 /tmp tmpfs 因空间峰值失败；调用方仍可
+# 通过 SETTINGS_APK_PATCH_TMPDIR 显式指定临时目录。
+WORK_PARENT=${SETTINGS_APK_PATCH_TMPDIR:-$APK_DIR}
+[[ -d "$WORK_PARENT" && -w "$WORK_PARENT" ]] ||
+    fail "Settings APK 临时目录不可写：$WORK_PARENT"
+WORK_DIR=$(mktemp -d "$WORK_PARENT/.settings-apk-patcher.${PATCH_KIND}.XXXXXX")
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM

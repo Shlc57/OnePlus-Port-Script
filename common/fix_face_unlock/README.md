@@ -18,7 +18,7 @@
 
 人脸特性 XML 或 `Settings.apk` 缺失时，这两个必须配套的文件子步骤会一起跳过，但 vendor 硬件特性声明迁移仍继续。模块需要 Apktool、Java、Python 3、`zip`、`unzip` 与 Android SDK `zipalign`。
 
-Settings 只替换目标 DEX，保留其他归档条目、APK Signing Block 与 `META-INF` 证书材料，并清理来源 oat。共享补丁器直接比较本次处理前后的条目名称、顺序、压缩方式和非目标原始内容，不保存来源 APK 的 hash、大小或 CRC 快照，因此 OTA 改版不会仅因文件身份变化被拒绝。DEX 改动后 v1/v2/v3 内容完整性签名必然失效，只适用于已确认系统扫描允许回退加载且底包提供标准 Face HAL 的移植环境。
+Settings 只替换目标 DEX，保留其他归档条目、APK Signing Block 与 `META-INF` 证书材料，并清理来源 oat。共享补丁器直接比较本次处理前后的条目名称、顺序、压缩方式和非目标原始内容，不保存来源 APK 的 hash、大小或 CRC 快照，因此 OTA 改版不会仅因文件身份变化被拒绝。为避免大 APK 重建时触发 `/tmp` 用户配额，临时工作目录默认位于 `Settings.apk` 所在目录；可通过 `SETTINGS_APK_PATCH_TMPDIR` 显式指定其他可写目录。DEX 改动后 v1/v2/v3 内容完整性签名必然失效，只适用于已确认系统扫描允许回退加载且底包提供标准 Face HAL 的移植环境。
 
 无需安装 `PearlBiometric.apk`：已在 nezha DSU 上移除用户 0 的 `com.miui.face`、确认进程与 `miui.face.FaceService` 均不存在后，实测录入、成功页退出和人脸解锁正常。
 

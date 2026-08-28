@@ -31,7 +31,9 @@ prebuilt_dir="$patcher_dir/prebuilt/system/apex/com.android.bt/lib64"
 bridge_source="$patcher_dir/source/lhdc_cold.cpp"
 avb_key="$patcher_dir/keys/com.android.bt.avb.pem"
 
-# 先只校验日志属性目标；实际写回延后到 APEX 依赖与输入预检完成后。
+# 先确认日志属性目标类型；实际写回延后到 APEX 依赖与输入预检完成后。
+# 目标是已组装的 system build.prop，允许保留与本补丁无关的历史重复键；
+# ensure_prop 只对本补丁负责的日志键做幂等替换。
 system_build_prop_ready=0
 if [[ -L "$system_build_prop" ]]; then
 	err_print "不支持直接修改符号链接属性文件：$system_build_prop"
@@ -42,7 +44,6 @@ elif [[ ! -f "$system_build_prop" ]]; then
 	err_print "系统属性目标不是普通文件：$system_build_prop"
 	exit 1
 else
-	validate_prop_file "$system_build_prop"
 	system_build_prop_ready=1
 fi
 

@@ -446,11 +446,9 @@ clear_replacement = """.method public clearSavedAuthenResult()V
 
     .line 147"""
 
-down_anchor = """    .line 336
-    .local p1, \"authenticationClient\":Lcom/android/server/biometrics/sensors/AuthenticationClient;
+down_anchor = """    .local p1, \"authenticationClient\":Lcom/android/server/biometrics/sensors/AuthenticationClient;
     invoke-virtual {p0, v3, v4}, Lcom/android/server/biometrics/sensors/fingerprint/FingerprintServiceStubImpl;->isFingerDownAcquireCode(II)Z"""
-down_replacement = """    .line 336
-    .local p1, \"authenticationClient\":Lcom/android/server/biometrics/sensors/AuthenticationClient;
+down_replacement = """    .local p1, \"authenticationClient\":Lcom/android/server/biometrics/sensors/AuthenticationClient;
     invoke-direct {p0, v3, v4, v0}, Lcom/android/server/biometrics/sensors/fingerprint/FingerprintServiceStubImpl;->isOplusKeyguardFingerDown(IILcom/android/server/biometrics/sensors/BaseClientMonitor;)Z
 
     move-result p4

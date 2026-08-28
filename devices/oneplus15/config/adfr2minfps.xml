@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  OnePlus 15 (AD296) production ADFR2 min-fps RUS input, extracted read-only
+  from /my_product/vendor/etc/multimedia_display_adfr2minfps_config.xml.
+
+  The generic fix_ltpo module validates and packs this with the original Oplus
+  OplusHwDisplayRusAdfr::updateAdfrXmlConfig() int[225] layout.  Do not infer
+  another panel's values from this file.
+-->
+<root>
+  <oplsadfrCfg>
+    <version>20250925</version>
+    <mode name="adfr2minfps_config">
+      <enable>1</enable>
+      <debug_enable>0</debug_enable>
+      <sensor_enable>0</sensor_enable>
+      <panelnit_enable>1</panelnit_enable>
+      <gray_enable>1</gray_enable>
+      <tracking_switch>1</tracking_switch>
+      <gray_cal>0</gray_cal>
+      <sampleInterval>0</sampleInterval>
+      <sensor_inlux>15</sensor_inlux>
+      <sensor_outlux>40</sensor_outlux>
+      <sensor_gaptime>10</sensor_gaptime>
+      <fullscreen_aod>15</fullscreen_aod>
+      <reserve_mode>165</reserve_mode>
+      <panelnit_level>50 30 20 10</panelnit_level>
+      <Y_l_level>0 0 0 0</Y_l_level>
+      <Y_h_level>5 5 9 12</Y_h_level>
+      <sum_level>70 70 50 20</sum_level>
+      <max_level>70 70 25 10</max_level>
+      <minfps120_level>1 1 30 1 120 1 120 10 120 10</minfps120_level>
+      <minfps90_level>1 1 30 1 90 1 90 10 90 10</minfps90_level>
+      <minfps60_level>1 1 30 1 60 1 60 10 60 10</minfps60_level>
+      <aod_panelnit_level>50 30 20</aod_panelnit_level>
+      <aod_Y_l_level>0 0 0</aod_Y_l_level>
+      <aod_Y_h_level>4 4 4</aod_Y_h_level>
+      <aod_sum_level>70 70 70</aod_sum_level>
+      <aod_max_level>70 70 70</aod_max_level>
+      <aod_minfps120_level>1 1 30 1 120 1 120 10</aod_minfps120_level>
+      <aod_minfps90_level>1 1 30 1 90 1 90 10</aod_minfps90_level>
+      <aod_minfps60_level>1 1 30 1 60 1 60 10</aod_minfps60_level>
+      <reserve_panelnit_level>50 30 20 10</reserve_panelnit_level>
+      <reserve_Y_l_level>0 0 0 0</reserve_Y_l_level>
+      <reserve_Y_h_level>7 11 12 12</reserve_Y_h_level>
+      <reserve_sum_level>70 70 50 20</reserve_sum_level>
+      <reserve_max_level>70 70 25 10</reserve_max_level>
+      <reserve_minfps_level1>33 33 165 33 165 33 165 33 165 33</reserve_minfps_level1>
+      <reserve_minfps_level2>1 1 1 1 1 1 1 1 1 1</reserve_minfps_level2>
+      <reserve_minfps_level3>1 1 1 1 1 1 1 1 1 1</reserve_minfps_level3>
+    </mode>
+  </oplsadfrCfg>
+</root>

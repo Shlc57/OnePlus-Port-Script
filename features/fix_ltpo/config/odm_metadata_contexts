@@ -1,0 +1,1 @@
+/odm/etc/selinux/odm_property_contexts u:object_r:property_contexts_file:s0

@@ -12,6 +12,17 @@ export DEVICE_DISPLAY_NAME='OnePlus 15'
 export PORT_TARGET_DISPLAY_ID="4630946903293830803"
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
+# OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_ltpo 只消费这个显式
+# 配置，不从小米原包、DT 或其他机型猜测 1/55Hz 策略。
+export OPLUS_ADFR_RUS_XML_FILE="$oneplus15_config_dir/adfr2minfps.xml"
+# OnePlus 15 AD296 Apollo DBV-to-nit database.  This is a panel-specific
+# input to the Oplus ADFR plugin, not a generic display XML.  The LTPO module
+# validates its decoded hash and only patches the explicitly pinned core ABI.
+export OPLUS_APOLLO_PANEL_CONFIG_ASSET="$oneplus15_config_dir/display_apollo_list_AD296_P_3_A0020_dsc_cmd_mode_panel.xml.gz.b64"
+export OPLUS_APOLLO_PANEL_CONFIG_RELATIVE_PATH='etc/display_apollo_list_AD296_P_3_A0020_dsc_cmd_mode_panel.xml'
+export OPLUS_APOLLO_PANEL_CONFIG_SHA256='0d151bb437896d6bb7eaa2d3f9f6df9339499ab97858bfdb269b80b087717234'
+export OPLUS_APOLLO_SDMCORE_INPUT_SHA256='2c608ed50df879988c8a07c3a52993f40372a4e3f100d46ffe9c9d79a6d63067'
+export OPLUS_APOLLO_SDMCORE_OUTPUT_SHA256='ce73d3b4655a48cac28bbeff176fab276fd1151206437856b1919316acee0ca9'
 export NFC_PROPERTIES_FILE="$oneplus15_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$oneplus15_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear

@@ -16,6 +16,9 @@ def test_contract_files() -> None:
     assert "insmod /system_ext/lib64/modules/millet_core.ko" in rc
     assert "vendor_dlkm" not in rc
     assert "enable_pkg=1 enable_signal=1 enable_binder=1" in rc
+    for line in rc.splitlines():
+        if line.strip().startswith("chmod "):
+            assert len(line.split()) == 3
     policy = (ROOT / "config/selinux_policy.cil.in").read_text(encoding="utf-8")
     assert "allow millet millet (netlink_socket (getopt setopt))" in policy
     assert "(allow vendor_init system_lib_file (system (module_load)))" in policy

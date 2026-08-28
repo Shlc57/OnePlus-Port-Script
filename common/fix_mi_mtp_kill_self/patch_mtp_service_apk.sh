@@ -74,54 +74,72 @@ resolve_zipalign() {
 	fail "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
 }
 
-archive_entries_snapshot() {
-	local apk=$1
-	local output=$2
-	LC_ALL=C unzip -Z1 "$apk" | LC_ALL=C sort > "$output"
-}
+compare_archive_contract() {
+	local before_apk=$1
+	local after_apk=$2
+	local excluded_entry=${3:-}
 
-archive_content_snapshot() {
-	local apk=$1
-	local excluded_entry=$2
-	local output=$3
-
-	python3 - "$apk" "$excluded_entry" "$output" <<'PY'
-import hashlib
-import json
+	python3 - "$before_apk" "$after_apk" "$excluded_entry" <<'PY'
 import sys
 import zipfile
+import zlib
 
-apk_path, excluded_entry, output_path = sys.argv[1:]
-with zipfile.ZipFile(apk_path) as archive, open(output_path, "w", encoding="utf-8") as output:
-    for index, info in enumerate(archive.infolist()):
-        if info.filename == excluded_entry:
-            continue
-        digest = hashlib.sha256()
-        with archive.open(info) as entry:
-            for chunk in iter(lambda: entry.read(1024 * 1024), b""):
-                digest.update(chunk)
-        output.write(
-            f"{index}\t{json.dumps(info.filename, ensure_ascii=True)}\t"
-            f"{info.compress_type}\t{info.file_size}\t{info.CRC}\t{digest.hexdigest()}\n"
-        )
+before_path, after_path, excluded_entry = sys.argv[1:]
+
+
+def fail(message):
+	print(f"归档契约校验失败：{message}", file=sys.stderr)
+	raise SystemExit(1)
+
+
+def open_archive(path):
+	try:
+		archive = zipfile.ZipFile(path)
+		infos = archive.infolist()
+	except (OSError, EOFError, IndexError, MemoryError, OverflowError, RuntimeError,
+			ValueError, zipfile.BadZipFile, zipfile.LargeZipFile) as error:
+		fail(f"无法读取 {path}: {error}")
+	names = [info.filename for info in infos]
+	if len(names) != len(set(names)):
+		archive.close()
+		fail(f"{path} 包含重复 ZIP 条目")
+	return archive, infos
+
+
+before, before_infos = open_archive(before_path)
+after, after_infos = open_archive(after_path)
+try:
+	if len(before_infos) != len(after_infos):
+		fail(f"条目数量变化：{len(before_infos)} -> {len(after_infos)}")
+	if excluded_entry:
+		before_excluded = [info for info in before_infos if info.filename == excluded_entry]
+		after_excluded = [info for info in after_infos if info.filename == excluded_entry]
+		if len(before_excluded) != 1 or len(after_excluded) != 1:
+			fail(f"目标条目 {excluded_entry!r} 数量异常")
+
+	for index, (before_info, after_info) in enumerate(zip(before_infos, after_infos)):
+		if before_info.filename != after_info.filename:
+			fail(f"条目顺序或名称变化（位置 {index}: {before_info.filename!r} -> {after_info.filename!r}）")
+		if (
+			before_info.filename != excluded_entry
+			and before_info.compress_type != after_info.compress_type
+		):
+			fail(f"条目压缩方式变化（{before_info.filename!r}: {before_info.compress_type} -> {after_info.compress_type}）")
+		if before_info.filename == excluded_entry:
+			continue
+		try:
+			before_content = before.read(before_info)
+			after_content = after.read(after_info)
+		except (EOFError, IndexError, KeyError, MemoryError, NotImplementedError,
+			OSError, OverflowError, RuntimeError, ValueError, zipfile.BadZipFile,
+			zipfile.LargeZipFile, zlib.error) as error:
+			fail(f"条目 {before_info.filename!r} 内容读取失败：{error}")
+		if before_content != after_content:
+			fail(f"非目标条目内容变化：{before_info.filename!r}")
+finally:
+	before.close()
+	after.close()
 PY
-}
-
-signature_snapshot() {
-	local apk=$1
-	local output=$2
-	local entries_file=$3
-	local entry digest
-
-	LC_ALL=C unzip -Z1 "$apk" |
-		awk 'toupper($0) ~ /^META-INF\/.*\.(MF|SF|RSA|DSA|EC)$/ { print }' |
-		LC_ALL=C sort > "$entries_file"
-	: > "$output"
-	while IFS= read -r entry; do
-		[[ -n "$entry" ]] || continue
-		digest=$(unzip -p "$apk" "$entry" | sha256sum | awk '{ print $1 }')
-		printf '%s\t%s\n' "$digest" "$entry" >> "$output"
-	done < "$entries_file"
 }
 
 manifest_state() {
@@ -185,17 +203,8 @@ validate_and_install_apk() {
 	cmp -s "$MANIFEST_REPLACEMENT" <(unzip -p "$PATCHED_APK" AndroidManifest.xml) ||
 		fail "AndroidManifest.xml 未正确写入 APK"
 
-	archive_entries_snapshot "$PATCHED_APK" "$ARCHIVE_ENTRIES_AFTER"
-	cmp -s "$ARCHIVE_ENTRIES_BEFORE" "$ARCHIVE_ENTRIES_AFTER" ||
-		fail "更新后 APK 的归档条目列表发生变化"
-	archive_content_snapshot "$PATCHED_APK" AndroidManifest.xml "$NON_TARGET_CONTENT_AFTER"
-	cmp -s "$NON_TARGET_CONTENT_BEFORE" "$NON_TARGET_CONTENT_AFTER" ||
-		fail "更新后存在 AndroidManifest.xml 之外的条目内容变化"
-	signature_snapshot "$PATCHED_APK" "$SIGNATURES_AFTER" "$SIGNATURE_ENTRIES_AFTER"
-	cmp -s "$SIGNATURE_ENTRIES_BEFORE" "$SIGNATURE_ENTRIES_AFTER" ||
-		fail "更新后签名条目列表发生变化"
-	cmp -s "$SIGNATURES_BEFORE" "$SIGNATURES_AFTER" ||
-		fail "更新后签名条目内容发生变化"
+	compare_archive_contract "$APK_PATH" "$PATCHED_APK" AndroidManifest.xml ||
+		fail "更新后 APK 的非目标归档契约发生变化"
 
 	cp --attributes-only --preserve=all -- "$APK_PATH" "$PATCHED_APK" ||
 		fail "无法恢复原 MtpService.apk 文件属性"
@@ -211,7 +220,7 @@ validate_and_install_apk() {
 (( $# == 1 )) || fail "用法：$0 <MtpService.apk>"
 APK_PATH=$1
 
-for command_name in awk cmp cp dirname find java mkdir mktemp mv python3 rm sha256sum sort tail unzip zip; do
+for command_name in cmp cp dirname find java mkdir mktemp mv python3 rm sort tail unzip zip; do
 	require_command "$command_name"
 done
 resolve_apktool
@@ -232,14 +241,6 @@ MANIFEST_DIR="$WORK_DIR/manifest"
 MANIFEST_REPLACEMENT="$MANIFEST_DIR/AndroidManifest.xml"
 PATCHED_APK="$WORK_DIR/MtpService.apk.patched"
 ALIGNED_APK="$WORK_DIR/MtpService.apk.aligned"
-ARCHIVE_ENTRIES_BEFORE="$WORK_DIR/archive-entries.before"
-ARCHIVE_ENTRIES_AFTER="$WORK_DIR/archive-entries.after"
-NON_TARGET_CONTENT_BEFORE="$WORK_DIR/non-target-content.before"
-NON_TARGET_CONTENT_AFTER="$WORK_DIR/non-target-content.after"
-SIGNATURES_BEFORE="$WORK_DIR/signatures.before"
-SIGNATURES_AFTER="$WORK_DIR/signatures.after"
-SIGNATURE_ENTRIES_BEFORE="$WORK_DIR/signature-entries.before"
-SIGNATURE_ENTRIES_AFTER="$WORK_DIR/signature-entries.after"
 SIGNING_BLOCK_BEFORE="$WORK_DIR/apk-signing-block.before"
 SIGNING_BLOCK_AFTER="$WORK_DIR/apk-signing-block.after"
 
@@ -258,10 +259,7 @@ if [[ "$STATE" == patched ]]; then
 fi
 [[ "$STATE" == original ]] || fail "MtpService manifest 状态异常：$STATE"
 
-log "记录原 APK 归档条目、签名数据与 Signing Block"
-archive_entries_snapshot "$APK_PATH" "$ARCHIVE_ENTRIES_BEFORE"
-archive_content_snapshot "$APK_PATH" AndroidManifest.xml "$NON_TARGET_CONTENT_BEFORE"
-signature_snapshot "$APK_PATH" "$SIGNATURES_BEFORE" "$SIGNATURE_ENTRIES_BEFORE"
+log "记录原 APK 的 Signing Block"
 python3 "$SIGNING_BLOCK_TOOL" extract "$APK_PATH" "$SIGNING_BLOCK_BEFORE" >/dev/null
 
 manifest_state "$MANIFEST_PATH" patch >/dev/null

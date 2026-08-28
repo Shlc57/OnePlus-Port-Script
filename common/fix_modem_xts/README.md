@@ -14,7 +14,7 @@
 - 固定报告 XTS 不受支持。
 - 短路 `MiRilHook.onHookNotifyScreenStatusSync` 发送的小米 `0x802AA/0x1B` 屏幕状态 OEM 命令，避免电话线程每次亮灭屏阻塞约 5 秒及 `QcrilOemhookMsgTunnel` 长时间持有 wakelock。
 
-模块只替换目标 DEX，保留其他 APK 条目、Signing Block 与 `META-INF` 证书材料。DEX 改动后内容完整性签名必然失效，只适用于确实存在该 Oplus modem/Xiaomi OEM Hook 冲突且已确认系统扫描允许该产物的环境。
+模块只替换目标 DEX，保留其他 APK 条目、Signing Block 与 `META-INF` 证书材料。校验直接比较本次处理前后的条目名称、顺序、压缩方式和非目标原始内容，不在补丁中保存来源 APK 的 hash、大小或 CRC 快照，因此 OTA 改版不会仅因文件身份变化被拒绝。DEX 改动后内容完整性签名必然失效，只适用于确实存在该 Oplus modem/Xiaomi OEM Hook 冲突且已确认系统扫描允许该产物的环境。
 
 需要 Java、Apktool、Python 3、`zip`、`unzip` 与 Android SDK `zipalign`。`TeleService.apk` 不存在时只警告并跳过。
 

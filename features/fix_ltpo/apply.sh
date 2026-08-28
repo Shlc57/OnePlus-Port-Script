@@ -40,15 +40,10 @@ apollo_patcher="$patcher_dir/patch_apollo_panel_nit.py"
 apollo_asset="${OPLUS_APOLLO_PANEL_CONFIG_ASSET:-}"
 apollo_relative_path="${OPLUS_APOLLO_PANEL_CONFIG_RELATIVE_PATH:-}"
 apollo_xml_sha256="${OPLUS_APOLLO_PANEL_CONFIG_SHA256:-}"
-apollo_sdmcore_input_sha256="${OPLUS_APOLLO_SDMCORE_INPUT_SHA256:-}"
-apollo_sdmcore_output_sha256="${OPLUS_APOLLO_SDMCORE_OUTPUT_SHA256:-}"
-# The first Apollo revision only rewrote the prefix.  Keep its exact hash as
-# an upgrade-only staging state so an unpacked OnePlus 15 worktree can be
-# repaired atomically by the stricter parser-contract patcher.
-apollo_sdmcore_prefix_only_sha256='fa03ba5a29cf6a76bc79926701017be20512afb3276b17ab4858e91b391d8896'
 apollo_enabled=0
 staged_apollo_xml=''
 staged_apollo_sdmcore=''
+apollo_input_snapshot=''
 apollo_xml_target=''
 apollo_sdmcore_target="$project_dir/vendor/lib64/libsdmcore.so"
 apollo_vendor_contexts=''
@@ -165,8 +160,6 @@ prepare_apollo_panel_nit() {
 		"$apollo_asset"
 		"$apollo_relative_path"
 		"$apollo_xml_sha256"
-		"$apollo_sdmcore_input_sha256"
-		"$apollo_sdmcore_output_sha256"
 	)
 	local apollo_config_present=0
 	local value
@@ -175,7 +168,6 @@ prepare_apollo_panel_nit() {
 	local apollo_context_relative
 	local apollo_context_patch
 	local apollo_fsconfig_patch
-	local current_sdmcore_sha256
 
 	for value in "${apollo_config_values[@]}"; do
 		if [[ -n "$value" ]]; then
@@ -193,12 +185,10 @@ prepare_apollo_panel_nit() {
 		err_print "Apollo panel-nit 目标路径不受支持：$apollo_relative_path"
 		return 1
 	fi
-	for value in "$apollo_xml_sha256" "$apollo_sdmcore_input_sha256" "$apollo_sdmcore_output_sha256"; do
-		if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
-			err_print "Apollo panel-nit SHA-256 格式无效"
-			return 1
-		fi
-	done
+	if [[ ! "$apollo_xml_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+		err_print "Apollo 项目 asset SHA-256 格式无效"
+		return 1
+	fi
 
 	check_file_exists "$apollo_patcher"
 	check_file_exists "$apollo_asset"
@@ -237,6 +227,8 @@ prepare_apollo_panel_nit() {
 	apollo_staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/fix-ltpo-apollo.apply.XXXXXX")
 	staged_apollo_xml="$apollo_staging_dir/display_apollo.xml"
 	staged_apollo_sdmcore="$apollo_staging_dir/libsdmcore.so"
+	apollo_input_snapshot="$apollo_staging_dir/libsdmcore.input"
+	cp -p -- "$apollo_sdmcore_target" "$apollo_input_snapshot"
 	apollo_xml_target="$project_dir/vendor/$apollo_relative_path"
 	if [[ -L "$apollo_xml_target" ]]; then
 		err_print "不支持替换符号链接 Apollo XML：$apollo_xml_target"
@@ -250,15 +242,12 @@ prepare_apollo_panel_nit() {
 		--output-xml "$staged_apollo_xml" \
 		--xml-sha256 "$apollo_xml_sha256" \
 		--input-library "$apollo_sdmcore_target" \
-		--output-library "$staged_apollo_sdmcore" \
-		--input-library-sha256 "$apollo_sdmcore_input_sha256" \
-		--output-library-sha256 "$apollo_sdmcore_output_sha256"; then
+		--output-library "$staged_apollo_sdmcore"; then
 		err_print "Apollo panel-nit staging 校验失败"
 		return 1
 	fi
-	if [[ "$(sha256sum -- "$staged_apollo_xml" | awk '{print $1}')" != "$apollo_xml_sha256" || \
-		"$(sha256sum -- "$staged_apollo_sdmcore" | awk '{print $1}')" != "$apollo_sdmcore_output_sha256" ]]; then
-		err_print "Apollo staging 输出 hash 校验失败"
+	if ! cmp -s -- "$apollo_input_snapshot" "$apollo_sdmcore_target"; then
+		err_print "Apollo staging 输入在解析期间发生变化"
 		return 1
 	fi
 
@@ -284,15 +273,6 @@ prepare_apollo_panel_nit() {
 		err_print "Apollo vendor metadata staging 校验失败"
 		return 1
 	fi
-	read -r current_sdmcore_sha256 _ < <(sha256sum -- "$apollo_sdmcore_target")
-	case "$current_sdmcore_sha256" in
-		"$apollo_sdmcore_input_sha256"|"$apollo_sdmcore_prefix_only_sha256"|"$apollo_sdmcore_output_sha256")
-			;;
-		*)
-			err_print "Apollo 目标库 hash 在 staging 期间发生变化"
-			return 1
-			;;
-	esac
 	apollo_enabled=1
 }
 
@@ -386,9 +366,9 @@ if (( apollo_enabled == 1 )); then
 	chmod 0644 -- "$apollo_xml_target" "$apollo_sdmcore_target"
 	_install_generated_file "$temporary_vendor_contexts" "$apollo_vendor_contexts"
 	_install_generated_file "$temporary_vendor_fsconfig" "$apollo_vendor_fsconfig"
-	if [[ "$(sha256sum -- "$apollo_xml_target" | awk '{print $1}')" != "$apollo_xml_sha256" || \
-		"$(sha256sum -- "$apollo_sdmcore_target" | awk '{print $1}')" != "$apollo_sdmcore_output_sha256" ]]; then
-		err_print "Apollo panel-nit 安装后 hash 校验失败"
+	if ! cmp -s -- "$staged_apollo_xml" "$apollo_xml_target" ||
+		! cmp -s -- "$staged_apollo_sdmcore" "$apollo_sdmcore_target"; then
+		err_print "Apollo panel-nit 安装后内容校验失败"
 		exit 1
 	fi
 	std_print "✅ 已安装 AD296 Apollo panel-nit XML，并定点适配 libsdmcore 路径"

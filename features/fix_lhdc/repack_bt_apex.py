@@ -115,10 +115,9 @@ class AbiMatch:
 
 
 @dataclass(frozen=True)
-class SourceState:
+class PayloadState:
     name: str
     jni: Path
-    build_id: str
     abi: AbiMatch
 
 
@@ -656,14 +655,6 @@ def validate_payload_stat(stat_output: str, name: str) -> None:
         raise RepackError(f"invalid SELinux xattr for {name}:\n{stat_output}")
 
 
-def extract_build_id(readelf: str, path: Path) -> str:
-    result = run([readelf, "-nW", str(path)])
-    matches = re.findall(r"Build ID:\s*([0-9a-fA-F]+)", result.stdout or "")
-    if len(matches) != 1:
-        raise RepackError(f"expected one ELF Build ID in {path}; found {len(matches)}")
-    return matches[0].lower()
-
-
 def print_needed(patchelf: str, path: Path) -> list[str]:
     result = run([patchelf, "--print-needed", str(path)])
     return [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
@@ -692,12 +683,11 @@ def detect_state(
     expected_prebuilts: dict[str, Path],
     *,
     prefix: str,
-) -> SourceState:
+) -> PayloadState:
     jni = workspace / f"{prefix}-{JNI_NAME}"
     extract_debugfs(debugfs, payload, f"/lib64/{JNI_NAME}", jni)
     jni_data = jni.read_bytes()
     abi = validate_v5_abi(jni_data, JNI_NAME, contract)
-    build_id = extract_build_id(readelf, jni)
     needed = print_needed(patchelf, jni)
 
     presence = {
@@ -707,7 +697,7 @@ def detect_state(
     }
     state_name = classify_state(presence, needed.count(COLD_NEEDED))
     if state_name == "original":
-        return SourceState(state_name, jni, build_id, abi)
+        return PayloadState(state_name, jni, abi)
 
     validate_payload_stat(
         read_debugfs_stat(debugfs, payload, f"/lib64/{JNI_NAME}"),
@@ -728,16 +718,15 @@ def detect_state(
             name,
         )
     validate_backend_pair(extracted_files, readelf)
-    return SourceState(state_name, jni, build_id, abi)
+    return PayloadState(state_name, jni, abi)
 
 
 def prepare_jni(
     source: Path,
     output: Path,
     patchelf: str,
-    readelf: str,
     contract: BridgeContract,
-) -> str:
+) -> None:
     require_regular_file(source, "source Bluetooth JNI")
     if output.exists():
         raise RepackError(f"prepared JNI output already exists: {output}")
@@ -746,7 +735,6 @@ def prepare_jni(
     needed_before = print_needed(patchelf, source)
     if needed_before.count(COLD_NEEDED) != 0:
         raise RepackError("source Bluetooth JNI already loads the cold bridge")
-    build_id_before = extract_build_id(readelf, source)
 
     shutil.copy2(source, output)
     run([patchelf, "--add-needed", COLD_NEEDED, str(output)])
@@ -755,10 +743,6 @@ def prepare_jni(
     needed_after = print_needed(patchelf, output)
     if needed_after.count(COLD_NEEDED) != 1:
         raise RepackError("prepared Bluetooth JNI must need the cold bridge once")
-    build_id_after = extract_build_id(readelf, output)
-    if build_id_after != build_id_before:
-        raise RepackError("patchelf changed the current OTA Bluetooth JNI Build ID")
-    return build_id_before
 
 
 def filesystem_block_size(payload: Path) -> int:
@@ -1049,7 +1033,6 @@ def validate_output(
     contract: BridgeContract,
     workspace: Path,
     expected_prebuilts: dict[str, Path],
-    expected_build_id: str,
     expected_jni: Path | None,
     avbtool: str,
     avb_key: Path,
@@ -1103,8 +1086,6 @@ def validate_output(
     )
     if verified.name != "completed":
         raise RepackError(f"output APEX is not completed: {verified.name}")
-    if verified.build_id != expected_build_id:
-        raise RepackError("output Bluetooth JNI Build ID changed during payload write")
     if expected_jni is not None and verified.jni.read_bytes() != expected_jni.read_bytes():
         raise RepackError("output payload JNI differs from the prepared OTA JNI copy")
 
@@ -1113,7 +1094,7 @@ def make_report(
     report: Path,
     source: Path,
     output: Path,
-    state: SourceState,
+    state: PayloadState,
 ) -> None:
     if state.name == "original":
         signature_status = "STALE_PRESERVED_BYTES_NOT_VALID"
@@ -1131,7 +1112,7 @@ def make_report(
         "input_contract=OTA_STRUCTURAL_NO_STATIC_FILE_IDENTITY",
         "v5_stub_contract=UNIQUE",
         "v5_interface_table_contract=UNIQUE",
-        "jni_build_id=CHECKED_DYNAMICALLY_BEFORE_AND_AFTER_PATCHELF",
+        "jni_contract=STRUCTURAL_ABI_AND_DT_NEEDED",
         "jni_cold_dt_needed_count=1",
         "payload_library_metadata=1000_1000_0644_SYSTEM_LIB_FILE",
         "payload_avb_signature=VALID_SELF_SIGNED_SHA256_RSA4096",
@@ -1252,15 +1233,12 @@ def main(argv: list[str] | None = None) -> int:
                 expected_jni = None
             else:
                 prepared_jni = workspace / "prepared-libbluetooth_jni.so"
-                build_id = prepare_jni(
+                prepare_jni(
                     state.jni,
                     prepared_jni,
                     tools["patchelf"],
-                    tools["readelf"],
                     contract,
                 )
-                if build_id != state.build_id:
-                    raise RepackError("source JNI Build ID changed before preparation")
                 files = {JNI_NAME: prepared_jni, **prebuilt_files}
                 grow_payload(
                     payload,
@@ -1312,7 +1290,6 @@ def main(argv: list[str] | None = None) -> int:
                 contract,
                 workspace,
                 prebuilt_files,
-                state.build_id,
                 expected_jni,
                 tools["avbtool"],
                 args.avb_key,

@@ -87,65 +87,121 @@ resolve_zipalign() {
     fail "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
 }
 
-archive_entries_snapshot() {
+archive_entry_count() {
     local apk=$1
-    local output=$2
+    local entry=$2
 
-    LC_ALL=C unzip -Z1 "$apk" | LC_ALL=C sort > "$output"
-}
-
-archive_content_snapshot() {
-    local apk=$1
-    local excluded_entry=$2
-    local output=$3
-
-    python3 - "$apk" "$excluded_entry" "$output" <<'PY'
-import hashlib
-import json
+    python3 - "$apk" "$entry" <<'PY'
 import sys
 import zipfile
 
-apk_path, excluded_entry, output_path = sys.argv[1:]
-
-with zipfile.ZipFile(apk_path) as archive, open(
-    output_path, "w", encoding="utf-8", newline="\n"
-) as output:
-    for index, info in enumerate(archive.infolist()):
-        if info.filename == excluded_entry:
-            continue
-        digest = hashlib.sha256()
-        with archive.open(info) as entry:
-            for chunk in iter(lambda: entry.read(1024 * 1024), b""):
-                digest.update(chunk)
-        output.write(
-            "{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                index,
-                json.dumps(info.filename, ensure_ascii=True),
-                info.compress_type,
-                info.file_size,
-                info.CRC,
-                digest.hexdigest(),
-            )
-        )
+apk_path, requested_entry = sys.argv[1:]
+try:
+    with zipfile.ZipFile(apk_path) as archive:
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise ValueError("ZIP contains duplicate member names")
+        print(sum(info.filename == requested_entry for info in infos))
+except (OSError, EOFError, IndexError, MemoryError, OverflowError, RuntimeError,
+        ValueError, zipfile.BadZipFile, zipfile.LargeZipFile) as error:
+    print(f"无法读取 APK 归档：{error}", file=sys.stderr)
+    raise SystemExit(1)
 PY
 }
 
-signature_snapshot() {
-    local apk=$1
-    local output=$2
-    local entries_file=$3
-    local entry digest
+compare_archive_contract() {
+    local before_apk=$1
+    local after_apk=$2
+    local excluded_entry=${3:-}
 
-    LC_ALL=C unzip -Z1 "$apk" |
-        awk 'toupper($0) ~ /^META-INF\/.*\.(MF|SF|RSA|DSA|EC)$/ { print }' |
-        LC_ALL=C sort > "$entries_file"
+    python3 - "$before_apk" "$after_apk" "$excluded_entry" <<'PY'
+import sys
+import zipfile
+import zlib
 
-    : > "$output"
-    while IFS= read -r entry; do
-        [[ -n "$entry" ]] || continue
-        digest=$(unzip -p "$apk" "$entry" | sha256sum | awk '{ print $1 }')
-        printf '%s\t%s\n' "$digest" "$entry" >> "$output"
-    done < "$entries_file"
+before_path, after_path, excluded_entry = sys.argv[1:]
+
+
+def fail(message):
+    print(f"归档契约校验失败：{message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def open_archive(path):
+    try:
+        archive = zipfile.ZipFile(path)
+        infos = archive.infolist()
+    except (OSError, EOFError, IndexError, MemoryError, OverflowError, RuntimeError,
+            ValueError, zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error) as error:
+        fail(f"无法读取 {path}: {error}")
+    names = [info.filename for info in infos]
+    if len(names) != len(set(names)):
+        archive.close()
+        fail(f"{path} 包含重复 ZIP 条目")
+    return archive, infos
+
+
+def contents_equal(before, before_info, after, after_info):
+    try:
+        with before.open(before_info) as before_entry, after.open(after_info) as after_entry:
+            while True:
+                before_chunk = before_entry.read(1024 * 1024)
+                after_chunk = after_entry.read(1024 * 1024)
+                if before_chunk != after_chunk:
+                    return False
+                if not before_chunk:
+                    return True
+    except (
+        EOFError,
+        IndexError,
+        KeyError,
+        MemoryError,
+        NotImplementedError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        ValueError,
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+        zlib.error,
+    ) as error:
+        fail(f"条目 {before_info.filename!r} 内容读取失败：{error}")
+
+
+before, before_infos = open_archive(before_path)
+after, after_infos = open_archive(after_path)
+try:
+    if len(before_infos) != len(after_infos):
+        fail(f"条目数量变化：{len(before_infos)} -> {len(after_infos)}")
+    if excluded_entry:
+        before_excluded = [info for info in before_infos if info.filename == excluded_entry]
+        after_excluded = [info for info in after_infos if info.filename == excluded_entry]
+        if len(before_excluded) != 1 or len(after_excluded) != 1:
+            fail(f"目标条目 {excluded_entry!r} 数量异常")
+
+    for index, (before_info, after_info) in enumerate(zip(before_infos, after_infos)):
+        if before_info.filename != after_info.filename:
+            fail(
+                f"条目顺序或名称变化（位置 {index}: "
+                f"{before_info.filename!r} -> {after_info.filename!r}）"
+            )
+        if (
+            before_info.filename != excluded_entry
+            and before_info.compress_type != after_info.compress_type
+        ):
+            fail(
+                f"条目压缩方式变化（{before_info.filename!r}: "
+                f"{before_info.compress_type} -> {after_info.compress_type}）"
+            )
+        if before_info.filename == excluded_entry:
+            continue
+        if not contents_equal(before, before_info, after, after_info):
+            fail(f"非目标条目内容变化：{before_info.filename!r}")
+finally:
+    before.close()
+    after.close()
+PY
 }
 
 haptic_method_state() {
@@ -727,9 +783,7 @@ PY
 
 validate_and_install_apk() {
     local excluded_entry=$1
-    local content_before=$2
-    local content_after=$3
-    local expected_entry_file=${4:-}
+    local expected_entry_file=${2:-}
 
     log "回插原 APK Signing Block"
     python3 "$SIGNING_BLOCK_TOOL" insert "$PATCHED_APK" "$SIGNING_BLOCK_BEFORE"
@@ -745,18 +799,8 @@ validate_and_install_apk() {
             fail "$excluded_entry 未正确写入 APK"
     fi
 
-    archive_entries_snapshot "$PATCHED_APK" "$ARCHIVE_ENTRIES_AFTER"
-    cmp -s "$ARCHIVE_ENTRIES_BEFORE" "$ARCHIVE_ENTRIES_AFTER" ||
-        fail "更新后 APK 的归档条目列表发生变化"
-    archive_content_snapshot "$PATCHED_APK" "$excluded_entry" "$content_after"
-    cmp -s "$content_before" "$content_after" ||
-        fail "更新后存在预期目标之外的条目内容变化"
-
-    signature_snapshot "$PATCHED_APK" "$SIGNATURES_AFTER" "$SIGNATURE_ENTRIES_AFTER"
-    cmp -s "$SIGNATURE_ENTRIES_BEFORE" "$SIGNATURE_ENTRIES_AFTER" ||
-        fail "更新后签名条目列表发生变化"
-    cmp -s "$SIGNATURES_BEFORE" "$SIGNATURES_AFTER" ||
-        fail "更新后签名条目内容发生变化"
+    compare_archive_contract "$APK_PATH" "$PATCHED_APK" "$excluded_entry" ||
+        fail "更新后 APK 的非目标归档契约发生变化"
 
     REPLACEMENT_PATH=$(mktemp "$APK_DIR/.Settings.apk.patch.XXXXXX")
     rm -f -- "$REPLACEMENT_PATH"
@@ -776,11 +820,12 @@ finish_if_already_patched() {
     fi
 
     log "$METHOD_NAME 已补丁，但 APK 未对齐；仅修复归档对齐"
-    archive_content_snapshot "$APK_PATH" "" "$ALL_CONTENT_BEFORE"
     "$ZIPALIGN_COMMAND" -f -P 16 4 "$APK_PATH" "$ALIGNED_APK" ||
         fail "zipalign 对齐失败"
+    compare_archive_contract "$APK_PATH" "$ALIGNED_APK" "" ||
+        fail "归档对齐不应改变 APK 条目顺序、压缩方式或内容"
     mv -- "$ALIGNED_APK" "$PATCHED_APK"
-    validate_and_install_apk "" "$ALL_CONTENT_BEFORE" "$ALL_CONTENT_AFTER"
+    validate_and_install_apk ""
     exit 0
 }
 
@@ -809,7 +854,7 @@ case "$PATCH_KIND" in
         ;;
 esac
 
-for command_name in awk basename cmp cp dirname find mkdir mktemp mv python3 rm sha256sum sort tail unzip zip; do
+for command_name in awk basename cmp cp dirname find mkdir mktemp mv python3 rm sort tail unzip zip; do
     require_command "$command_name"
 done
 resolve_apktool
@@ -830,22 +875,10 @@ REBUILT_APK="$WORK_DIR/rebuilt.apk"
 DEX_DIR="$WORK_DIR/dex"
 PATCHED_APK="$WORK_DIR/Settings.apk.patched"
 ALIGNED_APK="$WORK_DIR/Settings.apk.aligned"
-ARCHIVE_ENTRIES_BEFORE="$WORK_DIR/archive-entries.before"
-ARCHIVE_ENTRIES_AFTER="$WORK_DIR/archive-entries.after"
-NON_TARGET_CONTENT_BEFORE="$WORK_DIR/non-target-content.before"
-NON_TARGET_CONTENT_AFTER="$WORK_DIR/non-target-content.after"
-ALL_CONTENT_BEFORE="$WORK_DIR/all-content.before"
-ALL_CONTENT_AFTER="$WORK_DIR/all-content.after"
-SIGNATURES_BEFORE="$WORK_DIR/signatures.before"
-SIGNATURES_AFTER="$WORK_DIR/signatures.after"
-SIGNATURE_ENTRIES_BEFORE="$WORK_DIR/signature-entries.before"
-SIGNATURE_ENTRIES_AFTER="$WORK_DIR/signature-entries.after"
 SIGNING_BLOCK_BEFORE="$WORK_DIR/apk-signing-block.before"
 SIGNING_BLOCK_AFTER="$WORK_DIR/apk-signing-block.after"
 
-log "记录原 APK 的归档条目和签名数据"
-archive_entries_snapshot "$APK_PATH" "$ARCHIVE_ENTRIES_BEFORE"
-signature_snapshot "$APK_PATH" "$SIGNATURES_BEFORE" "$SIGNATURE_ENTRIES_BEFORE"
+log "记录原 APK 的 Signing Block"
 SIGNING_BLOCK_PAIR_IDS=$(
     python3 "$SIGNING_BLOCK_TOOL" extract "$APK_PATH" "$SIGNING_BLOCK_BEFORE"
 )
@@ -879,10 +912,9 @@ case "$SMALI_ROOT" in
         ;;
 esac
 
-DEX_ENTRY_COUNT=$(awk -v entry="$DEX_ENTRY" '$0 == entry { count++ } END { print count + 0 }' "$ARCHIVE_ENTRIES_BEFORE")
+DEX_ENTRY_COUNT=$(archive_entry_count "$APK_PATH" "$DEX_ENTRY")
 (( DEX_ENTRY_COUNT == 1 )) ||
     fail "原 APK 中 $DEX_ENTRY 数量异常：期望 1 个，实际 $DEX_ENTRY_COUNT 个"
-archive_content_snapshot "$APK_PATH" "$DEX_ENTRY" "$NON_TARGET_CONTENT_BEFORE"
 
 case "$PATCH_KIND" in
     haptic)
@@ -1003,6 +1035,4 @@ log "重新对齐 APK"
 mv -- "$ALIGNED_APK" "$PATCHED_APK"
 validate_and_install_apk \
     "$DEX_ENTRY" \
-    "$NON_TARGET_CONTENT_BEFORE" \
-    "$NON_TARGET_CONTENT_AFTER" \
     "$DEX_DIR/$DEX_ENTRY"

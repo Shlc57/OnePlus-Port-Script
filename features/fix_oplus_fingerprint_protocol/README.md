@@ -19,7 +19,7 @@
 
 两部分已在一加 15 root DSU 热加载验证：亮屏锁屏按压命中原始触摸并启动动画，服务端稳定上报 acquired 100/101，息屏竞态可命中主动唤醒。息屏状态沿用系统自身的图标和解锁表现，不强制显示完整识别动画。
 
-模块保留其他 JAR/APK 条目、APK Signing Block 与 `META-INF` 证书材料。DEX 修改后内容完整性与预编译产物必然失效，只适用于 Oplus 指纹 HAL 且已确认可从 DEX 回退加载的移植环境。需要 Java、Apktool、Python 3、`zip`、`unzip` 与 Android SDK `zipalign`。
+模块保留其他 JAR/APK 条目、APK Signing Block 与 `META-INF` 证书材料。两个 patcher 在每次处理结束时直接比较当前输入与输出的非目标条目名称、顺序、压缩方式和原始内容，不保存底包/原包的 hash、大小、CRC 或签名快照，因此 OTA 改版不会仅因文件身份变化被拒绝。DEX 修改后内容完整性与预编译产物必然失效，只适用于 Oplus 指纹 HAL 且已确认可从 DEX 回退加载的移植环境。需要 Java、Apktool、Python 3、`zip`、`unzip` 与 Android SDK `zipalign`。
 
 ## 执行
 

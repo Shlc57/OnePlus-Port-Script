@@ -80,26 +80,51 @@ resolve_zipalign() {
 	fail '缺少 zipalign'
 }
 
-archive_entries_snapshot() {
-	LC_ALL=C unzip -Z1 "$1" | LC_ALL=C sort > "$2"
-}
-
-archive_non_target_snapshot() {
+archive_contract_check() {
 	python3 - "$1" "$2" "$3" <<'PY'
-import hashlib
 import sys
 import zipfile
 
-apk_path, target_entry, output_path = sys.argv[1:]
-with zipfile.ZipFile(apk_path) as archive, open(output_path, "w", encoding="utf-8") as output:
-    for entry in sorted(archive.infolist(), key=lambda item: item.filename):
-        if entry.filename == target_entry:
-            continue
-        digest = hashlib.sha256()
-        with archive.open(entry) as source:
-            for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                digest.update(chunk)
-        output.write(f"{entry.filename}\t{entry.CRC}\t{entry.file_size}\t{digest.hexdigest()}\n")
+before_path, after_path, target_entry = sys.argv[1:]
+
+
+def read_archive(path):
+    with zipfile.ZipFile(path, "r") as archive:
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise SystemExit(f"ZIP 包含重复条目：{path}")
+        return [
+            (info.filename, info.compress_type, archive.read(info))
+            for info in infos
+        ]
+
+
+try:
+    before = read_archive(before_path)
+    after = read_archive(after_path)
+except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
+    raise SystemExit(f"无法读取 APK ZIP：{error}") from error
+
+before_names = [item[0] for item in before]
+after_names = [item[0] for item in after]
+if before_names != after_names:
+    raise SystemExit("APK 归档条目名称或顺序发生变化")
+if before_names.count(target_entry) != 1:
+    raise SystemExit(f"目标条目数量不是 1：{target_entry}")
+
+for index, (before_name, before_method, before_data) in enumerate(before):
+    after_name, after_method, after_data = after[index]
+    if before_name == target_entry:
+        if before_method != zipfile.ZIP_STORED:
+            raise SystemExit(f"原目标条目不是 ZIP_STORED：{target_entry}")
+        if after_method != zipfile.ZIP_STORED:
+            raise SystemExit(f"目标条目未使用 ZIP_STORED：{target_entry}")
+        continue
+    if before_method != after_method:
+        raise SystemExit(f"非目标条目压缩方式发生变化：{before_name}")
+    if before_data != after_data:
+        raise SystemExit(f"非目标条目内容发生变化：{before_name}")
 PY
 }
 
@@ -293,7 +318,7 @@ PY
 (( $# == 1 )) || fail "用法：$0 <MISettings.apk>"
 APK_PATH=$1
 
-for command_name in awk cmp cp find java mktemp mv python3 rm sha256sum sort tail unzip zip; do
+for command_name in awk cmp cp find java mktemp mv python3 rm sort tail unzip zip; do
 	require_command "$command_name"
 done
 resolve_apktool
@@ -315,18 +340,23 @@ REBUILT_TARGET_ARCHIVE="$WORK_DIR/target-rebuilt.apk"
 DEX_DIR="$WORK_DIR/dex"
 PATCHED_APK="$WORK_DIR/MISettings.apk.patched"
 ALIGNED_APK="$WORK_DIR/MISettings.apk.aligned"
-ENTRIES_BEFORE="$WORK_DIR/entries.before"
-ENTRIES_AFTER="$WORK_DIR/entries.after"
-NON_TARGET_BEFORE="$WORK_DIR/non-target.before"
-NON_TARGET_AFTER="$WORK_DIR/non-target.after"
 SIGNING_BLOCK_BEFORE="$WORK_DIR/signing-block.before"
 SIGNING_BLOCK_AFTER="$WORK_DIR/signing-block.after"
 readonly DEX_ENTRY='classes.dex'
 
-archive_entries_snapshot "$APK_PATH" "$ENTRIES_BEFORE"
-awk -v entry="$DEX_ENTRY" '$0 == entry { count++ } END { exit count == 1 ? 0 : 1 }' "$ENTRIES_BEFORE" ||
-	fail "MISettings.apk 中 $DEX_ENTRY 数量不是 1"
-archive_non_target_snapshot "$APK_PATH" "$DEX_ENTRY" "$NON_TARGET_BEFORE"
+python3 - "$APK_PATH" "$DEX_ENTRY" <<'PY'
+import sys
+import zipfile
+
+apk_path, target_entry = sys.argv[1:]
+try:
+    with zipfile.ZipFile(apk_path) as archive:
+        names = [info.filename for info in archive.infolist()]
+        if names.count(target_entry) != 1:
+            raise SystemExit(f"MISettings.apk 中 {target_entry} 数量不是 1")
+except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
+    raise SystemExit(f"无法读取 MISettings.apk ZIP：{error}") from error
+PY
 python3 "$SIGNING_BLOCK_TOOL" extract "$APK_PATH" "$SIGNING_BLOCK_BEFORE" >/dev/null
 
 mkdir -p -- "$TARGET_ARCHIVE_DIR"
@@ -387,10 +417,7 @@ cmp -s "$SIGNING_BLOCK_BEFORE" "$SIGNING_BLOCK_AFTER" || fail 'APK Signing Block
 "$ZIPALIGN_COMMAND" -c -P 16 4 "$PATCHED_APK" || fail '更新后的 APK 未通过 zipalign'
 unzip -tq "$PATCHED_APK" >/dev/null || fail '更新后的 APK 完整性校验失败'
 cmp -s "$DEX_DIR/$DEX_ENTRY" <(unzip -p "$PATCHED_APK" "$DEX_ENTRY") || fail "$DEX_ENTRY 未写回 APK"
-archive_entries_snapshot "$PATCHED_APK" "$ENTRIES_AFTER"
-cmp -s "$ENTRIES_BEFORE" "$ENTRIES_AFTER" || fail 'APK 归档条目发生变化'
-archive_non_target_snapshot "$PATCHED_APK" "$DEX_ENTRY" "$NON_TARGET_AFTER"
-cmp -s "$NON_TARGET_BEFORE" "$NON_TARGET_AFTER" || fail '目标 DEX 之外的 APK 内容发生变化'
+archive_contract_check "$APK_PATH" "$PATCHED_APK" "$DEX_ENTRY" || fail 'APK 条目名称、顺序、压缩方式或非目标内容发生变化'
 
 cp --attributes-only --preserve=all -- "$APK_PATH" "$PATCHED_APK" || fail '无法恢复 APK 属性'
 REPLACEMENT_PATH=$(mktemp "$APK_DIR/.MISettings.apk.patch.XXXXXX")

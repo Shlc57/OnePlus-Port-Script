@@ -188,18 +188,98 @@ for overlay_name in AospFrameworkResOverlay.apk MiuiFrameworkResOverlay.apk; do
 	fi
 done
 
-largest_display_config=""
-largest_display_size=-1
-while IFS= read -r candidate; do
-	candidate_size="$(stat -c '%s' -- "$candidate")"
-	if (( candidate_size > largest_display_size )); then
-		largest_display_config="$candidate"
-		largest_display_size="$candidate_size"
-	fi
-done < <(find "$vendor_displayconfig" -maxdepth 1 -type f -name 'display_id_*.xml' -print | LC_ALL=C sort)
+source_display_config="$(python3 - "$vendor_displayconfig" "$target_display_id" <<'PY'
+import math
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
-if [[ -z "$largest_display_config" ]]; then
-	err_print "vendor 显示配置目录中没有 display_id_*.xml"
+
+directory = Path(sys.argv[1])
+target_id = sys.argv[2]
+
+
+def fail(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def canonical(node):
+    """Return a semantic XML representation without file-size metadata."""
+
+    attributes = tuple(sorted(node.attrib.items()))
+    text = " ".join((node.text or "").split())
+    children = tuple(canonical(child) for child in list(node))
+    return node.tag, attributes, text, children
+
+
+def inspect(path):
+    if path.is_symlink() or not path.is_file():
+        fail(f"vendor 显示配置候选不是普通文件：{path}")
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, UnicodeError, ET.ParseError) as error:
+        fail(f"解析 vendor 显示配置候选失败：{path}：{error}")
+    if root.tag != "displayConfiguration":
+        fail(f"vendor 显示配置根节点无效：{path}")
+    screen_map = root.find("screenBrightnessMap")
+    hbm = root.find("highBrightnessMode")
+    if screen_map is None or hbm is None or hbm.get("enabled") != "true":
+        fail(f"vendor 显示配置缺少可用亮度契约：{path}")
+    points = screen_map.findall("point")
+    if len(points) < 2:
+        fail(f"vendor 显示配置亮度点数量不足：{path}")
+    previous = None
+    for point in points:
+        value = point.findtext("value")
+        nits = point.findtext("nits")
+        if value is None or nits is None:
+            fail(f"vendor 显示配置亮度点字段缺失：{path}")
+        try:
+            pair = (float(value), float(nits))
+        except ValueError:
+            fail(f"vendor 显示配置亮度点不是数字：{path}")
+        if not all(math.isfinite(item) for item in pair):
+            fail(f"vendor 显示配置亮度点不是有限数字：{path}")
+        if previous is not None and (pair[0] <= previous[0] or pair[1] < previous[1]):
+            fail(f"vendor 显示配置亮度点顺序无效：{path}")
+        previous = pair
+    return canonical(root)
+
+
+candidates = sorted(
+    (
+        path
+        for path in directory.glob("display_id_*.xml")
+        if path.is_file() or path.is_symlink()
+    ),
+    key=lambda path: path.name,
+)
+if not candidates:
+    fail("vendor 显示配置目录中没有 display_id_*.xml")
+
+target_name = f"display_id_{target_id}.xml"
+target_candidates = [path for path in candidates if path.name == target_name]
+if target_candidates:
+    inspect(target_candidates[0])
+    print(target_candidates[0])
+    raise SystemExit(0)
+
+groups = {}
+for candidate in candidates:
+    groups.setdefault(inspect(candidate), []).append(candidate)
+if len(groups) != 1:
+    names = ", ".join(path.name for path in candidates)
+    fail(
+        "vendor 显示配置候选的结构契约不一致，无法安全选择（"
+        f"{names}）；请通过目标包提供唯一兼容候选"
+    )
+
+print(candidates[0])
+PY
+)"
+if [[ -z "$source_display_config" ]]; then
+	err_print "无法选择 vendor 显示配置候选"
 	exit 1
 fi
 
@@ -218,8 +298,8 @@ done
 copy_tree_missing_only "$vendor_displayconfig" "$product_displayconfig"
 std_print "✅ vendor 显示配置缺失项已补入 product"
 
-replace_file_if_different "$largest_display_config" "$target_display_config"
-std_print "✅ 已用 $(basename -- "$largest_display_config") 适配 Display ID $target_display_id"
+replace_file_if_different "$source_display_config" "$target_display_config"
+std_print "✅ 已用 $(basename -- "$source_display_config") 适配 Display ID $target_display_id"
 
 temporary_display_config="$(mktemp "${target_display_config}.tmp.XXXXXX")"
 

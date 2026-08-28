@@ -19,8 +19,8 @@ target_file="$project_dir/odm/etc/build.prop"
 prop_list="$patcher_dir/config/target_props.list"
 nfc_apk_source="$patcher_dir/prebuilt/XMNfcNci.apk"
 nfc_apk_checksums="$patcher_dir/config/XMNfcNci.apk.sha256"
+nfc_apk_validator="$patcher_dir/validate_nfc_apk.py"
 nfc_apk_target="$project_dir/system/system/app/Nfc_st/Nfc_st.apk"
-expected_st_apk_sha256="ad9bf76f39243ef776a24604e5206606e314c69dda3d9f0d8de0cafcebe6aa53"
 nxp_hal="$project_dir/odm/bin/hw/android.hardware.nfc-service.nxp"
 nxp_hal_rc="$project_dir/odm/etc/init/nfc-service-nxp.rc"
 nxp_manifest="$project_dir/odm/etc/vintf/manifest/nfc-service.xml"
@@ -235,6 +235,7 @@ fi
 if (( apk_update_ready == 1 )); then
 	check_file_exists "$nfc_apk_source"
 	check_file_exists "$nfc_apk_checksums"
+	check_file_exists "$nfc_apk_validator"
 	for framework_file in "${required_nfc_frameworks[@]}"; do
 		check_file_exists "$framework_file"
 	done
@@ -242,28 +243,28 @@ if (( apk_update_ready == 1 )); then
 		err_print "NFC APK 源文件必须是普通文件：$nfc_apk_source"
 		exit 1
 	fi
+	if [[ -L "$nfc_apk_checksums" ]]; then
+		err_print "NFC APK 校验清单必须是普通文件：$nfc_apk_checksums"
+		exit 1
+	fi
 	if ! command -v sha256sum >/dev/null 2>&1; then
-		err_print "缺少 sha256sum，无法校验 NFC APK"
+		err_print "缺少 sha256sum，无法校验项目内置 NFC APK"
 		exit 1
 	fi
 	if ! (cd -- "$patcher_dir" && sha256sum -c -- "$nfc_apk_checksums"); then
 		err_print "内置 XMNfcNci.apk 校验失败"
 		exit 1
 	fi
-	read -r nxp_apk_sha256 _ < <(sha256sum -- "$nfc_apk_source")
-	read -r target_apk_sha256 _ < <(sha256sum -- "$nfc_apk_target")
-	case "$target_apk_sha256" in
-		"$expected_st_apk_sha256")
-			replace_nfc_apk=1
-			;;
-		"$nxp_apk_sha256")
-			replace_nfc_apk=0
-			;;
-		*)
-			err_print "Nfc_st.apk 不属于当前支持版本，拒绝覆盖：$target_apk_sha256"
-			exit 1
-			;;
-	esac
+	if ! PYTHONDONTWRITEBYTECODE=1 python3 "$nfc_apk_validator" \
+		--reference "$nfc_apk_source" "$nfc_apk_target"; then
+		err_print "Nfc_st.apk 未通过跨 OTA 的 NFC APK 结构契约，拒绝覆盖"
+		exit 1
+	fi
+	if cmp -s -- "$nfc_apk_source" "$nfc_apk_target"; then
+		replace_nfc_apk=0
+	else
+		replace_nfc_apk=1
+	fi
 fi
 
 prop_patch=""
@@ -364,9 +365,8 @@ if (( apk_update_ready == 0 )); then
 	:
 elif (( replace_nfc_apk == 1 )); then
 	replace_file_if_different "$nfc_apk_source" "$nfc_apk_target"
-	read -r installed_apk_sha256 _ < <(sha256sum -- "$nfc_apk_target")
-	if [[ "$installed_apk_sha256" != "$nxp_apk_sha256" ]]; then
-		err_print "NFC APK 替换后校验失败：$nfc_apk_target"
+	if ! cmp -s -- "$nfc_apk_source" "$nfc_apk_target"; then
+		err_print "NFC APK 替换后内容校验失败：$nfc_apk_target"
 		exit 1
 	fi
 	std_print "✅ 已用 NXP/Xiaomi NFC 系统应用替换 system/system/app/Nfc_st/Nfc_st.apk"

@@ -9,9 +9,7 @@ the panel-feature AIDL service; it does not parse arbitrary XML at boot.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import re
-import struct
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -24,6 +22,11 @@ SERVICE_NAME: Final = (
     "vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default"
 )
 SERVICE_DESCRIPTOR: Final = "vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature"
+# This marker identifies the helper implementation, not the XML payload.  The
+# payload is protocol data and may legitimately change when the project asset
+# changes; it must not be treated as a base/original file identity.
+LOADER_MARKER: Final = "OPLUS_ADFR_RUS_LOADER_V2"
+ASYNC_MARKER: Final = "OPLUS_ADFR_RUS_LOADER_ASYNC_V1"
 
 SCALAR_OFFSETS: Final = {
     "enable": 2,
@@ -177,16 +180,6 @@ def build_payload(xml_path: Path) -> list[int]:
     return payload
 
 
-def payload_sha256(payload: list[int]) -> str:
-    if len(payload) != PAYLOAD_LENGTH:
-        raise ValueError(f"payload length must be {PAYLOAD_LENGTH}")
-    try:
-        packed = struct.pack("<" + "i" * len(payload), *payload)
-    except struct.error as error:
-        raise ValueError(f"payload cannot be packed as signed int32: {error}") from error
-    return hashlib.sha256(packed).hexdigest()
-
-
 def emit_smali_method(payload: list[int]) -> str:
     """Emit a failure-tolerant AIDL transaction-2 helper method.
 
@@ -195,10 +188,8 @@ def emit_smali_method(payload: list[int]) -> str:
     the JAR patcher wraps its invocation in a Handler Runnable so boot-complete
     ordering matches that asynchronous boundary.
     """
-
-    digest = payload_sha256(payload)
     array_data = "\n".join(f"        0x{value:x}" for value in payload)
-    return f'''# OPLUS_ADFR_RUS_LOADER_BEGIN sha256={digest}
+    return f'''# OPLUS_ADFR_RUS_LOADER_BEGIN
 .method public sendOplusAdfrRusConfig()V
     .locals 6
 
@@ -208,9 +199,9 @@ def emit_smali_method(payload: list[int]) -> str:
 
     fill-array-data v0, :array_0
 
-    const-string/jumbo v4, "OPLUS_ADFR_RUS_LOADER sha256={digest}"
+    const-string/jumbo v4, "{LOADER_MARKER}"
 
-    const-string/jumbo v5, "OPLUS_ADFR_RUS_LOADER_ASYNC_V1"
+    const-string/jumbo v5, "{ASYNC_MARKER}"
 
     const-string/jumbo v1, "{SERVICE_NAME}"
 
@@ -321,7 +312,9 @@ def main() -> int:
         return 1
 
     if args.validate is not None:
-        print(f"length={len(payload)} sha256_le_i32={payload_sha256(payload)}")
+        # This is the fixed panel-feature protocol vector length, not a file
+        # size or an identity check for either OTA input package.
+        print(f"length={len(payload)}")
     else:
         print(emit_smali_method(payload), end="")
     return 0

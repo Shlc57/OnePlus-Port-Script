@@ -157,6 +157,12 @@ class LhdcApexContract(unittest.TestCase):
             )
 
     def test_prebuilts_and_dynamic_v5_contract(self) -> None:
+        repacker_source = REPACKER_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("SourceState", repacker_source)
+        self.assertNotIn("extract_build_id", repacker_source)
+        self.assertNotIn("jni_build_id=", repacker_source)
+        self.assertNotIn("Build ID:", repacker_source)
+
         for name in REPACKER.PREBUILT_CONTRACTS:
             path = self.prebuilt_dir / name
             REPACKER.validate_prebuilt(path, name, self.patchelf, self.readelf)
@@ -325,6 +331,8 @@ class LhdcApexContract(unittest.TestCase):
 
             report = (temp / "first.txt").read_text(encoding="utf-8")
             self.assertIn("input_contract=OTA_STRUCTURAL", report)
+            self.assertIn("jni_contract=STRUCTURAL_ABI_AND_DT_NEEDED", report)
+            self.assertNotIn("jni_build_id", report)
             self.assertIn("payload_avb_signature=VALID_SELF_SIGNED", report)
             self.assertIn("apk_signing_block=PRESERVED_BYTE_FOR_BYTE", report)
 

@@ -29,7 +29,7 @@
 
 其余显示与触控策略仍由目标机型组合入口分别通过 `DISPLAY_POLICY_ODM_PROPERTIES_FILE`、`DISPLAY_POLICY_VENDOR_PROPERTIES_FILE` 显式提供，并按模块白名单合并。一加 15 使用 `display_odm.props` 与 `display_vendor.props`；这两份文件不允许决定上述 4 个刷新率属性。
 
-原包机型 XML 由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。Settings 子步骤与 XML 子步骤相互独立，目标缺失时只跳过对应步骤；APK DEX 修改会使原签名失效。
+原包机型 XML 由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。Settings 子步骤与 XML 子步骤相互独立，目标缺失时只跳过对应步骤；共享补丁器只比较本次处理前后的归档条目名称、顺序、压缩方式和非目标原始内容，不保存来源 APK 的 hash、大小或 CRC 快照。APK DEX 修改会使原签名失效。
 
 模块需要 Python 3。执行 Settings 子步骤时还需要 Java、Apktool、`zip`、`unzip` 和 Android SDK `zipalign`。同一平台分支若静态映射到多个不同的 `target.version`，模块会拒绝猜测并在修改工作树前失败。
 

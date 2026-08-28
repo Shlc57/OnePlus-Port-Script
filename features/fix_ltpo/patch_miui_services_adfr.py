@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -23,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 from typing import NoReturn
 
@@ -37,7 +36,7 @@ HELPER_SIGNATURE = ".method public sendOplusAdfrRusConfig()V"
 # accepted only as exact upgrade states and are rewritten to the public form.
 LEGACY_HELPER_SIGNATURE = ".method sendOplusAdfrRusConfig()V"
 LEGACY_PRIVATE_HELPER_SIGNATURE = ".method private sendOplusAdfrRusConfig()V"
-HELPER_START = "OPLUS_ADFR_RUS_LOADER sha256="
+LOADER_MARKER = "OPLUS_ADFR_RUS_LOADER_V2"
 HELPER_END = "# OPLUS_ADFR_RUS_LOADER_END"
 ASYNC_MARKER = "OPLUS_ADFR_RUS_LOADER_ASYNC_V1"
 RUNNABLE_CLASS = "DisplayManagerServiceImpl$OplusAdfrRusRunnable"
@@ -49,10 +48,6 @@ RUNNABLE_CALL_VIRTUAL = (
     "invoke-virtual {v0}, "
     "Lcom/android/server/display/DisplayManagerServiceImpl;->sendOplusAdfrRusConfig()V"
 )
-# This is the only pre-count-slot payload accepted for an in-place upgrade.
-# The current payload may also be present in the older synchronous helper;
-# that exact module state is upgraded to the queued-handler form below.
-LEGACY_PAYLOAD_DIGEST = "b43873c9b18b17849d0558cc21b9efdf5be011ff79ecf496a1cab5c6cdf36479"
 BOOT_METHOD = ".method public onBootCompleted()V"
 BOOT_CALL = (
     "invoke-direct {p0}, Lcom/android/server/display/DisplayManagerServiceImpl;"
@@ -120,6 +115,46 @@ AOD_REPLAY_METHOD = (
     + "\n\n    return-void\n.end method"
 )
 
+# The helper's payload is protocol data generated from the project XML.  Its
+# identity is therefore described by stable code shape and Binder constants,
+# never by a digest or a release-specific byte offset.  The legacy marker
+# matcher exists only to recognize helpers emitted by pre-V2 revisions while
+# upgrading an already patched JAR; it deliberately accepts any non-empty old
+# marker value and never compares that value with the current XML.  In
+# particular, do not require a 64-character hexadecimal token: that would
+# retain a release/hash-shaped identity contract even though the value is
+# only a legacy implementation marker.
+LEGACY_LOADER_VALUE_RE = re.compile(r"^OPLUS_ADFR_RUS_LOADER\s+\S.*$")
+LOADER_METHOD_RE = re.compile(
+    r"(?m)^[ \t]*\.method[ \t]+(?:(?:public|private)[ \t]+)?"
+    r"sendOplusAdfrRusConfig\(\)V[ \t]*$"
+)
+METHOD_DECL_RE = re.compile(r"^\.method(?:\s+.*)?$")
+METHOD_END_RE = re.compile(r"^\.end method$")
+LOADER_REQUIRED_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?m)^[ \t]*const/(?:4|16)\s+v\d+,\s+0xe1\s*$"),
+    re.compile(r"(?m)^[ \t]*new-array\s+v\d+,\s+v\d+,\s+\[I\s*$"),
+    re.compile(r"(?m)^[ \t]*fill-array-data\s+v\d+,\s+:[A-Za-z0-9_$.-]+\s*$"),
+    re.compile(
+        r'(?m)^[ \t]*const-string(?:/jumbo)?\s+v\d+,\s+"'
+        r'vendor\.oplus\.hardware\.displaypanelfeature\.IDisplayPanelFeature/default"\s*$'
+    ),
+    re.compile(
+        r'(?m)^[ \t]*const-string(?:/jumbo)?\s+v\d+,\s+"'
+        r'vendor\.oplus\.hardware\.displaypanelfeature\.IDisplayPanelFeature"\s*$'
+    ),
+    re.compile(r"(?m)^[ \t]*const/(?:4|16)\s+v\d+,\s+0xea\s*$"),
+    re.compile(
+        r"(?m)^[ \t]*invoke-virtual\s+\{v\d+,\s+v\d+\},\s+"
+        r"Landroid/os/Parcel;->writeIntArray\(\[I\)V\s*$"
+    ),
+    re.compile(r"(?m)^[ \t]*const/(?:4|16)\s+v\d+,\s+0x2\s*$"),
+    re.compile(
+        r"(?m)^[ \t]*invoke-interface\s+\{v\d+,\s+v\d+,\s+v\d+,\s+v\d+,\s+v\d+\},\s+"
+        r"Landroid/os/IBinder;->transact\(ILandroid/os/Parcel;Landroid/os/Parcel;I\)Z\s*$"
+    ),
+)
+
 
 class PatchError(RuntimeError):
     """A safe-to-report patching failure."""
@@ -160,11 +195,51 @@ def require_regular_file(path: Path, description: str) -> Path:
     return path.resolve()
 
 
-def sha256_stream(entry: zipfile.ZipExtFile) -> str:
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: entry.read(1024 * 1024), b""):
-        digest.update(chunk)
-    return digest.hexdigest()
+def _strip_smali_comment(line: str) -> str:
+    """Strip a Smali comment without treating ``#`` inside a string as one."""
+
+    quoted = False
+    escaped = False
+    for index, character in enumerate(line):
+        if character == '"' and not escaped:
+            quoted = not quoted
+        elif character == "#" and not quoted:
+            return line[:index]
+        escaped = character == "\\" and not escaped
+        if character != "\\":
+            escaped = False
+    return line
+
+
+def _active_lines(text: str) -> list[str]:
+    return [
+        active
+        for raw_line in text.splitlines()
+        if (active := _strip_smali_comment(raw_line).strip())
+    ]
+
+
+def _line_offsets(text: str):
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        yield offset, raw_line
+        offset += len(raw_line)
+    if not text.endswith(("\n", "\r")):
+        return
+
+
+def _method_span_from_start(text: str, start: int) -> tuple[int, int]:
+    offset = start
+    for raw_line in text[start:].splitlines(keepends=True):
+        code = _strip_smali_comment(raw_line).strip()
+        if code == ".end method":
+            return start, offset + len(raw_line.rstrip("\r\n"))
+        offset += len(raw_line)
+    fail("无法定位方法结尾")
+
+
+def _normalized_declaration(value: str) -> str:
+    return " ".join(value.split())
 
 
 def archive_entries_snapshot(jar_path: Path) -> list[str]:
@@ -172,23 +247,20 @@ def archive_entries_snapshot(jar_path: Path) -> list[str]:
         return sorted(info.filename for info in archive.infolist())
 
 
-def archive_content_snapshot(jar_path: Path, excluded_entry: str) -> list[tuple[object, ...]]:
-    snapshot: list[tuple[object, ...]] = []
+def archive_content_snapshot(jar_path: Path, excluded_entry: str) -> list[tuple[int, str, int, bytes]]:
+    """Capture non-target member contents without package identity metadata.
+
+    Comparing the bytes directly keeps the guard useful across base/original
+    OTA revisions.  A digest, CRC, or expected member size would turn those
+    unrelated package details into an implicit release whitelist.
+    """
+
+    snapshot: list[tuple[int, str, int, bytes]] = []
     with zipfile.ZipFile(jar_path) as archive:
         for index, info in enumerate(archive.infolist()):
             if info.filename == excluded_entry:
                 continue
-            with archive.open(info) as entry:
-                snapshot.append(
-                    (
-                        index,
-                        json.dumps(info.filename, ensure_ascii=True),
-                        info.compress_type,
-                        info.file_size,
-                        info.CRC,
-                        sha256_stream(entry),
-                    )
-                )
+            snapshot.append((index, info.filename, info.compress_type, archive.read(info)))
     return snapshot
 
 
@@ -227,6 +299,79 @@ def extract_method(text: str, signature: str, description: str) -> tuple[int, in
         fail(f"无法定位{description}结尾")
     method_end += len("\n.end method")
     return method_start, method_end, text[method_start:method_end]
+
+
+def extract_loader_method(text: str) -> tuple[int, int, str, str] | None:
+    """Return the sole ADFR loader method and its declaration line.
+
+    A method declaration is parsed as a Smali construct instead of searched as
+    an arbitrary substring, so strings in comments or unrelated descriptors do
+    not affect the state machine.
+    """
+
+    matches = list(LOADER_METHOD_RE.finditer(text))
+    if len(matches) > 1:
+        fail(f"ADFR helper 方法数量异常：期望最多 1 个，实际 {len(matches)} 个")
+    if not matches:
+        return None
+    match = matches[0]
+    method_end = text.find("\n.end method", match.start())
+    if method_end < 0:
+        fail("无法定位 ADFR helper 方法结尾")
+    method_end += len("\n.end method")
+    return match.start(), method_end, text[match.start() : method_end], match.group(0)
+
+
+def _legacy_loader_marker_count(method: str) -> int:
+    """Count pre-V2 payload markers without treating their value as identity."""
+
+    values = re.findall(r'"([^"]*)"', method)
+    return sum(1 for value in values if LEGACY_LOADER_VALUE_RE.fullmatch(value))
+
+
+def _loader_semantics_valid(method: str) -> bool:
+    """Check the stable protocol instructions shared by all loader revisions."""
+
+    if any(not pattern.search(method) for pattern in LOADER_REQUIRED_PATTERNS):
+        return False
+    array_blocks = re.findall(r"\.array-data\s+4(.*?)\.end array-data", method, re.S)
+    return len(array_blocks) == 1
+
+
+def extract_loader_payload(method: str) -> list[int]:
+    """Extract the int[225] protocol vector from a loader helper.
+
+    This is used only to decide whether a currently installed project helper
+    already carries the XML-derived vector.  It is a content comparison, not a
+    persisted file hash or size identity.
+    """
+
+    blocks = re.findall(r"\.array-data\s+4(.*?)\.end array-data", method, re.S)
+    if len(blocks) != 1:
+        fail("ADFR helper 的 array-data 区块数量异常")
+    values: list[int] = []
+    for raw_line in blocks[0].splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        match = re.fullmatch(r"(-?)(?:0x([0-9a-fA-F]+)|([0-9]+))", line)
+        if match is None:
+            fail(f"ADFR helper array-data 包含无法识别的值：{line}")
+        sign, hexadecimal, decimal = match.groups()
+        value = int(hexadecimal or decimal, 16 if hexadecimal is not None else 10)
+        values.append(-value if sign else value)
+    if len(values) != 225:
+        fail(f"ADFR helper payload 长度异常：期望 225，实际 {len(values)}")
+    return values
+
+
+def loader_payload_matches(method: str, generated_helper: str) -> bool:
+    """Compare two helpers by their generated protocol vector."""
+
+    try:
+        return extract_loader_payload(method) == extract_loader_payload(generated_helper)
+    except PatchError:
+        return False
 
 
 def normalized_smali_method(method: str) -> list[str]:
@@ -322,72 +467,92 @@ def remove_full_aod_smali(smali_path: Path, state: str) -> bool:
     return True
 
 
-def expected_payload_digest(rus_xml: Path) -> str:
-    output = run_command(
-        [sys.executable, str(RUS_TOOL), "--validate", str(rus_xml)], capture=True
-    ).strip()
-    match = re.fullmatch(r"length=225 sha256_le_i32=([0-9a-f]{64})", output)
-    if match is None:
-        fail(f"ADFR RUS 载荷校验输出异常：{output}")
-    return match.group(1)
-
-
-def generated_helper(rus_xml: Path, expected_digest: str) -> str:
+def generated_helper(rus_xml: Path) -> str:
     helper = run_command(
         [sys.executable, str(RUS_TOOL), "--smali-method", str(rus_xml)], capture=True
     )
     if helper.count(HELPER_SIGNATURE) != 1:
         fail("生成的 ADFR helper 方法数量异常")
-    if helper.count(f"{HELPER_START}{expected_digest}") != 1:
-        fail("生成的 ADFR helper payload 标记不匹配")
+    if helper.count(LOADER_MARKER) != 1:
+        fail("生成的 ADFR helper 版本标记数量异常")
     if helper.count(ASYNC_MARKER) != 1:
         fail("生成的 ADFR helper 异步标记数量异常")
     if helper.count(HELPER_END) != 1:
         fail("生成的 ADFR helper 结束标记数量异常")
+    if not _loader_semantics_valid(helper):
+        fail("生成的 ADFR helper 指令语义不完整")
+    extract_loader_payload(helper)
     return helper.rstrip()
 
 
-def smali_patch_state(text: str, expected_digest: str) -> str:
-    markers = re.findall(r"OPLUS_ADFR_RUS_LOADER sha256=([0-9a-f]{64})", text)
+def smali_patch_state(text: str) -> str:
+    """Classify the ADFR helper using structural and instruction evidence.
+
+    No payload value is compared here.  This lets an OTA-rebased JAR carry a
+    different XML-derived vector while still being recognized as a previous
+    project patch.  The caller separately compares the vector to the current
+    project asset when deciding whether a rebuild is needed.
+    """
+
+    loader = extract_loader_method(text)
+    current_marker_count = text.count(LOADER_MARKER)
+    legacy_marker_count = (
+        _legacy_loader_marker_count(loader[2]) if loader is not None else 0
+    )
     counts = {
-        "method": (
-            text.count(HELPER_SIGNATURE)
-            + text.count(LEGACY_HELPER_SIGNATURE)
-            + text.count(LEGACY_PRIVATE_HELPER_SIGNATURE)
+        "method": 1 if loader is not None else 0,
+        "new_method": int(loader is not None and loader[3] == HELPER_SIGNATURE),
+        "legacy_method": int(loader is not None and loader[3] == LEGACY_HELPER_SIGNATURE),
+        "legacy_private_method": int(
+            loader is not None and loader[3] == LEGACY_PRIVATE_HELPER_SIGNATURE
         ),
-        "new_method": text.count(HELPER_SIGNATURE),
-        "legacy_method": text.count(LEGACY_HELPER_SIGNATURE),
-        "legacy_private_method": text.count(LEGACY_PRIVATE_HELPER_SIGNATURE),
-        "start": len(markers),
+        "current_marker": current_marker_count,
+        "legacy_marker": legacy_marker_count,
         "async": text.count(ASYNC_MARKER),
         "boot_call": text.count(BOOT_CALL_LINE),
         "boot_block": text.count(BOOT_BLOCK),
         "runnable_direct": text.count(RUNNABLE_CALL_DIRECT),
         "runnable_virtual": text.count(RUNNABLE_CALL_VIRTUAL),
     }
-    if not markers and not any(counts.values()):
+    if loader is None and not any(
+        counts[name]
+        for name in ("current_marker", "legacy_marker", "async", "boot_call", "boot_block")
+    ):
         return "original"
-    if counts["method"] == 1 and counts["start"] == 1 and counts["async"] == 1 and counts["boot_call"] == 0 and counts["boot_block"] == 1:
-        if markers[0] == expected_digest:
-            if counts["new_method"] == 1:
-                return "patched" if counts["runnable_virtual"] == 1 else "patched_unsafe"
-            if counts["legacy_private_method"] == 1:
-                return "patched_private"
-            if counts["legacy_method"] == 1:
-                return "patched_unsafe"
-    if counts["method"] == 1 and counts["start"] == 1 and counts["async"] == 0 and counts["boot_call"] == 1 and counts["boot_block"] == 0:
-        if markers[0] in {expected_digest, LEGACY_PAYLOAD_DIGEST}:
-            return "legacy_sync"
-    if markers and markers[0] == LEGACY_PAYLOAD_DIGEST:
-        fail(
-            "旧 ADFR payload 处于非完整可升级状态："
-            f"method={counts['method']} boot_call={counts['boot_call']} boot_block={counts['boot_block']}"
-        )
-    if markers and markers[0] != expected_digest:
-        fail(
-            "miui-services.jar 已含不同 ADFR RUS payload："
-            f"existing={markers[0]} expected={expected_digest}"
-        )
+
+    if loader is None:
+        fail("ADFR Smali 含补丁痕迹但缺少完整 helper 方法")
+    if not _loader_semantics_valid(loader[2]):
+        fail("ADFR helper 指令语义不完整或已损坏")
+    has_current_marker = current_marker_count == 1
+    has_legacy_marker = legacy_marker_count == 1
+    if current_marker_count > 1 or legacy_marker_count > 1:
+        fail("ADFR helper 版本标记数量异常")
+
+    # New asynchronous form: one queued boot block and one Runnable call.
+    if (
+        counts["async"] == 1
+        and counts["boot_call"] == 0
+        and counts["boot_block"] == 1
+        and counts["runnable_direct"] + counts["runnable_virtual"] == 1
+        and (has_current_marker or has_legacy_marker)
+    ):
+        if counts["new_method"] == 1 and counts["runnable_virtual"] == 1 and has_current_marker:
+            return "patched"
+        if counts["legacy_private_method"] == 1:
+            return "patched_private"
+        if counts["legacy_method"] == 1 or counts["runnable_direct"] == 1:
+            return "patched_unsafe"
+
+    # Earlier synchronous form: direct boot invocation and no async marker.
+    if (
+        counts["async"] == 0
+        and counts["boot_call"] == 1
+        and counts["boot_block"] == 0
+        and has_legacy_marker
+    ):
+        return "legacy_sync"
+
     details = ", ".join(f"{name}={value}" for name, value in counts.items())
     fail(f"ADFR Smali 处于部分补丁状态：{details}")
 
@@ -395,7 +560,6 @@ def smali_patch_state(text: str, expected_digest: str) -> str:
 def patch_smali(
     smali_path: Path,
     helper: str,
-    expected_digest: str,
     state: str,
     runnable_path: Path | None = None,
 ) -> None:
@@ -403,10 +567,13 @@ def patch_smali(
         original = smali_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         fail(f"读取 DisplayManagerServiceImpl Smali 失败：{error}")
-    if state not in {"original", "legacy_sync", "patched_private", "patched_unsafe"}:
-        fail("ADFR Smali 未处于可注入或可升级状态")
-    if smali_patch_state(original, expected_digest) != state:
+    state_text = original
+    if runnable_path is not None and runnable_path.is_file():
+        state_text += "\n" + runnable_path.read_text(encoding="utf-8")
+    if smali_patch_state(state_text) != state:
         fail("ADFR Smali 在注入前状态发生变化")
+    if state not in {"original", "legacy_sync", "patched", "patched_private", "patched_unsafe"}:
+        fail("ADFR Smali 未处于可注入或可升级状态")
     if original.count(BOOT_METHOD) != 1:
         fail("DisplayManagerServiceImpl.onBootCompleted 数量异常")
     method_start = original.find(BOOT_METHOD)
@@ -429,47 +596,23 @@ def patch_smali(
         # already-patched JAR.  The state check above has already established
         # one helper method, one legacy DEX string marker, and one boot call.
         # Locate exactly that private method and reject any other placement.
-        helper_matches = []
-        for signature in (
-            HELPER_SIGNATURE,
-            LEGACY_HELPER_SIGNATURE,
-            LEGACY_PRIVATE_HELPER_SIGNATURE,
-        ):
-            signature_start = original.find(signature)
-            if signature_start >= 0:
-                helper_matches.append(signature_start)
-        if len(helper_matches) != 1:
+        loader = extract_loader_method(original)
+        if loader is None:
             fail("无法唯一定位旧 ADFR helper 方法")
-        helper_start = helper_matches[0]
-        helper_end = original.find("\n.end method", helper_start)
-        if helper_end < 0 or helper_end >= method_start:
-            fail("无法唯一定位旧 ADFR helper 方法")
-        helper_end += len("\n.end method")
-        old_helper = original[helper_start:helper_end]
-        old_digest = re.findall(r"OPLUS_ADFR_RUS_LOADER sha256=([0-9a-f]{64})", old_helper)
-        if len(old_digest) != 1 or old_digest[0] not in {expected_digest, LEGACY_PAYLOAD_DIGEST}:
-            fail("旧 ADFR helper 不含可升级的本模块 payload 标记")
+        helper_start, helper_end, _old_helper, _signature = loader
         updated = original[:helper_start] + helper + original[helper_end:]
         if updated.count(BOOT_CALL_LINE) != 1:
             fail("旧 ADFR boot call 数量异常")
         updated = updated.replace(BOOT_CALL_LINE, BOOT_BLOCK, 1)
-        if LEGACY_PAYLOAD_DIGEST in updated:
-            fail("旧 ADFR helper digest 在升级后残留")
-    elif state in {"patched_private", "patched_unsafe"}:
-        helper_matches = []
-        for signature in (
-            LEGACY_PRIVATE_HELPER_SIGNATURE,
-            LEGACY_HELPER_SIGNATURE,
-        ):
-            signature_start = original.find(signature)
-            if signature_start >= 0:
-                helper_matches.append((signature, signature_start))
-        if len(helper_matches) != 1:
+    elif state in {"patched", "patched_private", "patched_unsafe"}:
+        loader = extract_loader_method(original)
+        if loader is None:
             fail("无法唯一定位旧 ADFR helper")
-        legacy_signature, helper_start = helper_matches[0]
-        updated = original[:helper_start] + original[helper_start:].replace(
-            legacy_signature, HELPER_SIGNATURE, 1
-        )
+        helper_start, helper_end, old_helper, _signature = loader
+        if state == "patched" and loader_payload_matches(old_helper, helper):
+            updated = original
+        else:
+            updated = original[:helper_start] + helper + original[helper_end:]
     else:
         updated = original
     if state in {"patched_private", "patched_unsafe"}:
@@ -488,8 +631,10 @@ def patch_smali(
     verification_text = updated
     if runnable_path is not None and runnable_path.is_file():
         verification_text += "\n" + runnable_path.read_text(encoding="utf-8")
-    if smali_patch_state(verification_text, expected_digest) != "patched":
+    if smali_patch_state(verification_text) != "patched":
         fail("注入后的 ADFR Smali 状态异常")
+    if updated == original:
+        return
     original_mode = stat.S_IMODE(smali_path.stat().st_mode)
     temporary_path: Path | None = None
     try:
@@ -559,8 +704,7 @@ def replace_atomically(source: Path, target: Path) -> None:
 
 
 def patch_jar(jar_path: Path, rus_xml: Path) -> None:
-    expected_digest = expected_payload_digest(rus_xml)
-    helper = generated_helper(rus_xml, expected_digest)
+    helper = generated_helper(rus_xml)
     with tempfile.TemporaryDirectory(prefix="fix-ltpo-adfr-rus.") as temporary_name:
         work_dir = Path(temporary_name)
         decoded = work_dir / "decoded"
@@ -591,16 +735,22 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
         aod_original_text = aod_smali_path.read_text(encoding="utf-8")
         runnable_path = decoded / relative_smali_path.parent / f"{RUNNABLE_CLASS}.smali"
         runnable_text = runnable_path.read_text(encoding="utf-8") if runnable_path.is_file() else ""
-        state = smali_patch_state(original_text + "\n" + runnable_text, expected_digest)
+        state_text = original_text + "\n" + runnable_text
+        state = smali_patch_state(state_text)
         aod_state = full_aod_patch_state(aod_original_text)
-        if state == "patched" and aod_state == "original":
+        loader_matches_current = False
+        if state == "patched":
+            loader = extract_loader_method(original_text)
+            if loader is not None:
+                loader_matches_current = loader_payload_matches(loader[2], helper)
+        if state == "patched" and loader_matches_current and aod_state == "original":
             run_command(["unzip", "-tq", str(jar_path)])
             log("SKIP：OnePlus ADFR RUS loader 已存在，且未发现旧 Full-AOD replay")
             return
 
-        if state != "patched":
-            action = "升级" if state in {"legacy_sync", "patched_private"} else "注入"
-            log(f"{action} OnePlus ADFR RUS loader（目标 DEX：{dex_entry}，payload：{expected_digest}）")
+        if state != "patched" or not loader_matches_current:
+            action = "升级" if state != "original" else "注入"
+            log(f"{action} OnePlus ADFR RUS loader（目标 DEX：{dex_entry}）")
         if state in {"original", "legacy_sync"} and runnable_path.exists():
             fail(f"目标 DEX 已存在同名 ADFR Runnable：{runnable_path}")
         if state in {"original", "legacy_sync"}:
@@ -627,8 +777,8 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
 """,
                 encoding="utf-8",
             )
-        if state != "patched":
-            patch_smali(smali_path, helper, expected_digest, state, runnable_path)
+        if state != "patched" or not loader_matches_current:
+            patch_smali(smali_path, helper, state, runnable_path)
         aod_removed = False
         if aod_state == "patched":
             log(f"移除旧 Full-AOD replay（目标 DEX：{dex_entry}）")
@@ -664,8 +814,11 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
         verify_text = verify_smali.read_text(encoding="utf-8")
         if verify_runnable.is_file():
             verify_text += "\n" + verify_runnable.read_text(encoding="utf-8")
-        if smali_patch_state(verify_text, expected_digest) != "patched":
+        if smali_patch_state(verify_text) != "patched":
             fail("生成 JAR 中的 ADFR loader 复核失败")
+        verify_loader = extract_loader_method(verify_smali.read_text(encoding="utf-8"))
+        if verify_loader is None or not loader_payload_matches(verify_loader[2], helper):
+            fail("生成 JAR 中的 ADFR payload 与当前项目 XML 不一致")
         verify_aod_smali = verify / aod_relative_smali_path
         if not verify_aod_smali.is_file():
             fail("生成 JAR 解包中缺少 DisplayFeatureManagerServiceImpl")

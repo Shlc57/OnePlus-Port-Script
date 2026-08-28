@@ -43,47 +43,148 @@ resolve_apktool() {
 	fi
 }
 
-archive_entries_snapshot() {
+# Compare the current input and output archives directly.  No source-package
+# hash, size, CRC, or other release-specific identity snapshot is persisted.
+# Reading every non-target member still verifies the ZIP CRC for this run.
+
+archive_entry_count() {
 	local jar_file=$1
-	local output_file=$2
+	local requested_entry=$2
 
-	LC_ALL=C unzip -Z1 "$jar_file" | LC_ALL=C sort > "$output_file"
-}
-
-archive_content_snapshot() {
-	local jar_file=$1
-	local excluded_entry=$2
-	local output_file=$3
-
-	python3 - "$jar_file" "$excluded_entry" "$output_file" <<'PY'
-import hashlib
-import json
+	python3 - "$jar_file" "$requested_entry" <<'PY'
 import sys
 import zipfile
 
 
-jar_path, excluded_entry, output_path = sys.argv[1:]
+jar_path, requested_entry = sys.argv[1:]
+try:
+	with zipfile.ZipFile(jar_path) as archive:
+		infos = archive.infolist()
+		names = [info.filename for info in infos]
+		if len(names) != len(set(names)):
+			raise ValueError("ZIP contains duplicate member names")
+		print(sum(info.filename == requested_entry for info in infos))
+except (
+	OSError,
+	EOFError,
+	IndexError,
+	MemoryError,
+	OverflowError,
+	RuntimeError,
+	ValueError,
+	zipfile.BadZipFile,
+	zipfile.LargeZipFile,
+) as error:
+	print(f"无法读取 JAR 归档：{error}", file=sys.stderr)
+	raise SystemExit(1)
+PY
+}
 
-with zipfile.ZipFile(jar_path) as archive, open(
-    output_path, "w", encoding="utf-8", newline="\n"
-) as output:
-    for index, info in enumerate(archive.infolist()):
-        if info.filename == excluded_entry:
-            continue
-        digest = hashlib.sha256()
-        with archive.open(info) as entry:
-            for chunk in iter(lambda: entry.read(1024 * 1024), b""):
-                digest.update(chunk)
-        output.write(
-            "{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                index,
-                json.dumps(info.filename, ensure_ascii=True),
-                info.compress_type,
-                info.file_size,
-                info.CRC,
-                digest.hexdigest(),
-            )
-        )
+compare_archive_contract() {
+	local before_jar=$1
+	local after_jar=$2
+	local excluded_entry=${3:-}
+
+	python3 - "$before_jar" "$after_jar" "$excluded_entry" <<'PY'
+import sys
+import zipfile
+import zlib
+
+
+before_path, after_path, excluded_entry = sys.argv[1:]
+
+
+def fail(message):
+	print(f"归档契约校验失败：{message}", file=sys.stderr)
+	raise SystemExit(1)
+
+
+def open_archive(path):
+	try:
+		archive = zipfile.ZipFile(path)
+		infos = archive.infolist()
+	except (
+		OSError,
+		EOFError,
+		IndexError,
+		MemoryError,
+		OverflowError,
+		RuntimeError,
+		ValueError,
+		zipfile.BadZipFile,
+		zipfile.LargeZipFile,
+		zlib.error,
+	) as error:
+		fail(f"无法读取 {path}: {error}")
+	names = [info.filename for info in infos]
+	if len(names) != len(set(names)):
+		archive.close()
+		fail(f"{path} 包含重复 ZIP 条目")
+	return archive, infos
+
+
+def contents_equal(before, before_info, after, after_info):
+	try:
+		with before.open(before_info) as before_entry, after.open(after_info) as after_entry:
+			while True:
+				before_chunk = before_entry.read(1024 * 1024)
+				after_chunk = after_entry.read(1024 * 1024)
+				if before_chunk != after_chunk:
+					return False
+				if not before_chunk:
+					return True
+	except (
+		EOFError,
+		IndexError,
+		KeyError,
+		MemoryError,
+		NotImplementedError,
+		OSError,
+		OverflowError,
+		RuntimeError,
+		ValueError,
+		zipfile.BadZipFile,
+		zipfile.LargeZipFile,
+		zlib.error,
+	) as error:
+		fail(f"条目 {before_info.filename!r} 内容读取失败：{error}")
+
+
+before = after = None
+try:
+	before, before_infos = open_archive(before_path)
+	after, after_infos = open_archive(after_path)
+	if len(before_infos) != len(after_infos):
+		fail(f"条目数量变化：{len(before_infos)} -> {len(after_infos)}")
+	if excluded_entry:
+		before_excluded = [info for info in before_infos if info.filename == excluded_entry]
+		after_excluded = [info for info in after_infos if info.filename == excluded_entry]
+		if len(before_excluded) != 1 or len(after_excluded) != 1:
+			fail(f"目标条目 {excluded_entry!r} 数量异常")
+
+	for index, (before_info, after_info) in enumerate(zip(before_infos, after_infos)):
+		if before_info.filename != after_info.filename:
+			fail(
+				f"条目顺序或名称变化（位置 {index}: "
+				f"{before_info.filename!r} -> {after_info.filename!r}）"
+			)
+		if (
+			before_info.filename != excluded_entry
+			and before_info.compress_type != after_info.compress_type
+		):
+			fail(
+				f"条目压缩方式变化（{before_info.filename!r}: "
+				f"{before_info.compress_type} -> {after_info.compress_type}）"
+			)
+		if before_info.filename == excluded_entry:
+			continue
+		if not contents_equal(before, before_info, after, after_info):
+			fail(f"非目标条目内容变化：{before_info.filename!r}")
+finally:
+	if before is not None:
+		before.close()
+	if after is not None:
+		after.close()
 PY
 }
 
@@ -541,7 +642,7 @@ PY
 (( $# == 1 )) || fail "用法：$0 <miui-services.jar>"
 JAR_PATH=$1
 
-for command_name in awk basename cmp cp dirname find mkdir mktemp mv python3 rm sort unzip zip; do
+for command_name in basename cmp cp dirname find mkdir mktemp mv python3 rm unzip zip; do
 	require_command "$command_name"
 done
 resolve_apktool
@@ -560,13 +661,8 @@ DECODE_DIR="$WORK_DIR/decoded"
 REBUILT_JAR="$WORK_DIR/rebuilt.jar"
 DEX_DIR="$WORK_DIR/dex"
 PATCHED_JAR="$WORK_DIR/miui-services.jar.patched"
-ARCHIVE_ENTRIES_BEFORE="$WORK_DIR/archive-entries.before"
-ARCHIVE_ENTRIES_AFTER="$WORK_DIR/archive-entries.after"
-NON_TARGET_CONTENT_BEFORE="$WORK_DIR/non-target-content.before"
-NON_TARGET_CONTENT_AFTER="$WORK_DIR/non-target-content.after"
 
-log "记录原 JAR 归档内容"
-archive_entries_snapshot "$JAR_PATH" "$ARCHIVE_ENTRIES_BEFORE"
+log "读取原 JAR 归档"
 
 log "反编译 miui-services.jar"
 "${APKTOOL_COMMAND[@]}" d -j 1 -f -r -o "$DECODE_DIR" "$JAR_PATH"
@@ -594,10 +690,9 @@ case "$SMALI_ROOT" in
 		;;
 esac
 
-DEX_ENTRY_COUNT=$(awk -v entry="$DEX_ENTRY" '$0 == entry { count++ } END { print count + 0 }' "$ARCHIVE_ENTRIES_BEFORE")
+DEX_ENTRY_COUNT=$(archive_entry_count "$JAR_PATH" "$DEX_ENTRY")
 (( DEX_ENTRY_COUNT == 1 )) ||
 	fail "原 JAR 中 $DEX_ENTRY 数量异常：期望 1 个，实际 $DEX_ENTRY_COUNT 个"
-archive_content_snapshot "$JAR_PATH" "$DEX_ENTRY" "$NON_TARGET_CONTENT_BEFORE"
 
 read -r PATCH_STATE _ < <(smali_patch_state "$SMALI_FILE" check)
 case "$PATCH_STATE" in
@@ -638,12 +733,8 @@ unzip -tq "$PATCHED_JAR" >/dev/null || fail "更新后的 JAR 完整性校验失
 cmp -s "$DEX_DIR/$DEX_ENTRY" <(unzip -p "$PATCHED_JAR" "$DEX_ENTRY") ||
 	fail "$DEX_ENTRY 未正确写入 JAR"
 
-archive_entries_snapshot "$PATCHED_JAR" "$ARCHIVE_ENTRIES_AFTER"
-cmp -s "$ARCHIVE_ENTRIES_BEFORE" "$ARCHIVE_ENTRIES_AFTER" ||
-	fail "更新后 JAR 的归档条目列表发生变化"
-archive_content_snapshot "$PATCHED_JAR" "$DEX_ENTRY" "$NON_TARGET_CONTENT_AFTER"
-cmp -s "$NON_TARGET_CONTENT_BEFORE" "$NON_TARGET_CONTENT_AFTER" ||
-	fail "更新后存在目标 DEX 之外的条目内容变化"
+compare_archive_contract "$JAR_PATH" "$PATCHED_JAR" "$DEX_ENTRY" ||
+	fail "更新后 JAR 的非目标归档契约发生变化"
 
 cp --attributes-only --preserve=all -- "$JAR_PATH" "$PATCHED_JAR" ||
 	fail "无法恢复原 miui-services.jar 文件属性"

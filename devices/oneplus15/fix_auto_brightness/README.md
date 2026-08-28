@@ -11,7 +11,7 @@
 
 ## 模块说明
 
-模块禁用一加 15 的 `ro.vendor.oplus.sensor.high_pwm_rgb` 属性，把底包 `vendor/etc/displayconfig` 的缺失项补入原包 `product/etc/displayconfig`，并以底包中内容最大的 `display_id_*.xml` 适配环境变量 `PORT_TARGET_DISPLAY_ID` 指定的实机物理 Display ID。复制时同步把 vendor fsconfig 前缀转换到 product，并为目标 ID 动态写入 product contexts/fsconfig。
+模块禁用一加 15 的 `ro.vendor.oplus.sensor.high_pwm_rgb` 属性，把底包 `vendor/etc/displayconfig` 的缺失项补入原包 `product/etc/displayconfig`，并以 `PORT_TARGET_DISPLAY_ID` 指定的实机物理 Display ID 选择显示配置：若底包已有同名 `display_id_<ID>.xml` 则直接使用；否则要求所有候选 XML 通过相同的亮度结构契约，再按文件名字典序选取。候选契约不一致时安全失败，不按文件大小或其他易变身份信息猜测。复制时同步把 vendor fsconfig 前缀转换到 product，并为目标 ID 动态写入 product contexts/fsconfig。
 
 亮度映射保留 Xiaomi `1..1060` 的逻辑 nit 上限，只根据真机 P3 表扩展物理高亮段：普通/HBM 分界为 1400 nit，HBM 末端为 1800 nit。当前预编译 `MiuiFrameworkResOverlay.apk` 的 `config_defaultLogicalCurve` 为 `0→2、30→40、600→70、5000→1060`，只校准环境光到逻辑 nit 的室内映射，不把物理 P3 nit 写入逻辑坐标。
 

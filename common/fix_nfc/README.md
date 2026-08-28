@@ -12,7 +12,7 @@
 
 ## 输入与行为
 
-- 模块资源：`prebuilt/XMNfcNci.apk` 及其 SHA-256 清单。
+- 模块资源：项目自带 `prebuilt/XMNfcNci.apk` 及其 SHA-256 清单；清单只校验项目直接存储的文件，不记录任何底包/原包文件身份。
 - 目标设备配置：`NFC_PROPERTIES_FILE`。
 - 目标 APK：`system/system/app/Nfc_st/Nfc_st.apk`。
 - 属性目标：`odm/etc/build.prop`。
@@ -21,7 +21,9 @@
 
 模块还拥有 NXP NFC 的最小 SELinux bundle。它先验证 `nfc-service-nxp.rc`、VINTF、`hal_nfc_default_exec` 标签、init 域转换以及当前 policy API，再登记版本化规则：允许 `system_server` 的 ANR 消费线程向 `hal_nfc_default` 发送普通 `signal`，并恢复原包 `ro.vendor.nfc.*` 的 `vendor_nfc_mi_prop` 类型、HAL/系统消费者读写契约和 property socket 连接。该窄前缀同步写入 vendor 与 precompiled property contexts。小米 NFC 应用还会在自身初始化时注册 `mi_nfc`；目标 service contexts 缺少该键时，servicemanager 会以 `SELinux denied for service` 拒绝注册，随后 `MiNfcAdapter` 因查不到服务而抛出“不支持 MI NFC APIs”。模块仅恢复原包已确认的 `mi_nfc u:object_r:nfc_service:s0`，同步写入 vendor 与 ODM precompiled service contexts，不扩展到尚无运行时证据的 `nfc.wallet` 等服务名，也不使用 `vendor_default_prop`、wildcard、permissive 或 `dontaudit`。`common/fix_vendor_avc` 必须在本模块之后运行，负责幂等合并并清理 stale precompiled policy。
 
-配置或属性目标缺失只跳过属性子步骤，不影响 APK 子步骤；APK 目标缺失也只跳过替换。替换前会校验原 ST APK、内置 APK、NXP HAL manifest 和所需 framework。模块不替换底包 HAL、固件或射频配置，也不携带与目标 boot image 绑定的 oat。
+替换前不会把某一版原包 `Nfc_st.apk` 的 hash、大小、固定 CRC 或其他文件身份元信息写入补丁。校验器会在每次执行时动态检查目标 APK 的 ZIP CRC（仅验证当前压缩包完整性，不保存 CRC 白名单）、成员唯一性、Manifest 二进制 XML 边界与 `classes*.dex` 合法性，并解析根 `manifest` 的 package 属性；只有目标仍声明与项目参考 APK 相同的 NFC 包名才继续。因此底包/原包 OTA 改变 APK 字节、权限、组件或 ZIP 布局后，只要包名和结构契约仍兼容即可继续处理。目标已与项目 APK 完全相同时跳过，否则替换后用 `cmp` 做本次 staging 的内容确认。
+
+配置或属性目标缺失只跳过属性子步骤，不影响 APK 子步骤；APK 目标缺失也只跳过替换。替换前会校验目标 APK 的结构契约、内置 APK、NXP HAL manifest 和所需 framework。模块不替换底包 HAL、固件或射频配置，也不携带与目标 boot image 绑定的 oat。
 
 既有一加 15 DSU 测试曾验证 NFC 设置、NXP HAL 初始化、实体卡识别和 Tag Intent 分发。2026-08-19 的 Enforcing DSU 热测中，目标 AVC 在注入前约每 15 秒出现一次；仅临时加入 `system_server_202504 -> hal_nfc_default:process signal` 后连续多个周期增量为 0，NFC HAL 与 `com.android.nfc` 仍在运行且没有新增 NFC AVC。2026-08-22 的 Enforcing 冷启动日志进一步确认：NFC HAL 正常初始化，`com.android.nfc` 在 `ServiceManager.addService` 注册 `mi_nfc` 时收到 `SecurityException: SELinux denied for service`，随后因 `mi_nfc` 不存在进入崩溃循环。新增 property 类型与 service contexts 都由开机阶段加载，仍须下一次未污染 DSU 软重启确认，不能以当前静态结果宣称永久修复已经实机生效。
 

@@ -20,7 +20,7 @@ system/system/apex/com.android.bt.apex
 4. 原始状态必须是 JNI 不含 `DT_NEEDED libop13_lhdc_cold.so`，且三份注入库全部不存在。
 5. 完成状态必须是三份注入库全部存在，与本次模块输入即时逐字节相同，且 ELF/ABI 结构、SONAME、依赖、必要导出、uid/gid、模式和 SELinux xattr 均正确；JNI 恰好含一个 cold bridge `DT_NEEDED`。该比较不生成或保存摘要、尺寸等身份值。任何局部、混合或未知状态都拒绝，不尝试覆盖修复。
 
-原始状态下，只为从当前 payload 提取的 JNI 副本添加一个 `DT_NEEDED libop13_lhdc_cold.so`。Build ID 不登记常量，而是在本次 `patchelf` 前后动态比较并要求相等；修补前后还会各自重新验证 V5 stub 与 interface table 唯一。
+原始状态下，只为从当前 payload 提取的 JNI 副本添加一个 `DT_NEEDED libop13_lhdc_cold.so`。`patchelf` 前后都会重新验证 V5 stub、interface table、SONAME 与 `DT_NEEDED` 依赖，确认 ABI 和依赖契约仍成立；不读取或比较底包 ELF 的 Build ID。
 
 补丁使用 `keys/com.android.bt.avb.pem` 中的项目 AVB RSA-4096 私钥。每次重打包都会重新生成 payload 的 hashtree、vbmeta 和 footer，并把同一私钥导出的二进制公钥写入 APEX 的 `apex_pubkey`。私钥是项目资源，不是原包或输出文件的身份元信息；应限制其访问权限，不要上传到公开仓库。
 

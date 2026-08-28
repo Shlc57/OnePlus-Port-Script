@@ -18,12 +18,6 @@ APOLLO_ASSET = (
     / "display_apollo_list_AD296_P_3_A0020_dsc_cmd_mode_panel.xml.gz.b64"
 )
 APOLLO_XML_SHA256 = "0d151bb437896d6bb7eaa2d3f9f6df9339499ab97858bfdb269b80b087717234"
-APOLLO_SDMCORE_INPUT_SHA256 = (
-    "2c608ed50df879988c8a07c3a52993f40372a4e3f100d46ffe9c9d79a6d63067"
-)
-APOLLO_SDMCORE_OUTPUT_SHA256 = (
-    "ce73d3b4655a48cac28bbeff176fab276fd1151206437856b1919316acee0ca9"
-)
 
 
 def active_lines(path: Path) -> list[str]:
@@ -84,16 +78,14 @@ def test_oneplus_adfr_rus_payload_and_jar_patcher_contract() -> None:
     assert payload[18:24] == [4, 50, 30, 20, 10, 0]
     assert payload[48:61] == [10, 1, 1, 30, 1, 120, 1, 120, 10, 120, 10, 0, 0]
     assert payload[186:199] == [10, 33, 33, 165, 33, 165, 33, 165, 33, 165, 33, 0, 0]
-    assert module.payload_sha256(payload) == (
-        "63945f59ad0ff197351f43aac36e2778653a0375b7b604161383cfc2ce93eb34"
-    )
     helper = module.emit_smali_method(payload)
     assert 'const/16 v4, 0xea' in helper
     assert 'const/4 v4, 0x2' in helper
     assert '.method public sendOplusAdfrRusConfig()V' in helper
-    assert "OPLUS_ADFR_RUS_LOADER sha256=" in helper
+    assert module.LOADER_MARKER in helper
     assert "OPLUS_ADFR_RUS_LOADER_ASYNC_V1" in helper
     assert "IDisplayPanelFeature/default" in helper
+    assert "sha256" not in helper
 
     shell_patcher = (PATCH_DIR / "patch_miui_services_adfr.sh").read_text(
         encoding="utf-8"
@@ -107,6 +99,7 @@ def test_oneplus_adfr_rus_payload_and_jar_patcher_contract() -> None:
     assert patcher_spec is not None and patcher_spec.loader is not None
     patcher = importlib.util.module_from_spec(patcher_spec)
     patcher_spec.loader.exec_module(patcher)
+    assert patcher.extract_loader_payload(helper) == payload
     assert patcher.full_aod_patch_state(patcher.AOD_ORIGINAL_METHOD) == "original"
     replay_fixture = patcher.AOD_REPLAY_METHOD
     assert patcher.full_aod_patch_state(replay_fixture) == "patched"
@@ -120,23 +113,31 @@ def test_oneplus_adfr_rus_payload_and_jar_patcher_contract() -> None:
         replay_path.write_text(replay_fixture, encoding="utf-8")
         assert patcher.remove_full_aod_smali(replay_path, "patched") is True
         assert patcher.full_aod_patch_state(replay_path.read_text(encoding="utf-8")) == "original"
-    expected_digest = "a" * 64
+    legacy_marker = "OPLUS_ADFR_RUS_LOADER " + ("a" * 64)
+    legacy_async_helper = helper.replace(patcher.LOADER_MARKER, legacy_marker, 1)
+    legacy_async_helper = legacy_async_helper.replace(
+        patcher.HELPER_SIGNATURE, patcher.LEGACY_HELPER_SIGNATURE, 1
+    )
     legacy_body = (
-        patcher.LEGACY_HELPER_SIGNATURE
-        + "\n    const-string/jumbo v4, \"OPLUS_ADFR_RUS_LOADER sha256="
-        + expected_digest
-        + "\"\n    const-string/jumbo v5, \"OPLUS_ADFR_RUS_LOADER_ASYNC_V1\"\n.end method\n"
+        legacy_async_helper
+        + "\n"
         + patcher.BOOT_BLOCK
         + "\n"
-        + patcher.RUNNABLE_CALL_VIRTUAL
+        + patcher.RUNNABLE_CALL_DIRECT
     )
-    private_body = legacy_body.replace(
+    private_body = legacy_async_helper.replace(
         patcher.LEGACY_HELPER_SIGNATURE,
         patcher.LEGACY_PRIVATE_HELPER_SIGNATURE,
         1,
+    ) + "\n" + patcher.BOOT_BLOCK + "\n" + patcher.RUNNABLE_CALL_VIRTUAL
+    assert patcher.smali_patch_state(legacy_body) == "patched_unsafe"
+    assert patcher.smali_patch_state(private_body) == "patched_private"
+    sync_helper = legacy_async_helper.replace(
+        f'\n    const-string/jumbo v5, "{patcher.ASYNC_MARKER}"', "", 1
     )
-    assert patcher.smali_patch_state(legacy_body, expected_digest) == "patched_unsafe"
-    assert patcher.smali_patch_state(private_body, expected_digest) == "patched_private"
+    legacy_sync = sync_helper + "\n" + patcher.BOOT_CALL_LINE
+    assert patcher.smali_patch_state(legacy_sync) == "legacy_sync"
+    assert patcher.smali_patch_state(helper + "\n" + patcher.BOOT_BLOCK + "\n" + patcher.RUNNABLE_CALL_VIRTUAL) == "patched"
     apply_source = (PATCH_DIR / "apply.sh").read_text(encoding="utf-8")
     assert "patch_miui_services_adfr.py" in shell_patcher
     for required in (
@@ -144,8 +145,7 @@ def test_oneplus_adfr_rus_payload_and_jar_patcher_contract() -> None:
         "DisplayFeatureManagerServiceImpl.smali",
         "sendOplusAdfrRusConfig",
         "onBootCompleted",
-        "OPLUS_ADFR_RUS_LOADER sha256=",
-        "LEGACY_PAYLOAD_DIGEST",
+        "OPLUS_ADFR_RUS_LOADER_V2",
         "RUNNABLE_CLASS",
         "BOOT_BLOCK",
         "AOD_REPLAY_METHOD",
@@ -179,22 +179,21 @@ def test_oneplus_apollo_panel_nit_contract() -> None:
     module = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(module)
 
+    library_path = PORT_DIR / ".codex_tmp/libsdmcore_live.so"
+    if library_path.is_file():
+        library = library_path.read_bytes()
+        _layout, candidate, sites = module.inspect_library(library)
+        assert candidate.form in {"new-padded", "new-short"}
+        assert sites.state == "complete"
+        assert module.apply_library_patch(library) == library
+
     xml_bytes = module.decode_asset(APOLLO_ASSET, APOLLO_XML_SHA256)
     assert module.sha256_file(APOLLO_ASSET) != APOLLO_XML_SHA256
     assert len(xml_bytes) == 533567
     assert module.OLD_PREFIX == b"/my_product/vendor/etc/display_apollo_list_"
     assert module.NEW_PREFIX == b"/vendor/etc/display_apollo_list_"
     assert len(module.NEW_PREFIX) < len(module.OLD_PREFIX)
-    assert module.PATCH_OFFSET == 0x2FFD7
-    assert module.PATH_LENGTH_OFFSET == 0x512D4
-    assert module.PATH_LENGTH_ORIGINAL == bytes.fromhex("6a058052")
-    assert module.PATH_LENGTH_PATCHED == bytes.fromhex("0a048052")
-    assert module.PATH_NUL_OFFSET == 0x512F8
-    assert module.PATH_NUL_ORIGINAL == bytes.fromhex("1fac0039")
-    assert module.PATH_NUL_PATCHED == bytes.fromhex("1f800039")
-    assert module.PREFIX_ONLY_OUTPUT_SHA256 == (
-        "fa03ba5a29cf6a76bc79926701017be20512afb3276b17ab4858e91b391d8896"
-    )
+    assert module.PARSE_SYMBOL_SUFFIX == "ApolloXmlParser12parseXmlFileEv"
 
     apply_source = (PATCH_DIR / "apply.sh").read_text(encoding="utf-8")
     op15_source = (PORT_DIR / "OP15_port.sh").read_text(encoding="utf-8")
@@ -203,18 +202,16 @@ def test_oneplus_apollo_panel_nit_contract() -> None:
         "OPLUS_APOLLO_PANEL_CONFIG_ASSET",
         "OPLUS_APOLLO_PANEL_CONFIG_RELATIVE_PATH",
         "OPLUS_APOLLO_PANEL_CONFIG_SHA256",
-        "OPLUS_APOLLO_SDMCORE_INPUT_SHA256",
-        "OPLUS_APOLLO_SDMCORE_OUTPUT_SHA256",
         "vendor_configs_file",
         "prepare_apollo_panel_nit",
-        "apollo_sdmcore_prefix_only_sha256",
-        "unsupported display core SHA-256",
+        "inspect_library",
+        "ApolloXmlParser::parseXmlFile",
     ):
         assert required in apply_source or required in op15_source or required in (
             PATCH_DIR / "patch_apollo_panel_nit.py"
         ).read_text(encoding="utf-8"), required
-    assert APOLLO_SDMCORE_INPUT_SHA256 in op15_source
-    assert APOLLO_SDMCORE_OUTPUT_SHA256 in op15_source
+    assert "OPLUS_APOLLO_SDMCORE_INPUT_SHA256" not in op15_source
+    assert "OPLUS_APOLLO_SDMCORE_OUTPUT_SHA256" not in op15_source
 
 
 if __name__ == "__main__":

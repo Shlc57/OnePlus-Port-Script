@@ -5,7 +5,10 @@ XTS_CLASS_PATH='com/android/phone/XtsApp.smali'
 SCREEN_STATUS_CLASS_PATH='com/xiaomi/mirilhook/MiRilHook.smali'
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PORT_ROOT=$(cd -- "$PATCHER_DIR/../.." && pwd)
-SIGNING_BLOCK_TOOL="$PORT_ROOT/common/apk_signing_block.py"
+SIGNING_BLOCK_TOOL="$PORT_ROOT/tools/apk_signing_block.py"
+# shellcheck source=../../tools/toolchain.sh
+# shellcheck disable=SC1091 # 仓库根目录由补丁目录运行时定位。
+source "$PORT_ROOT/tools/toolchain.sh"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''
@@ -33,48 +36,13 @@ require_command() {
 }
 
 resolve_apktool() {
-    if [[ -n "${APKTOOL_JAR:-}" ]]; then
-        [[ -r "$APKTOOL_JAR" ]] || fail "无法读取 APKTOOL_JAR：$APKTOOL_JAR"
-        require_command java
-        APKTOOL_COMMAND=(java -jar "$APKTOOL_JAR")
-    elif [[ -r /snap/apktool/current/apktool.jar ]]; then
-        require_command java
-        APKTOOL_COMMAND=(java -jar /snap/apktool/current/apktool.jar)
-    elif command -v apktool >/dev/null 2>&1; then
-        APKTOOL_COMMAND=(apktool)
-    else
-        fail "缺少 Apktool"
-    fi
+    toolchain_resolve_apktool || fail "无法解析 Apktool"
+    APKTOOL_COMMAND=("${PORT_TOOL_APKTOOL_COMMAND[@]}")
 }
 
 resolve_zipalign() {
-    local sdk_root candidate
-
-    if [[ -n "${ZIPALIGN:-}" ]]; then
-        [[ -x "$ZIPALIGN" ]] || fail "ZIPALIGN 不可执行：$ZIPALIGN"
-        ZIPALIGN_COMMAND=$ZIPALIGN
-        return
-    fi
-    if command -v zipalign >/dev/null 2>&1; then
-        ZIPALIGN_COMMAND=$(command -v zipalign)
-        return
-    fi
-
-    for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROID_SDK:-}"; do
-        [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
-        candidate=$(
-            find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 \
-                -type f -name zipalign -perm -u+x -print |
-                LC_ALL=C sort -V |
-                tail -n 1
-        )
-        if [[ -n "$candidate" ]]; then
-            ZIPALIGN_COMMAND=$candidate
-            return
-        fi
-    done
-
-    fail "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
+    toolchain_resolve_zipalign || fail "无法解析 zipalign"
+    ZIPALIGN_COMMAND="$PORT_TOOL_ZIPALIGN"
 }
 
 archive_entry_count() {
@@ -430,7 +398,7 @@ SIGNING_BLOCK_PAIR_IDS=$(
 log "已保存原 APK Signing Block Pair IDs：$SIGNING_BLOCK_PAIR_IDS"
 
 log "反编译 TeleService.apk"
-"${APKTOOL_COMMAND[@]}" d -f -r "$APK_PATH" -o "$DECODE_DIR"
+"${APKTOOL_COMMAND[@]}" d -f -r -o "$DECODE_DIR" "$APK_PATH"
 
 mapfile -d '' -t XTS_CLASS_FILES < <(
     find "$DECODE_DIR" -type f -path "*/$XTS_CLASS_PATH" -print0
@@ -511,7 +479,7 @@ CHANGED_COUNT=$((XTS_CHANGED_COUNT + SCREEN_STATUS_CHANGED_COUNT))
     fail "修改后的 Smali 状态异常：ver=$VER_PATCHED xts=$XTS_PATCHED screen=$SCREEN_STATUS_PATCHED changed=$CHANGED_COUNT"
 
 log "回编译 APK 以生成新的 $DEX_ENTRY"
-"${APKTOOL_COMMAND[@]}" b "$DECODE_DIR" -o "$REBUILT_APK"
+"${APKTOOL_COMMAND[@]}" b -o "$REBUILT_APK" "$DECODE_DIR"
 
 mkdir -p "$DEX_DIR"
 unzip -p "$REBUILT_APK" "$DEX_ENTRY" > "$DEX_DIR/$DEX_ENTRY" ||

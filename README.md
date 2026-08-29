@@ -1,6 +1,6 @@
 # 移植补丁模块
 
-需要让多个补丁复用同一 APK/JAR 时，补丁自身可按范围 source common/apk_patcher.sh，使用 apk_patcher_open、apk_patcher_snapshot、apk_patcher_rollback、apk_patcher_record_entry 和 apk_patcher_finalize；公共辅助只管理归档事务，具体 Smali、资源和 DEX 选择仍由调用补丁负责。`OP15_port.sh` 会为组合流程建立共享 Settings 会话，所有已登记 DEX 在流程末尾只回编译、对齐并原子替换一次；单个补丁失败会恢复该补丁快照并继续后续模块。未接入该接口的补丁行为不变。
+需要让多个补丁复用同一 APK/JAR 时，补丁自身可按范围 source `tools/apk_patcher.sh`，使用 apk_patcher_open、apk_patcher_snapshot、apk_patcher_rollback、apk_patcher_record_entry 和 apk_patcher_finalize；公共辅助只管理归档事务，具体 Smali、资源和 DEX 选择仍由调用补丁负责。`OP15_port.sh` 会为组合流程建立共享 Settings 会话，所有已登记 DEX 在流程末尾只回编译、对齐并原子替换一次；单个补丁失败会恢复该补丁快照并继续后续模块。未接入该接口的补丁行为不变。
 
 `port` 目录中的补丁按组织方式和硬件依赖拆分，默认不会自动全部执行。请先确认补丁要求的分区已经解包到工程目录，再根据目标设备显式选择需要的补丁。
 
@@ -78,20 +78,20 @@ DEVICE_DISPLAY_NAME='OnePlus 15' bash port_main.sh common/fix_device_identity
 bash OP15_port.sh
 ```
 
-`apply.sh` 是由 `port_main.sh` 管理的补丁模块，不应直接执行。`port_main.sh` 只导入一次 `tools.sh`，再在彼此隔离的子 Shell 中加载各补丁，因此补丁内不再重复 `source tools.sh`，同时不同补丁的严格模式、变量、trap 和 `exit` 不会互相污染。
+`apply.sh` 是由 `port_main.sh` 管理的补丁模块，不应直接执行。`port_main.sh` 只导入一次 `tools/tools.sh`，再在彼此隔离的子 Shell 中加载各补丁，因此补丁内不再重复导入公共接口，同时不同补丁的严格模式、变量、trap 和 `exit` 不会互相污染。
 
 执行首个补丁前，`init_port_env` 会从尚未修改的分区树识别底包与原包设备，并把同一份身份快照传给全部下游补丁。底包优先读取 `odm/etc/<ro.separate.soft>/build.default.prop`；没有该配置时，只在 `odm/etc/*/build.default.prop` 唯一时采用它，随后再按 `odm/build.prop`、`odm/etc/build.prop`、`vendor/build.prop` 回退。原包优先按 `mi_odm/etc/build.prop`、`mi_odm/build.prop`，再按 `product` 与 `system` 的 build.prop 识别；`mi_vendor` 仅是来源标记目录，不参与设备代号推断。补丁不得自行重读已可能被修改的 ODM 身份，也不得写死原包设备代号。
 
 下游统一使用 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*` 变量；原包机型 XML 路径由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。SKU 附加 prop 不属于设备识别结果，也不会按代号自动猜选；需要时由组合入口通过 `DEVICE_IDENTITY_PROP` 明确指定文件名，再交给 `common/fix_device_identity`。指定文件不存在时只输出弱警告并忽略附加配置，`mi_odm/etc/build.prop` 的基础设备标识写入继续执行。`common/fix_device_identity` 只有在显式提供 `DEVICE_DISPLAY_NAME` 时才覆盖 `ro.product.odm.marketname`，未提供时沿用 `mi_odm` 基础属性或附加 prop，其他原包身份和认证字段不受影响。
 
-`tools.sh` 统一管理配置目录、contexts 与 fsconfig 名称模板，只识别工程根目录下的以下两套格式；两者同时存在时优先使用 `DNA_config`：
+`tools/tools.sh` 统一管理配置目录、contexts 与 fsconfig 名称模板，只识别工程根目录下的以下两套格式；两者同时存在时优先使用 `DNA_config`：
 
 | 配置目录 | contexts 模板 | fsconfig 模板 |
 | --- | --- | --- |
 | `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
 | `config` | `{part}_file_contexts` | `{part}_fs_config` |
 
-模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `partition_metadata.py` 完成：补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，某个补丁失败后记录失败并继续后续补丁，最终以失败状态退出；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
+模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `tools/partition_metadata.py` 完成。特殊 CLI 由 `tools/toolchain.sh` 统一解析：将 `local.properties.example` 复制为未提交的 `local.properties` 后，可显式指定 `apktool`、`zipalign`、`avbtool`、`ddk`、`ndk` 的绝对路径；未指定时，`zipalign` 会从 `ANDROID_SDK`、`ANDROID_SDK_ROOT`、`ANDROID_HOME` 的 `build-tools` 查找，NDK 会依次使用 `NDK_HOME`、`ANDROID_NDK_HOME`、`ANDROID_NDK_ROOT` 或上述 SDK 的 `ndk/`，其它特殊 CLI 只使用同名 PATH 命令。不会扫描 Snap、固定用户目录或其他工程。补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，某个补丁失败后记录失败并继续后续模块，最终以失败状态退出；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
 
 现有补丁中的 prop 子步骤按可选内容处理：属性来源文件、目标 `build.prop`、属性清单或预期属性条目不存在时，会输出 `WARN` 并只跳过对应 prop 子步骤；同一补丁中的 APK、XML、文件迁移和 metadata 等非 prop 主流程仍继续执行。已经存在但格式无效、属性重复、值冲突或使用不安全符号链接的文件仍会报错退出，不会被静默忽略。
 

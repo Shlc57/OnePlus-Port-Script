@@ -5,6 +5,9 @@
 
 APK_PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 APK_PATCHER_SIGNING_TOOL="$APK_PATCHER_DIR/apk_signing_block.py"
+# shellcheck source=toolchain.sh
+# shellcheck disable=SC1091 # 工具目录由当前脚本的运行时绝对路径定位。
+source "$APK_PATCHER_DIR/toolchain.sh"
 
 apk_patcher_fail() {
 	printf '[!] %s\n' "$*" >&2
@@ -108,42 +111,13 @@ PY
 }
 
 apk_patcher_resolve_apktool() {
-	if [[ -n "${APKTOOL_JAR:-}" ]]; then
-		[[ -r "$APKTOOL_JAR" ]] || apk_patcher_fail "无法读取 APKTOOL_JAR：$APKTOOL_JAR"
-		apk_patcher_require java || return
-		APK_PATCHER_APKTOOL_COMMAND=(java -jar "$APKTOOL_JAR")
-	elif [[ -r /snap/apktool/current/apktool.jar ]]; then
-		apk_patcher_require java || return
-		APK_PATCHER_APKTOOL_COMMAND=(java -jar /snap/apktool/current/apktool.jar)
-	elif command -v apktool >/dev/null 2>&1; then
-		APK_PATCHER_APKTOOL_COMMAND=(apktool)
-	else
-		apk_patcher_fail '缺少 Apktool'
-		return
-	fi
+	toolchain_resolve_apktool || return 1
+	APK_PATCHER_APKTOOL_COMMAND=("${PORT_TOOL_APKTOOL_COMMAND[@]}")
 }
 
 apk_patcher_resolve_zipalign() {
-	local sdk_root candidate
-	if [[ -n "${ZIPALIGN:-}" ]]; then
-		[[ -x "$ZIPALIGN" ]] || apk_patcher_fail "ZIPALIGN 不可执行：$ZIPALIGN"
-		APK_PATCHER_ZIPALIGN_COMMAND="$ZIPALIGN"
-		return 0
-	fi
-	if command -v zipalign >/dev/null 2>&1; then
-		APK_PATCHER_ZIPALIGN_COMMAND=$(command -v zipalign)
-		return 0
-	fi
-	for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROID_SDK:-}"; do
-		[[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
-		candidate=$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f \
-			-name zipalign -perm -u+x -print | LC_ALL=C sort -V | tail -n 1)
-		if [[ -n "$candidate" ]]; then
-			APK_PATCHER_ZIPALIGN_COMMAND="$candidate"
-			return 0
-		fi
-	done
-	apk_patcher_fail '缺少 zipalign；可通过 ZIPALIGN 指定可执行文件'
+	toolchain_resolve_zipalign || return 1
+	APK_PATCHER_ZIPALIGN_COMMAND="$PORT_TOOL_ZIPALIGN"
 }
 
 apk_patcher_open() {
@@ -166,7 +140,7 @@ apk_patcher_open() {
 		printf '%s\n' "$absolute_path" > "$session_dir/archive.path"
 		printf '%s\n' "$archive_kind" > "$session_dir/archive.kind"
 		cp -a -- "$absolute_path" "$session_dir/original.archive"
-		"${APK_PATCHER_APKTOOL_COMMAND[@]}" d -f -r "$absolute_path" -o "$session_dir/decoded" || return 1
+		"${APK_PATCHER_APKTOOL_COMMAND[@]}" d -f -r -o "$session_dir/decoded" "$absolute_path" || return 1
 		touch "$session_dir/ready"
 	fi
 	SESSION_DIR="$session_dir"
@@ -223,7 +197,7 @@ apk_patcher_finalize() {
 	[[ -f "$SESSION_DIR/ready" ]] || apk_patcher_fail '共享 APK/JAR 会话尚未准备完成'
 	[[ ! -f "$SESSION_DIR/finalized" ]] || return 0
 	[[ -s "$SESSION_DIR/changed.entries" ]] || return 0
-	"${APK_PATCHER_APKTOOL_COMMAND[@]}" b "$SESSION_DECODE_DIR" -o "$rebuilt" || return 1
+	"${APK_PATCHER_APKTOOL_COMMAND[@]}" b -o "$rebuilt" "$SESSION_DECODE_DIR" || return 1
 	cp -a -- "$SESSION_DIR/original.archive" "$patched"
 	entries=$(<"$SESSION_DIR/changed.entries")
 	while IFS= read -r entry; do

@@ -2,6 +2,10 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+port_dir="$(cd -- "$script_dir/../.." && pwd -P)"
+# shellcheck source=../../tools/toolchain.sh
+# shellcheck disable=SC1091 # 仓库根目录由补丁目录运行时定位。
+source "$port_dir/tools/toolchain.sh"
 kmi="${KMI:-}"
 
 if [[ -z "$kmi" || "$kmi" == "." || "$kmi" == ".." ||
@@ -9,8 +13,8 @@ if [[ -z "$kmi" || "$kmi" == "." || "$kmi" == ".." ||
 	echo "KMI must be a plain DDK target name" >&2
 	exit 1
 fi
-if ! command -v ddk >/dev/null 2>&1; then
-	echo "ddk is required" >&2
+if ! toolchain_resolve_ddk; then
+	echo "ddk is required; set ddk=/absolute/path/to/ddk in local.properties" >&2
 	exit 1
 fi
 
@@ -24,7 +28,7 @@ trap cleanup EXIT
 cp -a -- "$script_dir/Makefile" "$script_dir/Kbuild" "$script_dir/src" "$build_dir/"
 (
 	cd -- "$build_dir"
-	ddk build --target "$kmi" -- DDK_TARGET="$kmi"
+	"$PORT_TOOL_DDK" build --target "$kmi" -- DDK_TARGET="$kmi"
 )
 
 if [[ ! -f "$build_dir/millet_core.ko" || -L "$build_dir/millet_core.ko" ]]; then

@@ -13,7 +13,7 @@ SPEC = importlib.util.spec_from_file_location("patch_vendor_avc_policy", MODULE_
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
-MERGER_PATH = MODULE_PATH.parent.parent / "selinux_merge" / "selinux_merge.py"
+MERGER_PATH = MODULE_PATH.parent.parent.parent / "tools" / "selinux_merge" / "selinux_merge.py"
 MERGER_SPEC = importlib.util.spec_from_file_location("selinux_merge", MERGER_PATH)
 assert MERGER_SPEC and MERGER_SPEC.loader
 MERGER = importlib.util.module_from_spec(MERGER_SPEC)

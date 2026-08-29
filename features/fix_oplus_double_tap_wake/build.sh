@@ -2,7 +2,12 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-ndk_root="${OPLUS_DOUBLE_TAP_NDK_ROOT:-/home/yango/AndroidSdk/ndk/29.0.14206865}"
+port_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+# shellcheck source=../../tools/toolchain.sh
+# shellcheck disable=SC1091 # 仓库根目录由补丁目录运行时定位。
+source "$port_dir/tools/toolchain.sh"
+toolchain_resolve_ndk
+ndk_root="$PORT_TOOL_NDK"
 android_api="${OPLUS_DOUBLE_TAP_ANDROID_API:-35}"
 compiler="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${android_api}-clang++"
 output_dir="$script_dir/prebuilt/odm/bin/hw"

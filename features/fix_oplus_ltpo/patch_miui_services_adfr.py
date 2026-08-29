@@ -28,7 +28,6 @@ from typing import NoReturn
 
 PATCH_DIR = Path(__file__).resolve().parent
 RUS_TOOL = PATCH_DIR / "adfr_rus.py"
-APKTOOL_JAR = Path("/snap/apktool/current/apktool.jar")
 CLASS_PATH = Path("com/android/server/display/DisplayManagerServiceImpl.smali")
 AOD_CLASS_PATH = Path("com/android/server/display/DisplayFeatureManagerServiceImpl.smali")
 HELPER_SIGNATURE = ".method public sendOplusAdfrRusConfig()V"
@@ -703,7 +702,7 @@ def replace_atomically(source: Path, target: Path) -> None:
         fail(f"原子替换 miui-services.jar 失败：{error}")
 
 
-def patch_jar(jar_path: Path, rus_xml: Path) -> None:
+def patch_jar(jar_path: Path, rus_xml: Path, apktool_command: list[str]) -> None:
     helper = generated_helper(rus_xml)
     with tempfile.TemporaryDirectory(prefix="fix-ltpo-adfr-rus.") as temporary_name:
         work_dir = Path(temporary_name)
@@ -717,7 +716,7 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
         entries_before = archive_entries_snapshot(jar_path)
         log("反编译 miui-services.jar")
         run_command(
-            ["java", "-jar", str(APKTOOL_JAR), "d", "-j", "1", "-f", "-r", "-o", str(decoded), str(jar_path)]
+            apktool_command + ["d", "-j", "1", "-f", "-r", "-o", str(decoded), str(jar_path)]
         )
         smali_path, relative_smali_path, dex_entry = find_target_smali(decoded)
         aod_smali_path, aod_relative_smali_path, aod_dex_entry = find_class_smali(
@@ -785,7 +784,7 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
             aod_removed = remove_full_aod_smali(aod_smali_path, aod_state)
         log("回编译目标 DEX")
         run_command(
-            ["java", "-jar", str(APKTOOL_JAR), "b", "-j", "1", str(decoded), "-o", str(rebuilt)]
+            apktool_command + ["b", "-j", "1", "-o", str(rebuilt), str(decoded)]
         )
         dex_dir.mkdir()
         dex_path = dex_dir / dex_entry
@@ -805,7 +804,7 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
 
         log("复核生成 JAR 中的 ADFR Smali")
         run_command(
-            ["java", "-jar", str(APKTOOL_JAR), "d", "-j", "1", "-f", "-r", "-o", str(verify), str(patched)]
+            apktool_command + ["d", "-j", "1", "-f", "-r", "-o", str(verify), str(patched)]
         )
         verify_smali = verify / relative_smali_path
         if not verify_smali.is_file():
@@ -835,18 +834,17 @@ def patch_jar(jar_path: Path, rus_xml: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apktool-command", action="append", required=True)
     parser.add_argument("jar", type=Path, metavar="miui-services.jar")
     parser.add_argument("xml", type=Path, metavar="adfr2minfps.xml")
     arguments = parser.parse_args()
     try:
-        if not APKTOOL_JAR.is_file():
-            fail(f"找不到 Apktool JAR：{APKTOOL_JAR}")
-        for command in ("java", "unzip", "zip"):
+        for command in ("unzip", "zip"):
             if shutil.which(command) is None:
                 fail(f"缺少依赖命令：{command}")
         jar_path = require_regular_file(arguments.jar, "miui-services.jar")
         rus_xml = require_regular_file(arguments.xml, "OnePlus ADFR RUS XML")
-        patch_jar(jar_path, rus_xml)
+        patch_jar(jar_path, rus_xml, arguments.apktool_command)
     except PatchError as error:
         print(f"[!] {error}", file=sys.stderr)
         return 1

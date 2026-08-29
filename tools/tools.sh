@@ -1,6 +1,10 @@
 #!/bin/bash
 
 _port_tools_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+_port_root_dir="$(cd -- "$_port_tools_dir/.." && pwd -P)"
+# shellcheck source=toolchain.sh
+# shellcheck disable=SC1091 # 工具目录由当前脚本的运行时绝对路径定位。
+source "$_port_tools_dir/toolchain.sh"
 _port_device_identity_project=""
 
 declare -a _port_config_profiles=(
@@ -67,7 +71,7 @@ init_port_env() {
 	local requested_project_dir="${1:-}"
 
 	if [[ -z "$requested_project_dir" ]]; then
-		requested_project_dir="${project_dir:-$_port_tools_dir/..}"
+		requested_project_dir="${project_dir:-$_port_root_dir/..}"
 	fi
 	if [[ ! -d "$requested_project_dir" ]]; then
 		err_print "项目目录不存在：$requested_project_dir"
@@ -76,7 +80,7 @@ init_port_env() {
 
 	project_dir="$(cd -- "$requested_project_dir" && pwd -P)"
 	_load_config_profile "$project_dir" || return 1
-	port_dir="$_port_tools_dir"
+	port_dir="$_port_root_dir"
 	export project_dir port_dir
 	if [[ "$_port_device_identity_project" != "$project_dir" ]]; then
 		_port_detect_device_identities "$project_dir" || return 1

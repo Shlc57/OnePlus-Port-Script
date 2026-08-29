@@ -3,9 +3,9 @@ set -euo pipefail
 
 test_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 port_dir="$(cd -- "$test_dir/../.." && pwd -P)"
-# shellcheck source=../../tools.sh
+# shellcheck source=../tools.sh
 # shellcheck disable=SC1091 # 动态解析仓库根目录，单文件 ShellCheck 不跟随该来源。
-source "$port_dir/tools.sh"
+source "$port_dir/tools/tools.sh"
 
 temporary_root="$(mktemp -d)"
 cleanup() {

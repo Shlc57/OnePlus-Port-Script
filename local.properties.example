@@ -1,0 +1,10 @@
+# 可选：本机特殊工具的绝对路径。复制为 local.properties 后按实际环境填写。
+# 不填写时，zipalign 会从 ANDROID_SDK、ANDROID_SDK_ROOT、ANDROID_HOME 的
+# build-tools 自动查找，NDK 会从 NDK_HOME、ANDROID_NDK_HOME、ANDROID_NDK_ROOT
+# 或上述 SDK 的 ndk/ 自动查找；其它 CLI 只查找同名 PATH 命令。
+# apktool 可以是可执行文件，也可以是 apktool.jar。
+# apktool=/absolute/path/to/apktool.jar
+# zipalign=/absolute/path/to/zipalign
+# avbtool=/absolute/path/to/avbtool
+# ddk=/absolute/path/to/ddk
+# ndk=/absolute/path/to/android-ndk

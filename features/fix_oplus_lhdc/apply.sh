@@ -117,67 +117,16 @@ for command_name in python3 debugfs e2fsck resize2fs truncate patchelf readelf; 
 	fi
 done
 
-resolve_avbtool() {
-	local candidate
-	local -a candidates=()
-
-	if [[ -n "${AVBTOOL:-}" ]]; then
-		candidates+=("$AVBTOOL")
-	fi
-	if command -v avbtool >/dev/null 2>&1; then
-		candidates+=("$(command -v avbtool)")
-	fi
-	candidates+=(
-		"$project_dir/../../tools/build-tools/linux_musl-x86/bin/avbtool"
-		"$project_dir/../tools/build-tools/linux_musl-x86/bin/avbtool"
-	)
-	for candidate in "${candidates[@]}"; do
-		if [[ -f "$candidate" && ! -L "$candidate" && -x "$candidate" ]]; then
-			printf '%s\n' "$candidate"
-			return 0
-		fi
-	done
-	return 1
-}
-
-resolve_zipalign() {
-	local candidate
-	local sdk_root
-	local -a candidates=()
-
-	if [[ -n "${ZIPALIGN:-}" ]]; then
-		candidates+=("$ZIPALIGN")
-	fi
-	if command -v zipalign >/dev/null 2>&1; then
-		candidates+=("$(command -v zipalign)")
-	fi
-	for sdk_root in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" /home/yango/AndroidSdk; do
-		[[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
-		candidate="$({
-			find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 \
-				-type f -name zipalign -perm -u+x -print
-		} | LC_ALL=C sort -V | tail -n 1)"
-		if [[ -n "$candidate" ]]; then
-			candidates+=("$candidate")
-		fi
-	done
-	for candidate in "${candidates[@]}"; do
-		if [[ -f "$candidate" && ! -L "$candidate" && -x "$candidate" ]]; then
-			printf '%s\n' "$candidate"
-			return 0
-		fi
-	done
-	return 1
-}
-
-if ! avbtool_command="$(resolve_avbtool)"; then
-	err_print "缺少 avbtool；可通过 AVBTOOL 指定可执行文件"
+if ! toolchain_resolve_avbtool; then
+	err_print "缺少 avbtool；请在 local.properties 指定路径"
 	exit 1
 fi
-if ! zipalign_command="$(resolve_zipalign)"; then
-	err_print "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
+avbtool_command="$PORT_TOOL_AVBTOOL"
+if ! toolchain_resolve_zipalign; then
+	err_print "缺少 zipalign；请在 local.properties 指定路径"
 	exit 1
 fi
+zipalign_command="$PORT_TOOL_ZIPALIGN"
 
 staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/fix-lhdc.apply.XXXXXX")"
 staged_apex="$staging_dir/com.android.bt.apex"

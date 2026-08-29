@@ -67,31 +67,8 @@ class LhdcApexContract(unittest.TestCase):
         cls.avb_key = MODULE_DIR / "keys/com.android.bt.avb.pem"
         if not cls.avb_key.is_file() or cls.avb_key.is_symlink():
             raise unittest.SkipTest("project AVB signing key is unavailable")
-        cls.avbtool = resolve_tool(
-            "avbtool",
-            (PROJECT_DIR.parent.parent / "tools/build-tools/linux_musl-x86/bin/avbtool",),
-        )
-        sdk_roots = tuple(
-            Path(value)
-            for value in (
-                os.environ.get("ANDROID_SDK_ROOT", ""),
-                os.environ.get("ANDROID_HOME", ""),
-                "/home/yango/AndroidSdk",
-            )
-            if value
-        )
-        zipalign_candidates = tuple(
-            sorted(
-                (
-                    path
-                    for root in sdk_roots
-                    for path in (root / "build-tools").glob("*/zipalign")
-                ),
-                key=lambda path: path.parent.name,
-                reverse=True,
-            )
-        )
-        cls.zipalign = resolve_tool("zipalign", zipalign_candidates)
+        cls.avbtool = resolve_tool("avbtool")
+        cls.zipalign = resolve_tool("zipalign")
         cls.debugfs = resolve_tool("debugfs")
         cls.patchelf = resolve_tool("patchelf")
         cls.readelf = resolve_tool("readelf")

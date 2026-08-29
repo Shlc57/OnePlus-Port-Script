@@ -62,13 +62,12 @@ bash OP15_port.sh
 
 不要直接运行各补丁目录中的 `apply.sh`。脚本遇到错误会立即停止；根据终端提示补齐缺失文件或工具后，再重新执行同一条命令即可。
 
-如果 Apktool、`zipalign` 或 `avbtool` 没有加入 `PATH`，可以手动指定：
+如果特殊工具没有加入 `PATH`，复制 `local.properties.example` 为本机未提交的 `local.properties` 后填写绝对路径：
 
 ```bash
-APKTOOL_JAR=/你的路径/apktool.jar \
-ZIPALIGN=/你的路径/zipalign \
-AVBTOOL=/你的路径/avbtool \
-bash OP15_port.sh
+apktool=/你的路径/apktool.jar
+zipalign=/你的路径/zipalign
+avbtool=/你的路径/avbtool
 ```
 
 ## Termux 使用方法

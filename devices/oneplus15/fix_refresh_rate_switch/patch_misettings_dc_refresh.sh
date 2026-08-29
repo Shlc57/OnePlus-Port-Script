@@ -10,7 +10,10 @@ PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 readonly PATCHER_DIR
 PORT_DIR=$(cd -- "$PATCHER_DIR/../../.." && pwd -P)
 readonly PORT_DIR
-readonly SIGNING_BLOCK_TOOL="$PORT_DIR/common/apk_signing_block.py"
+readonly SIGNING_BLOCK_TOOL="$PORT_DIR/tools/apk_signing_block.py"
+# shellcheck source=../../../tools/toolchain.sh
+# shellcheck disable=SC1091 # 仓库根目录由补丁目录运行时定位。
+source "$PORT_DIR/tools/toolchain.sh"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''
@@ -38,46 +41,13 @@ require_command() {
 }
 
 resolve_apktool() {
-	if [[ -n "${APKTOOL_JAR:-}" ]]; then
-		[[ -r "$APKTOOL_JAR" ]] || fail "无法读取 APKTOOL_JAR：$APKTOOL_JAR"
-		require_command java
-		APKTOOL_COMMAND=(java -jar "$APKTOOL_JAR")
-		return
-	fi
-	if [[ -r /snap/apktool/current/apktool.jar ]]; then
-		require_command java
-		APKTOOL_COMMAND=(java -jar /snap/apktool/current/apktool.jar)
-		return
-	fi
-	if command -v apktool >/dev/null 2>&1; then
-		APKTOOL_COMMAND=(apktool)
-		return
-	fi
-	fail '缺少 Apktool'
+	toolchain_resolve_apktool || fail '无法解析 Apktool'
+	APKTOOL_COMMAND=("${PORT_TOOL_APKTOOL_COMMAND[@]}")
 }
 
 resolve_zipalign() {
-	local sdk_root candidate
-
-	if [[ -n "${ZIPALIGN:-}" ]]; then
-		[[ -x "$ZIPALIGN" ]] || fail "ZIPALIGN 不可执行：$ZIPALIGN"
-		ZIPALIGN_COMMAND=$ZIPALIGN
-		return
-	fi
-	if command -v zipalign >/dev/null 2>&1; then
-		ZIPALIGN_COMMAND=$(command -v zipalign)
-		return
-	fi
-	for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROID_SDK:-}"; do
-		[[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
-		candidate=$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f \
-			-name zipalign -perm -u+x -print | LC_ALL=C sort -V | tail -n 1)
-		if [[ -n "$candidate" ]]; then
-			ZIPALIGN_COMMAND=$candidate
-			return
-		fi
-	done
-	fail '缺少 zipalign'
+	toolchain_resolve_zipalign || fail '无法解析 zipalign'
+	ZIPALIGN_COMMAND="$PORT_TOOL_ZIPALIGN"
 }
 
 archive_contract_check() {

@@ -124,7 +124,7 @@ class PayloadState:
 def load_signing_block_helper():
     """Load the project APK Signing Block helper without relying on cwd."""
 
-    helper_path = Path(__file__).resolve().parents[2] / "common/apk_signing_block.py"
+    helper_path = Path(__file__).resolve().parents[2] / "tools/apk_signing_block.py"
     spec = importlib.util.spec_from_file_location("fix_oplus_lhdc_apk_signing_block", helper_path)
     if spec is None or spec.loader is None:
         raise RepackError(f"could not load APK Signing Block helper: {helper_path}")

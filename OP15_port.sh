@@ -134,7 +134,7 @@ set -e
 
 if [[ -f "$settings_apk_session_dir/ready" ]]; then
 	set +e
-	bash "$script_dir/common/apk_patcher.sh" finalize "$settings_apk_session_dir"
+	bash "$script_dir/tools/apk_patcher.sh" finalize "$settings_apk_session_dir"
 	finalize_status=$?
 	set -e
 	if (( finalize_status != 0 && port_status == 0 )); then

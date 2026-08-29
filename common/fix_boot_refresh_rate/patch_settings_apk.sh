@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PORT_DIR=$(cd -- "$PATCHER_DIR/../.." && pwd -P)
-APK_PATCHER="$PORT_DIR/common/apk_patcher.sh"
+APK_PATCHER="$PORT_DIR/tools/apk_patcher.sh"
 
 log() { printf '[*] %s\n' "$*"; }
 fail() { printf '[!] %s\n' "$*" >&2; exit 1; }

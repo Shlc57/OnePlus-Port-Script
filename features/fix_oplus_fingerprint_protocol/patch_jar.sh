@@ -2,6 +2,11 @@
 set -Eeuo pipefail
 
 CLASS_PATH='com/android/server/biometrics/sensors/fingerprint/FingerprintServiceStubImpl.smali'
+PATCHER_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+PORT_ROOT=$(cd -- "$PATCHER_DIR/../.." && pwd -P)
+# shellcheck source=../../tools/toolchain.sh
+# shellcheck disable=SC1091 # 仓库根目录由补丁目录运行时定位。
+source "$PORT_ROOT/tools/toolchain.sh"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''
@@ -29,18 +34,8 @@ require_command() {
 }
 
 resolve_apktool() {
-	if [[ -n "${APKTOOL_JAR:-}" ]]; then
-		[[ -r "$APKTOOL_JAR" ]] || fail "无法读取 APKTOOL_JAR：$APKTOOL_JAR"
-		require_command java
-		APKTOOL_COMMAND=(java -jar "$APKTOOL_JAR")
-	elif [[ -r /snap/apktool/current/apktool.jar ]]; then
-		require_command java
-		APKTOOL_COMMAND=(java -jar /snap/apktool/current/apktool.jar)
-	elif command -v apktool >/dev/null 2>&1; then
-		APKTOOL_COMMAND=(apktool)
-	else
-		fail "缺少 Apktool"
-	fi
+	toolchain_resolve_apktool || fail "无法解析 Apktool"
+	APKTOOL_COMMAND=("${PORT_TOOL_APKTOOL_COMMAND[@]}")
 }
 
 # Compare the current input and output archives directly.  No source-package

@@ -108,32 +108,11 @@ if ! command -v sha256sum >/dev/null 2>&1; then
 	err_print "缺少 sha256sum，无法校验启动亮度 Overlay"
 	exit 1
 fi
-zipalign_command=""
-if [[ -n "${ZIPALIGN:-}" ]]; then
-	if [[ ! -x "$ZIPALIGN" ]]; then
-		err_print "ZIPALIGN 不可执行：$ZIPALIGN"
-		exit 1
-	fi
-	zipalign_command="$ZIPALIGN"
-elif command -v zipalign >/dev/null 2>&1; then
-	zipalign_command="$(command -v zipalign)"
-else
-	for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROID_SDK:-}"; do
-		[[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || continue
-		zipalign_candidate="$({
-			find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 \
-				-type f -name zipalign -perm -u+x -print
-		} | LC_ALL=C sort -V | tail -n 1)"
-		if [[ -n "$zipalign_candidate" ]]; then
-			zipalign_command="$zipalign_candidate"
-			break
-		fi
-	done
-fi
-if [[ -z "$zipalign_command" ]]; then
-	err_print "缺少 zipalign；可通过 ZIPALIGN 指定可执行文件"
+if ! toolchain_resolve_zipalign; then
+	err_print "缺少 zipalign；请在 local.properties 指定路径"
 	exit 1
 fi
+zipalign_command="$PORT_TOOL_ZIPALIGN"
 if ! (cd -- "$patcher_dir" && sha256sum -c -- "$boot_brightness_overlay_checksums"); then
 	err_print "启动亮度 Overlay 校验失败"
 	exit 1

@@ -2,8 +2,8 @@
 set -uo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck disable=SC1091 # tools.sh 通过脚本所在目录的运行时绝对路径加载。
-source "$script_dir/tools.sh"
+# shellcheck disable=SC1091 # tools/tools.sh 通过脚本所在目录的运行时绝对路径加载。
+source "$script_dir/tools/tools.sh"
 
 print_help() {
 	cat <<'EOF'

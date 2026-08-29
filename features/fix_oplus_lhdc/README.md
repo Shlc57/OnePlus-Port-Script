@@ -42,7 +42,7 @@ core 必须导出 wrapper 实际消费的关键 `lhdcv5_util_*` 接口；wrapper
 
 ## 工具与功能边界
 
-主机需要 Python 3、`debugfs`、`e2fsck`、`resize2fs`、`truncate`、`patchelf`、`readelf`、`avbtool`、`zipalign`，以及项目内的 `common/apk_signing_block.py`。可通过 `AVBTOOL`、`ZIPALIGN` 指定后两项。目标 APEX 不存在时按替换语义警告并跳过；输入缺少有效 APK Signing Block 时会在写入工程树前停止，因为 PMS 会直接报 `No APK Signature Scheme v2 signature`。
+主机需要 Python 3、`debugfs`、`e2fsck`、`resize2fs`、`truncate`、`patchelf`、`readelf`、`avbtool`、`zipalign`，以及项目内的 `tools/apk_signing_block.py`。`avbtool` 与 `zipalign` 可在未提交的 `local.properties` 显式指定绝对路径。目标 APEX 不存在时按替换语义警告并跳过；输入缺少有效 APK Signing Block 时会在写入工程树前停止，因为 PMS 会直接报 `No APK Signature Scheme v2 signature`。
 
 该载荷只补齐 Bluetooth APEX 内的 LHDC V5 软件编码 bridge/backend。它不自动补齐或证明最终 `vendor` 的 Android 17 AIDL Audio HAL、PAL、resource manager、usecase 和 audio policy LHDC 全链路，也没有证据支持新增 SELinux allow。
 

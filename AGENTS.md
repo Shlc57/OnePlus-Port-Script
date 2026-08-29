@@ -11,8 +11,9 @@
 - `devices/<device>/<patch>/apply.sh`：补丁逻辑或资源本身无法抽象为共享模块、只能服务指定设备时才使用。若逻辑可复用而仅硬件参数不同，应把逻辑放进 `features`，由对应机型组合入口提供 `.props` 参数文件；例如超声波指纹位置参数由 `OP15_port.sh` 传入，而不写进特性模块或从原包推断。
 - `port_main.sh`：补丁发现、选择和隔离执行入口。
 - `OP15_port.sh`：一加 15 当前组合流程。
-- `tools.sh`：Shell 公共接口、配置模板和安全文件操作。
-- `partition_metadata.py`：contexts/fsconfig 的复杂处理工具。
+- `tools/tools.sh`：Shell 公共接口、配置模板和安全文件操作。
+- `tools/partition_metadata.py`：contexts/fsconfig 的复杂处理工具。
+- `tools/toolchain.sh`：特殊 CLI 的统一解析入口；本机绝对路径只能写入未提交的 `local.properties`。
 
 不要把设备专属逻辑下沉到通用工具，也不要把共享能力复制到多个补丁中。`features` 只能表达适用条件，不能成为隐藏具体机型硬编码的目录。
 
@@ -25,14 +26,14 @@
 
 ## 配置目录与名称模板
 
-配置目录优先级和名称模板必须集中定义在 `tools.sh`，补丁内不得自行拼接 contexts/fsconfig 文件名。当前代码定义为：
+配置目录优先级和名称模板必须集中定义在 `tools/tools.sh`，补丁内不得自行拼接 contexts/fsconfig 文件名。当前代码定义为：
 
 | 配置目录 | contexts 模板 | fsconfig 模板 |
 | --- | --- | --- |
 | `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
 | `config` | `{part}_file_contexts` | `{part}_fs_config` |
 
-两者同时存在时优先 `DNA_config`。如果后续调整模板，必须同时更新 `tools.sh`、README、本文档和相关测试。
+两者同时存在时优先 `DNA_config`。如果后续调整模板，必须同时更新 `tools/tools.sh`、README、本文档和相关测试。
 
 补丁必须通过以下接口取路径：
 
@@ -63,7 +64,7 @@
 
 ## 补丁实现规则
 
-- `apply.sh` 由 `port_main.sh` 加载，不要在每个补丁中重复 `source tools.sh`。
+- `apply.sh` 由 `port_main.sh` 加载，不要在每个补丁中重复导入 `tools/tools.sh`。
 - 补丁开头调用 `init_port_env "${1:-}"`，并根据复杂度启用 `set -euo pipefail` 或等价严格模式。
 - 先完成依赖、来源文件、目标分区、metadata 和外部工具校验，再开始修改工作树。
 - 创建新补丁前，必须先用 `rg` 检查现有 `common`、`features` 与 `devices` 补丁的相似语义、目标分区、来源和依赖；如果已有相似语义，应优先合并到现有补丁，不得为了极小改动新建孤立补丁。只有目标边界、生命周期、依赖或执行顺序确实独立时，才允许新建补丁，并说明拆分理由。
@@ -79,7 +80,7 @@
 
 ## contexts 与 fsconfig
 
-复杂 metadata 逻辑放在 `partition_metadata.py`，Shell 仅保留参数准备和薄封装。不要重新用大段 awk/sed 实现同一套合并、迁移或去重算法。
+复杂 metadata 逻辑放在 `tools/partition_metadata.py`，Shell 仅保留参数准备和薄封装。不要重新用大段 awk/sed 实现同一套合并、迁移或去重算法。
 
 必须遵守以下规则：
 
@@ -138,7 +139,7 @@
 
 ## Python 规范
 
-- `partition_metadata.py` 优先使用 Python 标准库，不为简单 metadata 操作增加第三方依赖。
+- `tools/partition_metadata.py` 优先使用 Python 标准库，不为简单 metadata 操作增加第三方依赖。
 - CLI 错误输出到 stderr，并返回非零状态；不要打印 Python traceback 作为正常用户错误。
 - 路径、manifest、分区映射和输出目标必须在写入前验证。
 - 保持操作确定性：相同输入应生成顺序稳定的相同输出。
@@ -163,7 +164,7 @@
 ```bash
 git diff --check
 rg --files -g '*.sh' -0 | xargs -0 -n1 bash -n
-PYTHONDONTWRITEBYTECODE=1 python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("partition_metadata.py").read_text(encoding="utf-8"))'
+PYTHONDONTWRITEBYTECODE=1 python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("tools/partition_metadata.py").read_text(encoding="utf-8"))'
 ```
 
 修改过的 Shell 脚本还应运行 ShellCheck。对 `SC2016`、`SC2154` 等确有意图的情况，只允许有依据地局部处理。

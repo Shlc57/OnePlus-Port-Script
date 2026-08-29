@@ -1,5 +1,5 @@
 # 一加 15 组合流程选择的目标触感映射。
-# 这些值由目标设备流程显式提供，common/fix_linear_haptic 不从小米原包读取。
+# 这些值由目标设备流程显式提供，features/fix_linear_haptic 不从小米原包读取。
 sys.haptic.infinitelevel=true
 sys.haptic.dynamiceffect=false
 sys.haptic.dynamiceffect.richtap=true

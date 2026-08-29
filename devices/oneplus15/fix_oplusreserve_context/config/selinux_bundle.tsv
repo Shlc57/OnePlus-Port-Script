@@ -1,5 +1,0 @@
-# 类型	目标	相对 fix_oplusreserve_context 目录的片段或项目内必需文件
-require	project	vendor/etc/selinux/vendor_sepolicy.cil
-require	project	vendor/etc/selinux/plat_pub_versioned.cil
-require	project	system_ext/etc/selinux/system_ext_sepolicy.cil
-policy	vendor_policy	config/selinux_policy.cil.in

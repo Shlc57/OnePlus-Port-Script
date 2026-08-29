@@ -70,13 +70,13 @@ def test_registry() -> None:
             "config/selinux_bundle.tsv",
         ),
         (
-            "fix_nfc",
-            "common/fix_nfc",
+            "fix_nci_nfc",
+            "features/fix_nci_nfc",
             "config/selinux_bundle.tsv",
         ),
         (
-            "fix_displayfeature_bridge",
-            "features/fix_displayfeature_bridge",
+            "oplus_displayfeature_bridge",
+            "features/oplus_displayfeature_bridge",
             "config/selinux_bundle.tsv",
         ),
         (
@@ -90,13 +90,13 @@ def test_registry() -> None:
             "config/selinux_bundle.tsv",
         ),
         (
-            "fix_millet_core_bridge",
-            "features/fix_millet_core_bridge",
+            "oplus_millet_core_bridge",
+            "features/oplus_millet_core_bridge",
             "config/selinux_bundle.tsv",
         ),
         (
-            "fix_oplusreserve_context",
-            "devices/oneplus15/fix_oplusreserve_context",
+            "fix_oplus_avc",
+            "common/fix_oplus_avc",
             "config/selinux_bundle.tsv",
         ),
     ]

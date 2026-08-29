@@ -1,5 +1,7 @@
 # 移植补丁模块
 
+需要让多个补丁复用同一 APK/JAR 时，补丁自身可按范围 source common/apk_patcher.sh，使用 apk_patcher_open、apk_patcher_snapshot、apk_patcher_rollback、apk_patcher_record_entry 和 apk_patcher_finalize；公共辅助只管理归档事务，具体 Smali、资源和 DEX 选择仍由调用补丁负责。`OP15_port.sh` 会为组合流程建立共享 Settings 会话，所有已登记 DEX 在流程末尾只回编译、对齐并原子替换一次；单个补丁失败会恢复该补丁快照并继续后续模块。未接入该接口的补丁行为不变。
+
 `port` 目录中的补丁按组织方式和硬件依赖拆分，默认不会自动全部执行。请先确认补丁要求的分区已经解包到工程目录，再根据目标设备显式选择需要的补丁。
 
 目录分类如下：
@@ -45,11 +47,11 @@ bash port_main.sh common/fix_launcher common/fix_device_identity
 bash port_main.sh common/fix_mtp
 
 # 执行可复用的通用兼容补丁
-bash port_main.sh common/fix_nfc common/fix_face_unlock \
+bash port_main.sh features/fix_nci_nfc common/fix_face_unlock \
   common/fix_settings_haptic
 
 # 按目标硬件能力选用特性补丁；超声波指纹还需要机型入口提供参数
-bash port_main.sh features/fix_ltpo \
+bash port_main.sh features/fix_oplus_ltpo \
   features/fix_oplus_fingerprint_protocol
 
 # 执行一加 15 专属补丁与自动刷新率补丁
@@ -89,7 +91,7 @@ bash OP15_port.sh
 | `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
 | `config` | `{part}_file_contexts` | `{part}_fs_config` |
 
-模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `partition_metadata.py` 完成：补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，任一补丁失败后立即停止；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
+模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `partition_metadata.py` 完成：补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，某个补丁失败后记录失败并继续后续补丁，最终以失败状态退出；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
 
 现有补丁中的 prop 子步骤按可选内容处理：属性来源文件、目标 `build.prop`、属性清单或预期属性条目不存在时，会输出 `WARN` 并只跳过对应 prop 子步骤；同一补丁中的 APK、XML、文件迁移和 metadata 等非 prop 主流程仍继续执行。已经存在但格式无效、属性重复、值冲突或使用不安全符号链接的文件仍会报错退出，不会被静默忽略。
 
@@ -104,6 +106,8 @@ bash OP15_port.sh
 | 模块 | 改动分区 | 用途 |
 | --- | --- | --- |
 | [`common/disable_odm_imports`](common/disable_odm_imports/README.md) | `odm` | 禁用 ODM 对项目专属和 `my_manifest` 属性文件的外部导入。 |
+| [`common/disable_mi_vulkan`](common/disable_mi_vulkan/README.md) | `product` | 禁用不兼容的 Xiaomi Vulkan pipeline cache 属性。 |
+| [`common/enable_hyperos_features`](common/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 | [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算。 |
@@ -111,13 +115,12 @@ bash OP15_port.sh
 | [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
-| [`common/fix_linear_haptic`](common/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
 | [`common/fix_mi_account`](common/fix_mi_account/README.md) | `odm`、`vendor` | 迁移账号、支付与安全环境资源并登记 SELinux bundle。 |
-| [`common/fix_xiaomi_psno`](common/fix_xiaomi_psno/README.md) | `system_ext` | 仅在 Xiaomi Phone SN 为空时，以目标 `ro.serialno` 作为展示 fallback，不改 IMEI、PCB SN 或 Factory ID。 |
+| [`common/fix_sn`](common/fix_sn/README.md) | `system_ext` | 仅在 Xiaomi Phone SN 为空时，以目标 `ro.serialno` 作为展示 fallback，不改 IMEI、PCB SN 或 Factory ID。 |
 | [`common/fix_mi_mtp_kill_self`](common/fix_mi_mtp_kill_self/README.md) | `system` | 将 MTP 服务从 `android.process.media` 隔离。 |
 | [`common/fix_modem_xts`](common/fix_modem_xts/README.md) | `system` | 短路不兼容的 Oplus modem/Xiaomi OEM Hook 调用。 |
 | [`common/fix_mtp`](common/fix_mtp/README.md) | `system` | 替换匹配底包 USB 栈的 configfs rc。 |
-| [`common/fix_nfc`](common/fix_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
+| [`common/fix_oplus_avc`](common/fix_oplus_avc/README.md) | `vendor`、`odm` | 修复实际 Oplus reserve 块设备标签、合并实测最小 AVC，并恢复 mdm_feature 的 SVN/OTA property labels。 |
 | [`common/fix_pangu`](common/fix_pangu/README.md) | `product`、`system` | 将 `product/pangu/system` 迁移到最终 system。 |
 | [`common/fix_settings_haptic`](common/fix_settings_haptic/README.md) | `system_ext` | 修复 Settings 的触感能力判断。 |
 | [`common/fix_vendor_avc`](common/fix_vendor_avc/README.md) | `vendor`、`odm` | 统一合并 vendor 策略、模块片段与 SELinux bundle。 |
@@ -128,13 +131,13 @@ bash OP15_port.sh
 
 | 模块 | 改动分区 | 用途 |
 | --- | --- | --- |
-| [`features/disable_mi_vulkan`](features/disable_mi_vulkan/README.md) | `product` | 禁用不兼容的 Xiaomi Vulkan pipeline cache 属性。 |
-| [`features/enable_hyperos_features`](features/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
-| [`features/fix_audio_appname`](features/fix_audio_appname/README.md) | `system_ext` | 定点阻断 HyperOS 私有 `appname` 音频参数，避免 Oplus HAL 拒绝参数后触发输出流 standby。 |
-| [`features/fix_displayfeature_bridge`](features/fix_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
-| [`features/fix_lhdc`](features/fix_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
-| [`features/fix_ltpo`](features/fix_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
-| [`features/fix_millet_core_bridge`](features/fix_millet_core_bridge/README.md) | `system_ext`、`vendor` | 接入 Millet 核心桥预编译 KO、init.rc 和 SELinux bundle；KO 存放在 `system_ext/lib64/modules`，由 `KMI` 选择仓库内 KMI。 |
+| [`features/fuck_audio_appname`](features/fuck_audio_appname/README.md) | `system_ext` | 定点阻断 HyperOS 私有 `appname` 音频参数，避免 Oplus HAL 拒绝参数后触发输出流 standby。 |
+| [`features/fix_linear_haptic`](features/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
+| [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
+| [`features/oplus_displayfeature_bridge`](features/oplus_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
+| [`features/fix_oplus_lhdc`](features/fix_oplus_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
+| [`features/fix_oplus_ltpo`](features/fix_oplus_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
+| [`features/oplus_millet_core_bridge`](features/oplus_millet_core_bridge/README.md) | `system_ext`、`vendor` | 接入 Millet 核心桥预编译 KO、init.rc 和 SELinux bundle；KO 存放在 `system_ext/lib64/modules`，由 `KMI` 选择仓库内 KMI。 |
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
 | [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限。 |
@@ -147,7 +150,6 @@ bash OP15_port.sh
 | --- | --- | --- |
 | [`devices/oneplus15/fix_auto_brightness`](devices/oneplus15/fix_auto_brightness/README.md) | `odm`、`product` | 适配自动亮度曲线、物理亮度边界和启动亮度。 |
 | [`devices/oneplus15/fix_refresh_rate_switch`](devices/oneplus15/fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
-| [`devices/oneplus15/fix_oplusreserve_context`](devices/oneplus15/fix_oplusreserve_context/README.md) | `vendor`、`odm` | 修复实际 Oplus reserve 块设备标签，并合并实测 Oplus 底层 AVC 的最小 allow。 |
 
 启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
 
@@ -159,7 +161,7 @@ bash OP15_port.sh
 
 | 贡献者 | 联系方式 | 提供内容 |
 | --- | --- | --- |
-| 牢大 | `2806379025` | 蓝牙 LHDC、声音卡顿与 Millet 核心桥方案；本次 `features/fix_millet_core_bridge` 补丁来源于牢大提供的方案 |
+| 牢大 | `2806379025` | 蓝牙 LHDC、声音卡顿与 Millet 核心桥方案；本次 `features/oplus_millet_core_bridge` 补丁来源于牢大提供的方案 |
 
 ### 主要参考帖子
 

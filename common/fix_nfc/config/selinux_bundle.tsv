@@ -1,9 +1,0 @@
-# 类型	目标	相对 fix_nfc 目录的片段或项目内必需文件
-require	project	odm/bin/hw/android.hardware.nfc-service.nxp
-require	project	odm/etc/init/nfc-service-nxp.rc
-require	project	odm/etc/vintf/manifest/nfc-service.xml
-policy	vendor_policy	config/selinux_policy.cil.in
-contexts	vendor_property_contexts	config/nfc_property_contexts
-contexts	precompiled_property_contexts	config/nfc_property_contexts
-contexts	vendor_service_contexts	config/nfc_service_contexts
-contexts	precompiled_service_contexts	config/nfc_service_contexts

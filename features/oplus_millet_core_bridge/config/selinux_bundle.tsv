@@ -1,0 +1,4 @@
+# 类型	目标	相对 oplus_millet_core_bridge 目录的片段或项目内必需文件
+require	project	system_ext/lib64/modules/millet_core.ko
+require	project	vendor/etc/init/init.millet_core.rc
+policy	vendor_policy	config/selinux_policy.cil.in

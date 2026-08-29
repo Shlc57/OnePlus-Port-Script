@@ -18,7 +18,7 @@ project_root="$project_dir"
 device_features="${PORT_SOURCE_DEVICE_FEATURE_FILE:-}"
 # init_port_env 注入补丁仓库根目录。
 # shellcheck disable=SC2154
-settings_patcher="$port_dir/common/settings_apk_patcher.sh"
+settings_patcher="$patcher_dir/patch_settings_apk.sh"
 settings_apk="$project_root/system_ext/priv-app/Settings/Settings.apk"
 settings_oat_dir="$project_root/system_ext/priv-app/Settings/oat"
 permission_manifest="$patcher_dir/config/mi_vendor_sources.tsv"
@@ -310,10 +310,6 @@ fi
 
 _install_generated_file "$temporary_device_features" "$device_features"
 
-bash "$settings_patcher" face-enroll-finish "$settings_apk"
-remove_path_if_exists "$settings_oat_dir"
-remove_part_metadata_prefix system_ext priv-app/Settings/oat
-
 python3 - "$device_features" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
@@ -373,6 +369,12 @@ fi
 if ! grep -Fqx 'vendor/etc/permissions/android.hardware.biometrics.face.xml 0 0 0644' "$vendor_fsconfig"; then
 	err_print "人脸硬件特性声明 fsconfig 写入失败"
 	exit 1
+fi
+
+if (( face_file_patch_ready == 1 )); then
+	bash "$settings_patcher" "$settings_apk"
+	remove_path_if_exists "$settings_oat_dir"
+	remove_part_metadata_prefix system_ext priv-app/Settings/oat
 fi
 
 if (( face_file_patch_ready == 1 )); then

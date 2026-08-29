@@ -15,7 +15,7 @@
 - `dc_backlight_fps_incompatible=true` 只保留原有 144Hz 互斥链路：选择 144/165Hz 时退出 DC；在高刷状态开启独立 DC 调光时，既有确认流程回退到 120Hz，避免显式 DC 请求与高刷冲突。
 - `wa/a.m(Context,int)`、`MiuiDisplaySettings.updatePwmValueToDF` 和 Settings AppFunction 不再因 Pro 关闭把 `>=144Hz` 请求改成 120Hz。
 
-`mimotion_pwm_enable` 的值约定来自原有 Xiaomi Settings 链路：`2` 为 Pro/PWM，`1` 为 DC。`features/fix_displayfeature_bridge` 只负责转发 mode 20，不在 bridge 中增加刷新率策略或轮询。
+`mimotion_pwm_enable` 的值约定来自原有 Xiaomi Settings 链路：`2` 为 Pro/PWM，`1` 为 DC。`features/oplus_displayfeature_bridge` 只负责转发 mode 20，不在 bridge 中增加刷新率策略或轮询。
 
 ## APK 处理边界
 

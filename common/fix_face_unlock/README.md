@@ -10,6 +10,8 @@
 
 `mi_vendor` 只是只读来源目录，不是最终改动分区。
 
+Settings 录入逻辑位于本目录的 `patch_settings_apk.sh`。在 `OP15_port.sh` 组合流程中，它与其他 Settings 补丁复用同一解包会话，失败时只回滚本补丁的 Smali 修改，最终统一回编译。
+
 ## 模块说明
 
 模块按移植前识别的原包代号修改 `product/etc/device_features/<原包代号>.xml`：当 `support_face_unlock_region_dom` 不包含 `ALL` 时，将其中所有 `item` 设为 `ALL`；当 `support_tee_face_unlock` 不为 `true` 时将其设为 `true`。

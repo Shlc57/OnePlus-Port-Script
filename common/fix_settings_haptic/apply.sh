@@ -30,9 +30,9 @@ check_file_exists "$(get_part_contexts_path system_ext)"
 check_file_exists "$(get_part_fsconfig_path system_ext)"
 check_partition_metadata_tool >/dev/null
 
-bash "$patcher_dir/patch_apk.sh" "$settings_apk"
-
 remove_path_if_exists "$oat_dir"
 remove_part_metadata_prefix system_ext priv-app/Settings/oat
+
+bash "$patcher_dir/patch_apk.sh" "$settings_apk"
 
 std_print "处理完成"

@@ -10,9 +10,11 @@ readonly PATCHER_DIR
 PORT_DIR=$(cd -- "$PATCHER_DIR/../../.." && pwd -P)
 readonly PORT_DIR
 readonly SIGNING_BLOCK_TOOL="$PORT_DIR/common/apk_signing_block.py"
+readonly APK_PATCHER="$PORT_DIR/common/apk_patcher.sh"
 
 WORK_DIR=''
 REPLACEMENT_PATH=''
+SESSION_MODE=0
 
 log() {
 	printf '[*] %s\n' "$*"
@@ -27,7 +29,7 @@ cleanup() {
 	if [[ -n "$REPLACEMENT_PATH" && -e "$REPLACEMENT_PATH" ]]; then
 		rm -f -- "$REPLACEMENT_PATH"
 	fi
-	if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+	if (( SESSION_MODE == 0 )) && [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
 		find "$WORK_DIR" -depth -delete >/dev/null 2>&1 || true
 	fi
 }
@@ -387,7 +389,7 @@ PY
 (( $# == 1 )) || fail "用法：$0 <Settings.apk>"
 APK_PATH=$1
 
-for command_name in awk cmp cp find java mktemp mv python3 rm sort tail unzip zip; do
+for command_name in awk cmp cp find grep java mktemp mv python3 rm sort tail unzip zip; do
 	require_command "$command_name"
 done
 resolve_apktool
@@ -397,8 +399,25 @@ resolve_zipalign
 APK_PATH="$(cd -- "$(dirname -- "$APK_PATH")" && pwd -P)/$(basename -- "$APK_PATH")"
 APK_DIR=$(dirname -- "$APK_PATH")
 
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/op15-settings-dc-refresh.XXXXXX")
-trap cleanup EXIT
+if [[ -v APK_PATCHER_SESSION_DIR && -n "$APK_PATCHER_SESSION_DIR" ]]; then
+	SESSION_MODE=1
+	# shellcheck disable=SC1090
+	source "$APK_PATCHER"
+	apk_patcher_open "$APK_PATCHER_SESSION_DIR" "$APK_PATH" apk || fail '无法打开共享 Settings.apk 会话'
+	apk_patcher_snapshot || fail '无法保存 Settings.apk 补丁快照'
+	session_rollback() {
+		local status=$?
+		if (( status != 0 )); then
+			apk_patcher_rollback "$status" || true
+		fi
+		return "$status"
+	}
+	trap session_rollback EXIT
+	WORK_DIR="$APK_PATCHER_SESSION_DIR"
+else
+	WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/op15-settings-dc-refresh.XXXXXX")
+	trap cleanup EXIT
+fi
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -412,6 +431,10 @@ ALIGNED_APK="$WORK_DIR/Settings.apk.aligned"
 SIGNING_BLOCK_BEFORE="$WORK_DIR/signing-block.before"
 SIGNING_BLOCK_AFTER="$WORK_DIR/signing-block.after"
 TARGET_ZIP_OPTIONS=()
+
+if (( SESSION_MODE == 1 )); then
+	DECODE_DIR="$WORK_DIR/decoded"
+else
 
 python3 - "$APK_PATH" "$APK_DEX_ENTRY" <<'PY'
 import sys
@@ -456,6 +479,7 @@ unzip -p "$APK_PATH" "$APK_DEX_ENTRY" > "$TARGET_ARCHIVE_DIR/$APKTOOL_DEX_ENTRY"
 
 log '反编译 Settings.apk 的显示调光链路'
 "${APKTOOL_COMMAND[@]}" d -j 1 -f -r -o "$DECODE_DIR" "$TARGET_ARCHIVE"
+fi
 target_smali_path="$DECODE_DIR/smali/$SETTINGS_CLASS"
 if [[ ! -f "$target_smali_path" ]]; then
 	target_smali_path="$DECODE_DIR/smali_classes2/$SETTINGS_CLASS"
@@ -484,6 +508,12 @@ read -r PATCH_STATE CHANGED_COUNT < <(
 )
 [[ "$PATCH_STATE" == patched && "$CHANGED_COUNT" =~ ^[1-2]$ ]] ||
 	fail "Settings Smali 修改结果异常：state=$PATCH_STATE changed=$CHANGED_COUNT"
+
+if (( SESSION_MODE == 1 )); then
+	apk_patcher_record_entry "$APK_DEX_ENTRY" || fail '无法登记 Settings.apk 目标 DEX'
+	log "已登记 Settings.apk 的 $APK_DEX_ENTRY 修改，等待统一回编译"
+	exit 0
+fi
 
 "${APKTOOL_COMMAND[@]}" b -j 1 "$DECODE_DIR" -o "$REBUILT_TARGET_ARCHIVE"
 mkdir -p -- "$DEX_DIR"

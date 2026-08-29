@@ -8,6 +8,8 @@
 | `product` | 修改原包设备的 `device_features` XML，写入底包可用刷新率与分辨率列表。 |
 | `system_ext` | 修补 `Settings.apk` 的分辨率高度计算，并清理旧 oat 与 metadata。 |
 
+Settings 分辨率逻辑位于本目录的 `patch_settings_apk.sh`。在 `OP15_port.sh` 组合流程中，它与其他 Settings 补丁复用同一解包会话，失败时只回滚本补丁的 Smali 修改，最终统一回编译。
+
 ## 底包输入
 
 模块自动读取以下底包文件，不依赖设备专属的硬编码刷新率列表或刷新率属性配置：

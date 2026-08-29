@@ -2,7 +2,7 @@
 set -uo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=tools.sh
+# shellcheck disable=SC1091 # tools.sh 通过脚本所在目录的运行时绝对路径加载。
 source "$script_dir/tools.sh"
 
 print_help() {
@@ -15,7 +15,7 @@ print_help() {
 
 补丁路径示例：
   common/fix_launcher
-  features/fix_ltpo
+  features/fix_oplus_ltpo
   devices/oneplus15/fix_auto_brightness
 
 未指定补丁时仅列出可用补丁。只有显式传入的补丁才会按参数顺序执行。
@@ -208,6 +208,8 @@ fi
 
 init_port_env "$requested_project_dir" || exit 1
 
+failed_module_count=0
+
 for requested_module in "${requested_modules[@]}"; do
 	resolve_module "$requested_module" || exit 1
 	std_print "APPLY: $resolved_module_path"
@@ -216,6 +218,7 @@ for requested_module in "${requested_modules[@]}"; do
 		set +e
 		set +u
 		set +o pipefail
+		# shellcheck disable=SC2154 # init_port_env 在执行模块前导出 project_dir。
 		set -- "$project_dir"
 		# shellcheck disable=SC1090
 		source "$resolved_apply_script"
@@ -223,6 +226,11 @@ for requested_module in "${requested_modules[@]}"; do
 	apply_status=$?
 	if (( apply_status != 0 )); then
 		err_print "FAIL: $resolved_module_path"
-		exit 1
+		failed_module_count=$((failed_module_count + 1))
 	fi
 done
+
+if (( failed_module_count != 0 )); then
+	err_print "共有 $failed_module_count 个补丁失败，已继续执行后续补丁"
+	exit 1
+fi

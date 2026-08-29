@@ -1,0 +1,25 @@
+;; NXP NFC ANR signal contract owned by features/fix_nci_nfc.
+;; Enforcing DSU evidence showed AnrConsumer in system_server repeatedly denied
+;; process signal to the correctly labelled hal_nfc_default process.  The live
+;; rule was validated without weakening either domain.
+(allow system_server_${API_VERSION} hal_nfc_default (process (signal)))
+
+;; Xiaomi NFC property contract restored from the source vendor policy. Keep
+;; the label limited to the ro.vendor.nfc.* compatibility namespace.
+(type vendor_nfc_mi_prop)
+(roletype object_r vendor_nfc_mi_prop)
+(typeattributeset property_type (vendor_nfc_mi_prop))
+(typeattributeset vendor_property_type (vendor_nfc_mi_prop))
+(typeattributeset vendor_public_property_type (vendor_nfc_mi_prop))
+
+(allow hal_nfc_default vendor_nfc_mi_prop (property_service (set)))
+(allow hal_nfc_default vendor_nfc_mi_prop (file (read getattr map open)))
+(allow hal_nfc_default property_socket_${API_VERSION} (sock_file (write)))
+(allow hal_nfc_default init_${API_VERSION} (unix_stream_socket (connectto)))
+(allow hal_secure_element_default vendor_nfc_mi_prop (property_service (set)))
+(allow hal_secure_element_default vendor_nfc_mi_prop (file (read getattr map open)))
+(allow nfc_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))
+(allow secure_element_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))
+(allow system_app_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))
+(allow vendor_init_${API_VERSION} vendor_nfc_mi_prop (property_service (set)))
+(allow vendor_init_${API_VERSION} vendor_nfc_mi_prop (file (read getattr map open)))

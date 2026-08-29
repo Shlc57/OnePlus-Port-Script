@@ -413,7 +413,7 @@ if [[ -e "$display_service_rc" || -L "$display_service_rc" ]]; then
 		err_print "DisplayFeature 服务 rc 缺少 AIDL interface，拒绝套用其 SELinux 片段"
 		exit 1
 	fi
-	if [[ ! " ${enabled_bundle_names[*]} " =~ [[:space:]]fix_displayfeature_bridge[[:space:]] ]]; then
+	if [[ ! " ${enabled_bundle_names[*]} " =~ [[:space:]]oplus_displayfeature_bridge[[:space:]] ]]; then
 		err_print "DisplayFeature 服务已安装，但 SELinux bundle 未启用"
 		exit 1
 	fi

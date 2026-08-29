@@ -22,7 +22,7 @@ device_feature_xml="$PORT_SOURCE_DEVICE_FEATURE_FILE"
 settings_apk="$project_dir/system_ext/priv-app/Settings/Settings.apk"
 settings_oat_dir="$project_dir/system_ext/priv-app/Settings/oat"
 # shellcheck disable=SC2154
-settings_patcher="$port_dir/common/settings_apk_patcher.sh"
+settings_patcher="$patcher_dir/patch_settings_apk.sh"
 refresh_parser="$patcher_dir/refresh_rate.py"
 odm_policy_source="${DISPLAY_POLICY_ODM_PROPERTIES_FILE:-}"
 vendor_policy_source="${DISPLAY_POLICY_VENDOR_PROPERTIES_FILE:-}"
@@ -311,7 +311,6 @@ if (( capability_prop_ready == 1 )); then
 fi
 
 if (( settings_patch_ready == 1 )); then
-	bash "$settings_patcher" screen-resolution "$settings_apk"
 	remove_path_if_exists "$settings_oat_dir"
 	remove_part_metadata_prefix system_ext priv-app/Settings/oat
 fi
@@ -323,6 +322,10 @@ if (( vendor_policy_present == 1 )); then
 fi
 if (( feature_patch_ready == 1 )); then
 	_install_generated_file "$temporary_xml" "$device_feature_xml"
+fi
+
+if (( settings_patch_ready == 1 )); then
+	bash "$settings_patcher" "$settings_apk"
 fi
 
 if (( capability_prop_ready == 1 || feature_patch_ready == 1 )); then

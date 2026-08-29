@@ -12,7 +12,7 @@ export DEVICE_DISPLAY_NAME='OnePlus 15'
 export PORT_TARGET_DISPLAY_ID="4630946903293830803"
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
-# OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_ltpo 只消费这个显式
+# OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_oplus_ltpo 只消费这个显式
 # 配置，不从小米原包、DT 或其他机型猜测 1/55Hz 策略。
 export OPLUS_ADFR_RUS_XML_FILE="$oneplus15_config_dir/adfr2minfps.xml"
 # OnePlus 15 AD296 Apollo DBV-to-nit database. This project-owned asset is
@@ -87,30 +87,38 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
     }
   }
 }'
+settings_apk_session_dir="$(mktemp -d "${TMPDIR:-/tmp}/op15-settings-apk.XXXXXX")"
+# shellcheck disable=SC2329 # 由 EXIT trap 间接调用。
+cleanup_settings_apk_session() {
+	find "$settings_apk_session_dir" -depth -delete >/dev/null 2>&1 || true
+}
+trap cleanup_settings_apk_session EXIT
+export APK_PATCHER_SESSION_DIR="$settings_apk_session_dir"
+
+set +e
 bash "$port" common/merge_mi_ext \
 	common/fuck_oplus_hybridzram \
-	features/disable_mi_vulkan \
-	features/fix_audio_appname \
-	features/fix_lhdc \
+	common/disable_mi_vulkan \
+	features/fuck_audio_appname \
+	features/fix_oplus_lhdc \
 	common/disable_odm_imports \
 	common/fake_device_params \
 	common/fix_pangu \
 	common/fix_mi_account \
-	common/fix_xiaomi_psno \
-	devices/oneplus15/fix_oplusreserve_context \
-	features/enable_hyperos_features \
+	common/fix_sn \
+	common/enable_hyperos_features \
 	common/fix_camera_mr \
 	common/fix_face_unlock \
-	common/fix_nfc \
-	features/fix_displayfeature_bridge \
+	features/fix_nci_nfc \
+	features/oplus_displayfeature_bridge \
 	features/fix_oplus_double_tap_wake \
 	features/fix_ultrasonic_fingerprint \
-	features/fix_millet_core_bridge \
+	features/oplus_millet_core_bridge \
 	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
-	features/fix_ltpo \
-	common/fix_mdm_feature \
+	features/fix_oplus_ltpo \
+	common/fix_oplus_avc \
 	common/fix_wechat_safe_mode \
 	common/fix_settings_haptic \
 	common/fix_modem_xts \
@@ -120,4 +128,17 @@ bash "$port" common/merge_mi_ext \
 	devices/oneplus15/fix_auto_brightness \
 	common/fix_boot_refresh_rate \
 	devices/oneplus15/fix_refresh_rate_switch \
-	common/fix_linear_haptic
+	features/fix_linear_haptic
+port_status=$?
+set -e
+
+if [[ -f "$settings_apk_session_dir/ready" ]]; then
+	set +e
+	bash "$script_dir/common/apk_patcher.sh" finalize "$settings_apk_session_dir"
+	finalize_status=$?
+	set -e
+	if (( finalize_status != 0 && port_status == 0 )); then
+		port_status=$finalize_status
+	fi
+fi
+exit "$port_status"

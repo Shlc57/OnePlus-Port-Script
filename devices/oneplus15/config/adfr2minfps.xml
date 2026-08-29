@@ -3,7 +3,7 @@
   OnePlus 15 (AD296) production ADFR2 min-fps RUS input, extracted read-only
   from /my_product/vendor/etc/multimedia_display_adfr2minfps_config.xml.
 
-  The generic fix_ltpo module validates and packs this with the original Oplus
+  The generic fix_oplus_ltpo module validates and packs this with the original Oplus
   OplusHwDisplayRusAdfr::updateAdfrXmlConfig() int[225] layout.  Do not infer
   another panel's values from this file.
 -->

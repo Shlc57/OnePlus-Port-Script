@@ -12,15 +12,14 @@
 | --- | --- | --- |
 | [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配一加 15 的传感器属性、显示配置、自动亮度曲线与启动亮度。 |
 | [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
-| [`fix_oplusreserve_context`](fix_oplusreserve_context/README.md) | `vendor`、`odm` | 修复 Oplus reserve 块设备标签，并合并实测 Oplus 底层 AVC 的最小 allow。 |
 
 ## 共享模块参数
 
 | 配置 | 消费模块 | 用途 |
 | --- | --- | --- |
 | `config/display_odm.props`、`display_vendor.props` | `common/fix_boot_refresh_rate` | 其余显示与触控策略；4 个刷新率数值属性不在此处维护。 |
-| `config/nfc.props` | `common/fix_nfc` | Xiaomi NFC 上层兼容属性。 |
-| `config/linear_haptic.props` | `common/fix_linear_haptic` | `sys.haptic.*` 映射。 |
+| `config/nfc.props` | `features/fix_nci_nfc` | Xiaomi NFC 上层兼容属性。 |
+| `config/linear_haptic.props` | `features/fix_linear_haptic` | `sys.haptic.*` 映射。 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟。 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位和设备专属 WAKE keylayout 参数。 |
 | `PORT_TARGET_DISPLAY_ID` | `devices/oneplus15/fix_auto_brightness` | Android framework 主屏物理 Display ID；组合入口提供默认值并允许调用方覆盖。 |

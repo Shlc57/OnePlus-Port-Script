@@ -43,13 +43,13 @@
 
 8. `devices/oneplus15/fix_refresh_rate_switch` 复用 MISettings 的 DC/PWM 链路：关闭 Pro 时完整保留 60/90/120/144/165Hz，底层面板按刷新率使用 60–120Hz DC、144/165Hz PWM；开启 Pro 时保留原有 mode 20 全局 PWM 请求。补丁只保留 144/165Hz 与显式 DC 状态的既有互斥链路，移除 `mimotion_pwm_enable` 对列表和刷新率写入的过滤/120Hz 回退。该策略已完成主机静态迁移检查，真实设备仍需重启后验证 Pro 开关对应的面板调光结果。
 
-9. `features/fix_displayfeature_bridge` 的 Xiaomi mode 20 会通过底包 `vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default` 设置 DC Alpha (`0x0e`) 与 PWM Turbo (`0xc7`)，每次请求显式关闭另一模式。该 AIDL/feature 映射已完成静态和主机交叉编译验证，面板 `0/1` 最终语义及 SELinux 冷启动仍待真实设备确认。
+9. `features/oplus_displayfeature_bridge` 的 Xiaomi mode 20 会通过底包 `vendor.oplus.hardware.displaypanelfeature.IDisplayPanelFeature/default` 设置 DC Alpha (`0x0e`) 与 PWM Turbo (`0xc7`)，每次请求显式关闭另一模式。该 AIDL/feature 映射已完成静态和主机交叉编译验证，面板 `0/1` 最终语义及 SELinux 冷启动仍待真实设备确认。
 
 10. 组合流程会修补 `system_ext/lib64` 下两个 64 位音频策略库的 3+5 个 `appname` 参数发送调用点。补丁按 ELF、调用点及周边指令契约判断状态，不登记原包或修补后文件的固定哈希、尺寸、Build ID、时间戳或偏移；OTA 后若契约不再唯一匹配会安全失败，必须重新反汇编核对，不能直接套用旧坐标。
 
-11. 组合流程还会直接重打包 `system/system/apex/com.android.bt.apex`，从当前 APEX 提取并轻量修改其 `libbluetooth_jni.so`，再注入项目自带的 LHDC V5 backend、wrapper 与 cold bridge；同时在 `system/system/build.prop` 幂等设置 `log.tag.BTAudioSessionAidl=S` 以压低重复日志。它不会使用工具包中另一 OTA 的 JNI，也不会生成 KSU/Mountify 覆盖；补丁只按动态结构和本次输入判定状态，不保存固定文件元信息。payload 会使用项目 `features/fix_lhdc/keys/com.android.bt.avb.pem` 重新生成 AVB hashtree/vbmeta/footer，并将对应公钥写入 `apex_pubkey`。这是预装 APEX 自洽通过 apeXd AVB 校验所需的最小信任变更，不改系统 CA 或 `apexkeys.txt`；外层 `META-INF` 与 APK v2/v3 Signing Block 会原样保留，以便 PMS 仍能识别 APK Signature Scheme v2；这些旧签名内容本身不重新生成，完整性校验可能失效。本轮只包含主机临时副本检查，不包含设备、apeXd、PMS、耳机播放或冷启动验证。
+11. 组合流程还会直接重打包 `system/system/apex/com.android.bt.apex`，从当前 APEX 提取并轻量修改其 `libbluetooth_jni.so`，再注入项目自带的 LHDC V5 backend、wrapper 与 cold bridge；同时在 `system/system/build.prop` 幂等设置 `log.tag.BTAudioSessionAidl=S` 以压低重复日志。它不会使用工具包中另一 OTA 的 JNI，也不会生成 KSU/Mountify 覆盖；补丁只按动态结构和本次输入判定状态，不保存固定文件元信息。payload 会使用项目 `features/fix_oplus_lhdc/keys/com.android.bt.avb.pem` 重新生成 AVB hashtree/vbmeta/footer，并将对应公钥写入 `apex_pubkey`。这是预装 APEX 自洽通过 apeXd AVB 校验所需的最小信任变更，不改系统 CA 或 `apexkeys.txt`；外层 `META-INF` 与 APK v2/v3 Signing Block 会原样保留，以便 PMS 仍能识别 APK Signature Scheme v2；这些旧签名内容本身不重新生成，完整性校验可能失效。本轮只包含主机临时副本检查，不包含设备、apeXd、PMS、耳机播放或冷启动验证。
 
-12. Millet 核心桥由 `features/fix_millet_core_bridge` 接入。`OP15_port.sh` 固定导出 `KMI=android16-6.12`，从仓库对应目录把预编译 KO 安装到普通 `system_ext/lib64/modules`，并把归档 KernelSU 的加载动作转换为 vendor `init.rc`；不会写入 `/system/lib64/modules`、`/vendor/lib64/modules` 所指向的 DLKM 物理分区，其 SELinux 规则随后由 `common/fix_vendor_avc` 统一合并。
+12. Millet 核心桥由 `features/oplus_millet_core_bridge` 接入。`OP15_port.sh` 固定导出 `KMI=android16-6.12`，从仓库对应目录把预编译 KO 安装到普通 `system_ext/lib64/modules`，并把归档 KernelSU 的加载动作转换为 vendor `init.rc`；不会写入 `/system/lib64/modules`、`/vendor/lib64/modules` 所指向的 DLKM 物理分区，其 SELinux 规则随后由 `common/fix_vendor_avc` 统一合并。
 
 ## 电脑 Linux 使用方法
 

@@ -18,7 +18,7 @@
 - **Millet 核心桥**：Ace 6T 内核与一加 15 相同（`android16-6.12`），直接使用仓库预编译 KO；Ace 6 内核为 6.6，仓库暂无对应预编译 KO，待用 `features/oplus_millet_core_bridge/build.sh` 构建后再加入组合。
 - **多平台 Target 过滤**：两款机型的底包 `sdm_display_resolution_extn.xml` 含多个平台 Target（Ace 6 还包含 `anorak 7104x3840`），组合入口通过 `PORT_DISPLAY_TARGET`（`sun`/`canoe`）让 `common/fix_boot_refresh_rate` 只收集本机 Target 的 PanelResolution，`fingerprint.props` 中的 `ultrasonic.fp.target` 对指纹模块起同样作用。
 - **不包含 `devices/oneplus15/*` 专属模块**：自动亮度、刷新率开关补丁按机型分别移植为 `devices/oneplus_ace6*/` 下的同名模块（P7 面板亮度表、实测 Display ID）。
-- **`common/fix_mtp` 条件启用**：把 Ace 底包的 `init.usb.configfs.rc` 复制到 `devices/oneplus_ace6/config/`（或 `oneplus_ace6t`）后，入口脚本才会通过 `FIX_MTP_SOURCE_RC` 启用该模块；否则跳过，不会误用一加 15 底包的 USB 配置。
+- **`common/fix_mtp` 按 rc 形态自适应**：小米原包 rc 会覆盖底包 `init.usb.configfs.rc`。Ace 6T 底包 rc 走 `mtp.gs0` 纯触发器（无 `use_ffs_mtp`），真底包文件放在 `devices/oneplus_ace6t/config/init.usb.configfs.rc`，入口通过 `FIX_MTP_SOURCE_RC` 传入，模块按来源形态校验并替换；Ace 6 的底包 rc 尚未提取，组合中暂不启用，补齐后按 6T 方式加入。
 - **`features/fix_oplus_ltpo` 仅写通用 LTPO 开关**：ADFR RUS XML 与 Apollo panel-nit 面板资产未从 Ace 底包提取前，相关子步骤会弱警告跳过。
 - **`DEVICE_IDENTITY_PROP` 未启用**：参考流程在澎湃 OS 4 原包上未启用该 SKU 附加配置；如需启用，取消入口脚本中的注释并确认原包内存在同名 prop 文件。
 

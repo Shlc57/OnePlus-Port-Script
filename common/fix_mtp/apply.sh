@@ -20,19 +20,30 @@ fi
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
 target_file="$project_dir/system/system/etc/init/hw/init.usb.configfs.rc"
-check_file_exists "$source_file" "底包 init.usb.configfs.rc（请放入 DNA_input）"
+check_file_exists "$source_file" "底包 init.usb.configfs.rc（FIX_MTP_SOURCE_RC 或模块内置）"
 if [[ -L "$source_file" ]]; then
 	err_print "MTP 配置源文件必须是普通文件：$source_file"
 	exit 1
 fi
 
-required_triggers=(
-	'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
-	'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
-	'on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1'
-	'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
-	'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
-)
+# 触发器校验按来源 rc 的实际形态自适应：
+# - 底包 rc 引用 vendor.usb.use_ffs_mtp（如一加 15）时，要求完整的 5 个触发器；
+# - 底包 rc 走 mtp.gs0 纯触发器（如一加 Ace 6 系列）时，只要求 3 个基础触发器。
+if grep -Fq 'property:vendor.usb.use_ffs_mtp' "$source_file"; then
+	required_triggers=(
+		'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
+		'on property:sys.usb.config=mtp && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
+		'on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1'
+		'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=0'
+		'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:vendor.usb.use_ffs_mtp=1'
+	)
+else
+	required_triggers=(
+		'on property:sys.usb.config=mtp && property:sys.usb.configfs=1'
+		'on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1'
+		'on property:sys.usb.ffs.ready=1 && property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1'
+	)
+fi
 for trigger in "${required_triggers[@]}"; do
 	if ! grep -Fqx "$trigger" "$source_file"; then
 		err_print "底包 init.usb.configfs.rc 缺少 MTP 触发器：$trigger"

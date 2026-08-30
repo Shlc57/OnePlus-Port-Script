@@ -321,7 +321,7 @@ worker_anchor = (
     "KeyguardSettingsFaceUnlockManager;\n\n"
     "    new-instance v3, Lcom/android/settings/faceunlock/"
     "MiuiNormalCameraMultiFaceInput$NewMultiFaceEnrollFragment"
-    "$ExternalSyntheticLambda4;\n"
+    "$$ExternalSyntheticLambda4;\n"
 )
 if start_method_block.count(worker_anchor) != 1:
     raise SystemExit(f"无法唯一定位标准人脸录入启动位置：{outer_smali_path}")

@@ -26,9 +26,6 @@ export LINEAR_HAPTIC_MOTOR_TYPE=linear
 export ULTRASONIC_FP_PROPERTIES_FILE="$ace6_config_dir/fingerprint.props"
 # Ace 6 Oplus HBP 双击亮屏参数；初始值沿用一加 15 同平台触控栈，实机需校准。
 export OPLUS_DOUBLE_TAP_PROPERTIES_FILE="$ace6_config_dir/double_tap_wake.props"
-# Ace 6 底包的 init.usb.configfs.rc 复制到本目录后自动启用 MTP 修复；
-# 未提供时不运行 common/fix_mtp，避免误用一加 15 底包的 USB 配置。
-ace6_mtp_source_rc="$ace6_config_dir/init.usb.configfs.rc"
 
 # 一加 Ace 6 目标设备参数展示（Settings 设备参数缓存）。
 export DEVICE_PARAMS_SPOOF_JSON='{
@@ -115,15 +112,6 @@ declare -a ace6_modules=(
 	common/fix_wechat_safe_mode
 	common/fix_settings_haptic
 	common/fix_modem_xts
-)
-if [[ -f "$ace6_mtp_source_rc" && ! -L "$ace6_mtp_source_rc" ]]; then
-	export FIX_MTP_SOURCE_RC="$ace6_mtp_source_rc"
-	ace6_modules+=(common/fix_mtp)
-else
-	printf '跳过 common/fix_mtp：未提供 Ace 6 底包 init.usb.configfs.rc（复制到 %s 后重新执行）\n' \
-		"devices/oneplus_ace6/config/init.usb.configfs.rc"
-fi
-ace6_modules+=(
 	common/fix_mi_mtp_kill_self
 	features/fix_oplus_fingerprint_protocol
 	devices/oneplus_ace6/fix_auto_brightness

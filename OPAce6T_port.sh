@@ -19,6 +19,9 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.p
 export NFC_PROPERTIES_FILE="$ace6t_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6t_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
+# Ace 6T 底包 rc 走 mtp.gs0 纯触发器，与模块内置的一加 15 rc（use_ffs_mtp 形态）不同，
+# 由 fix_mtp 自适应校验并以这份真底包 rc 替换被原包覆盖的目标。
+export FIX_MTP_SOURCE_RC="$ace6t_config_dir/init.usb.configfs.rc"
 # Millet 核心桥按 KMI 选择仓库预编译 KO；Ace 6T 实机内核与一加 15 相同（android16-6.12）。
 export KMI='android16-6.12'
 # Ace 6T 实机超声波指纹硬件快照。通用模块不从小米原包推断这些参数；
@@ -26,9 +29,6 @@ export KMI='android16-6.12'
 export ULTRASONIC_FP_PROPERTIES_FILE="$ace6t_config_dir/fingerprint.props"
 # Ace 6T Oplus HBP 双击亮屏参数；初始值沿用一加 15 同平台触控栈，实机需校准。
 export OPLUS_DOUBLE_TAP_PROPERTIES_FILE="$ace6t_config_dir/double_tap_wake.props"
-# Ace 6T 底包的 init.usb.configfs.rc 复制到本目录后自动启用 MTP 修复；
-# 未提供时不运行 common/fix_mtp，避免误用一加 15 底包的 USB 配置。
-ace6t_mtp_source_rc="$ace6t_config_dir/init.usb.configfs.rc"
 
 # 一加 Ace 6T 目标设备参数展示（Settings 设备参数缓存）。
 export DEVICE_PARAMS_SPOOF_JSON='{
@@ -90,6 +90,7 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
 
 declare -a ace6t_modules=(
 	common/merge_mi_ext
+	common/fix_mtp
 	common/fuck_oplus_hybridzram
 	common/disable_mi_vulkan
 	features/fuck_audio_appname
@@ -115,15 +116,6 @@ declare -a ace6t_modules=(
 	common/fix_wechat_safe_mode
 	common/fix_settings_haptic
 	common/fix_modem_xts
-)
-if [[ -f "$ace6t_mtp_source_rc" && ! -L "$ace6t_mtp_source_rc" ]]; then
-	export FIX_MTP_SOURCE_RC="$ace6t_mtp_source_rc"
-	ace6t_modules+=(common/fix_mtp)
-else
-	printf '跳过 common/fix_mtp：未提供 Ace 6T 底包 init.usb.configfs.rc（复制到 %s 后重新执行）\n' \
-		"devices/oneplus_ace6t/config/init.usb.configfs.rc"
-fi
-ace6t_modules+=(
 	common/fix_mi_mtp_kill_self
 	features/fix_oplus_fingerprint_protocol
 	devices/oneplus_ace6t/fix_auto_brightness

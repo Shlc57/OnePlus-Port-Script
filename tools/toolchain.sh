@@ -171,8 +171,36 @@ toolchain_resolve_zipalign() {
 }
 
 toolchain_resolve_avbtool() {
-	# shellcheck disable=SC2034 # source 后由调用补丁读取该路径。
-	PORT_TOOL_AVBTOOL="$(toolchain_resolve_executable avbtool)" || return 1
+	# 解析优先级：local.properties > PATH > 工程内置 tools/avbtool。
+	# 内置版为 AOSP avbtool（#!/usr/bin/env python3），作为无本机配置时的兜底。
+	local resolved_path=""
+
+	toolchain_load_local_properties || return 1
+	resolved_path="${_port_toolchain_paths[avbtool]:-}"
+	if [[ -n "$resolved_path" ]]; then
+		[[ -f "$resolved_path" && ! -L "$resolved_path" && -x "$resolved_path" ]] || {
+			toolchain_fail "local.properties 中的 avbtool 不可执行：$resolved_path"
+			return 1
+		}
+		# shellcheck disable=SC2034 # source 后由调用补丁读取该路径。
+		PORT_TOOL_AVBTOOL="$resolved_path"
+		return 0
+	fi
+	resolved_path="$(command -v avbtool 2>/dev/null || true)"
+	# PATH 候选必须非空可用：0 字节占位文件会静默产出坏结果，回退内置兜底。
+	if [[ -n "$resolved_path" && -s "$resolved_path" ]]; then
+		# shellcheck disable=SC2034 # source 后由调用补丁读取该路径。
+		PORT_TOOL_AVBTOOL="$resolved_path"
+		return 0
+	fi
+	resolved_path="$_port_toolchain_dir/avbtool"
+	if [[ -f "$resolved_path" && ! -L "$resolved_path" && -x "$resolved_path" ]]; then
+		# shellcheck disable=SC2034 # source 后由调用补丁读取该路径。
+		PORT_TOOL_AVBTOOL="$resolved_path"
+		return 0
+	fi
+	toolchain_fail "缺少特殊工具 avbtool；请写入 $_port_toolchain_properties"
+	return 1
 }
 
 toolchain_resolve_ddk() {

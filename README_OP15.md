@@ -4,7 +4,7 @@
 
 ## 准备工作
 
-1. 使用 Linux，并准备以下工具：Bash、Python 3、Java、Apktool、`zip`、`unzip`、`debugfs`、`e2fsck`、`resize2fs`、`truncate`、`patchelf`、`readelf`、`avbtool` 和 Android SDK Build Tools 中的 `zipalign`。其中 ext2 工具通常由 `e2fsprogs` 提供；`avbtool` 也可以使用工程工具目录中的版本。
+1. 使用 Linux，并准备以下工具：Bash、Python 3、Java、Apktool、`zip`、`unzip`、`debugfs`、`e2fsck`、`resize2fs`、`truncate`、`patchelf`、`readelf` 和 Android SDK Build Tools 中的 `zipalign`。其中 ext2 工具通常由 `e2fsprogs` 提供；`avbtool` 优先使用 PATH 或 `local.properties` 指定的版本，缺失时自动使用工程工具目录中的内置版本 `tools/avbtool`（AOSP avbtool 1.3.0），无需额外安装。
 
    Ubuntu/Debian 可以先尝试：
 

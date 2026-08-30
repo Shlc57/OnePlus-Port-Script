@@ -118,7 +118,7 @@ for command_name in python3 debugfs e2fsck resize2fs truncate patchelf readelf; 
 done
 
 if ! toolchain_resolve_avbtool; then
-	err_print "缺少 avbtool；请在 local.properties 指定路径"
+	err_print "缺少 avbtool；可使用 PATH、local.properties 或工程内置 tools/avbtool"
 	exit 1
 fi
 avbtool_command="$PORT_TOOL_AVBTOOL"

@@ -88,12 +88,14 @@ bash OPAce6T_port.sh
 
 下游统一使用 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*` 变量；原包机型 XML 路径由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。SKU 附加 prop 不属于设备识别结果，也不会按代号自动猜选；需要时由组合入口通过 `DEVICE_IDENTITY_PROP` 明确指定文件名，再交给 `common/fix_device_identity`。指定文件不存在时只输出弱警告并忽略附加配置，`mi_odm/etc/build.prop` 的基础设备标识写入继续执行。`common/fix_device_identity` 只有在显式提供 `DEVICE_DISPLAY_NAME` 时才覆盖 `ro.product.odm.marketname`，未提供时沿用 `mi_odm` 基础属性或附加 prop，其他原包身份和认证字段不受影响。
 
-`tools/tools.sh` 统一管理配置目录、contexts 与 fsconfig 名称模板，只识别工程根目录下的以下两套格式；两者同时存在时优先使用 `DNA_config`：
+`tools/tools.sh` 统一管理配置目录与 contexts/fsconfig 名称解析。支持工程根目录下的 `DNA_config/` 与 `config/` 两个配置目录，且**两个目录都兼容以下两套文件名模板**（目录名与文件名可任意组合，适配不同解包工具的产物）：
 
-| 配置目录 | contexts 模板 | fsconfig 模板 |
+| 模板风格 | contexts 文件名 | fsconfig 文件名 |
 | --- | --- | --- |
-| `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
-| `config` | `{part}_file_contexts` | `{part}_fs_config` |
+| DNA 命名 | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
+| 旧版命名 | `{part}_file_contexts` | `{part}_fs_config` |
+
+解析顺序：目录优先（`DNA_config` 高于 `config`）；每个目录内 DNA 命名先于旧版命名。按分区独立解析，同一工程中不同分区可落在不同目录或命名风格。分区文件在所有候选位置都不存在时，回退到首个配置目录及其自身模板，由调用方按缺失文件报错。
 
 模板中的 `{part}` 会替换为 `product`、`system` 等分区名。复杂的元数据处理统一由 Python 3 工具 `tools/partition_metadata.py` 完成。特殊 CLI 由 `tools/toolchain.sh` 统一解析：将 `local.properties.example` 复制为未提交的 `local.properties` 后，可显式指定 `apktool`、`zipalign`、`avbtool`、`ddk`、`ndk` 的绝对路径；未指定时，`zipalign` 会从 `ANDROID_SDK`、`ANDROID_SDK_ROOT`、`ANDROID_HOME` 的 `build-tools` 查找，NDK 会依次使用 `NDK_HOME`、`ANDROID_NDK_HOME`、`ANDROID_NDK_ROOT` 或上述 SDK 的 `ndk/`，`avbtool` 依次使用 PATH 命令与工程内置的 `tools/avbtool`（AOSP avbtool 1.3.0）兜底，其它特殊 CLI 只使用同名 PATH 命令。不会扫描 Snap、固定用户目录或其他工程。补丁条目按路径覆盖目标条目，contexts 会忽略正则转义差异进行匹配，目标文件中的重复路径会在每次修改时自动去重；写回 contexts 时会把有效条目的字段间空白统一为单个 ASCII 空格，避免手机版 D.N.A 旧解析器无法识别 Tab 分隔符。文件清单或目录前缀跨分区迁移时，contexts 与 fsconfig 会一起转换，缺少任一来源权限条目都会在复制文件前失败。传入多个补丁时会按参数顺序执行，某个补丁失败后记录失败并继续后续模块，最终以失败状态退出；未显式传入的补丁不会运行。推荐使用完整分类路径；为兼容旧用法，也可使用全局唯一的补丁名，例如 `fix_launcher`。
 

@@ -67,6 +67,65 @@ _load_config_profile() {
 	export config_profile config_dir contexts_name_template fsconfig_name_template
 }
 
+# 分区 metadata 文件名解析顺序（首个存在的文件生效）：
+# 1. 目录优先：DNA_config 高于 config；
+# 2. 每个目录内都依次尝试两套文件名模板：DNA 命名（{part}_contexts.txt /
+#    {part}_fsconfig.txt）在前，旧版命名（{part}_file_contexts /
+#    {part}_fs_config）在后。
+# 目录名与文件名模板可任意组合，兼容不同解包工具的产物；
+# 全部候选都不存在时，回退到首个配置目录及其自身模板，
+# 由调用方按原有逻辑处理文件缺失。
+_port_profile_template() {
+	local profile="$1" kind="$2"
+
+	if [[ "$kind" == contexts ]]; then
+		printf '%s\n' "${_port_contexts_name_templates[$profile]}"
+	else
+		printf '%s\n' "${_port_fsconfig_name_templates[$profile]}"
+	fi
+}
+
+_port_kind_templates() {
+	local kind="$1" profile
+
+	for profile in "${_port_config_profiles[@]}"; do
+		_port_profile_template "$profile" "$kind"
+	done
+}
+
+_resolve_part_metadata_path() {
+	local part_name="$1" kind="$2"
+	local profile template dir name
+	local fallback_dir="" fallback_profile=""
+
+	if [[ -z "${project_dir:-}" ]]; then
+		err_print "解析分区 metadata 前必须先调用 init_port_env"
+		return 1
+	fi
+	for profile in "${_port_config_profiles[@]}"; do
+		dir="$project_dir/$profile"
+		[[ -d "$dir" ]] || continue
+		while IFS= read -r template; do
+			name="${template//\{part\}/$part_name}"
+			if [[ -f "$dir/$name" ]]; then
+				printf '%s\n' "$dir/$name"
+				return 0
+			fi
+		done < <(_port_kind_templates "$kind")
+		if [[ -z "$fallback_dir" ]]; then
+			fallback_dir="$dir"
+			fallback_profile="$profile"
+		fi
+	done
+
+	if [[ -z "$fallback_dir" ]]; then
+		err_print "项目目录缺少受支持的配置目录（DNA_config 或 config）：$project_dir"
+		return 1
+	fi
+	template="$(_port_profile_template "$fallback_profile" "$kind")"
+	printf '%s\n' "$fallback_dir/${template//\{part\}/$part_name}"
+}
+
 init_port_env() {
 	local requested_project_dir="${1:-}"
 
@@ -156,52 +215,33 @@ _validate_part_name() {
 }
 
 get_part_contexts_name() {
-	local part_name="${1:-}"
-	local contexts_name
+	local part_name="$1" contexts_path
 
 	_validate_part_name "$part_name" || return 1
-	if [[ -z "${contexts_name_template:-}" || "$contexts_name_template" != *'{part}'* ]]; then
-		err_print "contexts 名称模板无效：${contexts_name_template:-<空>}"
-		return 1
-	fi
-	contexts_name="${contexts_name_template//\{part\}/$part_name}"
-	if ! _is_safe_relative_path "$contexts_name"; then
-		err_print "生成的 contexts 文件名无效：$contexts_name"
-		return 1
-	fi
-	printf '%s\n' "$contexts_name"
+	contexts_path="$(_resolve_part_metadata_path "$part_name" contexts)" || return 1
+	printf '%s\n' "${contexts_path##*/}"
 }
 
 get_part_contexts_path() {
-	local contexts_name
+	local part_name="$1"
 
-	contexts_name="$(get_part_contexts_name "${1:-}")" || return 1
-	get_config_path "$contexts_name"
+	_validate_part_name "$part_name" || return 1
+	_resolve_part_metadata_path "$part_name" contexts
 }
 
 get_part_fsconfig_name() {
-	local part_name="${1:-}"
-	local fsconfig_name
+	local part_name="$1" fsconfig_path
 
 	_validate_part_name "$part_name" || return 1
-	if [[ -z "${fsconfig_name_template:-}" || "$fsconfig_name_template" != *'{part}'* ]]; then
-		err_print "fsconfig 名称模板无效：${fsconfig_name_template:-<空>}"
-		return 1
-	fi
-
-	fsconfig_name="${fsconfig_name_template//\{part\}/$part_name}"
-	if ! _is_safe_relative_path "$fsconfig_name"; then
-		err_print "生成的 fsconfig 文件名无效：$fsconfig_name"
-		return 1
-	fi
-	printf '%s\n' "$fsconfig_name"
+	fsconfig_path="$(_resolve_part_metadata_path "$part_name" fsconfig)" || return 1
+	printf '%s\n' "${fsconfig_path##*/}"
 }
 
 get_part_fsconfig_path() {
-	local fsconfig_name
+	local part_name="$1"
 
-	fsconfig_name="$(get_part_fsconfig_name "${1:-}")" || return 1
-	get_config_path "$fsconfig_name"
+	_validate_part_name "$part_name" || return 1
+	_resolve_part_metadata_path "$part_name" fsconfig
 }
 
 _check_prop_args() {

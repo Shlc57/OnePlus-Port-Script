@@ -26,14 +26,14 @@
 
 ## 配置目录与名称模板
 
-配置目录优先级和名称模板必须集中定义在 `tools/tools.sh`，补丁内不得自行拼接 contexts/fsconfig 文件名。当前代码定义为：
+配置目录和名称解析必须集中定义在 `tools/tools.sh`，补丁内不得自行拼接 contexts/fsconfig 文件名。当前代码支持 `DNA_config/` 与 `config/` 两个配置目录，且两个目录都兼容以下两套文件名模板（目录名与文件名可任意组合，适配不同解包工具的产物）：
 
-| 配置目录 | contexts 模板 | fsconfig 模板 |
+| 模板风格 | contexts 文件名 | fsconfig 文件名 |
 | --- | --- | --- |
-| `DNA_config` | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
-| `config` | `{part}_file_contexts` | `{part}_fs_config` |
+| DNA 命名 | `{part}_contexts.txt` | `{part}_fsconfig.txt` |
+| 旧版命名 | `{part}_file_contexts` | `{part}_fs_config` |
 
-两者同时存在时优先 `DNA_config`。如果后续调整模板，必须同时更新 `tools/tools.sh`、README、本文档和相关测试。
+解析顺序：目录优先（`DNA_config` 高于 `config`）；每个目录内 DNA 命名先于旧版命名；按分区独立解析。全部候选不存在时回退到首个配置目录及其自身模板，由调用方按缺失文件报错。行为测试见 `tools/test_config_profiles.sh`。如果后续调整模板，必须同时更新 `tools/tools.sh`、README、本文档和相关测试。
 
 补丁必须通过以下接口取路径：
 

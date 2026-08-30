@@ -25,7 +25,7 @@
 ## 准备工作
 
 1. 工具要求与一加 15 流程一致，见 [`README_OP15.md`](README_OP15.md) 的依赖清单。
-2. 使用 D.N.A 解包好分区，目录结构与一加 15 相同（`odm`、`vendor` 来自 Ace 底包；`product`、`system`、`system_ext`、`mi_odm`、`mi_vendor`、`mi_ext` 来自小米原包；`DNA_config` 保留各分区 metadata）。
+2. 使用 D.N.A 解包好分区，目录结构与一加 15 相同（`odm`、`vendor` 来自 Ace 底包；`product`、`system`、`system_ext`、`mi_odm`、`mi_vendor`、`mi_ext` 来自小米原包；`DNA_config` 或 `config/` 保留各分区 metadata，两种目录名与两套文件命名均可组合识别）。
 3. 首次执行前建议核对的底包实测参数（详见 [`devices/oneplus_ace6/README.md`](devices/oneplus_ace6/README.md) 与 [`devices/oneplus_ace6t/README.md`](devices/oneplus_ace6t/README.md)）：
    - `config/fingerprint.props`：传感器中心坐标属换算估算值，指纹位置不对时实机量取后修改并重跑；
    - `config/double_tap_wake.props`：沿用一加 15 触控栈值，双击不生效或误触时用 `getevent` 校准；

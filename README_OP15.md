@@ -33,7 +33,7 @@
 
    首次运行时不要把 `mi_odm`、`mi_vendor` 或 `mi_ext` 当成最终分区覆盖到底包中。
 
-4. `DNA_config/` 中必须保留上述各分区对应的 `{分区名}_contexts.txt` 和 `{分区名}_fsconfig.txt`。也支持 `config/`，对应文件名为 `{分区名}_file_contexts` 和 `{分区名}_fs_config`；两者同时存在时优先使用 `DNA_config/`。
+4. metadata 放在 `DNA_config/` 或 `config/` 中，两个目录都兼容两套文件名：DNA 命名 `{分区名}_contexts.txt` / `{分区名}_fsconfig.txt`，或旧版命名 `{分区名}_file_contexts` / `{分区名}_fs_config`，目录名与文件名可任意组合；两者同时存在时按目录优先（`DNA_config` 高于 `config`）、每目录内 DNA 命名优先解析。
 
 5. 确认小米原包至少包含 `mi_odm/etc/build.prop`。脚本会在修改分区前自动识别底包与原包设备；一加 15 组合流程还会明确尝试合并额外配置 `mi_odm/etc/nezha_5.9.9.prop`，该文件不存在时只输出弱警告并忽略，不影响基础设备标识写入和后续补丁。
 

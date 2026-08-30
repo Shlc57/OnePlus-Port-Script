@@ -1,0 +1,4 @@
+# TMS NFC HAL（android.hardware.nfc/INfc/default）注册的 Binder 服务名。
+nfc_hal_service.tms.aidl u:object_r:nfc_service:s0
+# TMS Secure Element HAL（ISecureElement/eSE1）注册的 Binder 服务名。
+secure_element_hal_service.aidl u:object_r:secure_element_service:s0

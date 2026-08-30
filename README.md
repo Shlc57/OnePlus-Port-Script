@@ -76,6 +76,10 @@ DEVICE_DISPLAY_NAME='OnePlus 15' bash port_main.sh common/fix_device_identity
 
 # 一加 15 当前整套流程
 bash OP15_port.sh
+
+# 一加 Ace 6 / Ace 6T 整套流程（说明见 README_ACE6.md）
+bash OPAce6_port.sh
+bash OPAce6T_port.sh
 ```
 
 `apply.sh` 是由 `port_main.sh` 管理的补丁模块，不应直接执行。`port_main.sh` 只导入一次 `tools/tools.sh`，再在彼此隔离的子 Shell 中加载各补丁，因此补丁内不再重复导入公共接口，同时不同补丁的严格模式、变量、trap 和 `exit` 不会互相污染。
@@ -110,7 +114,7 @@ bash OP15_port.sh
 | [`common/enable_hyperos_features`](common/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
-| [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算。 |
+| [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算；多平台底包可通过 `PORT_DISPLAY_TARGET` 按 SoC Target 过滤。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
 | [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
@@ -133,14 +137,14 @@ bash OP15_port.sh
 | --- | --- | --- |
 | [`features/fuck_audio_appname`](features/fuck_audio_appname/README.md) | `system_ext` | 定点阻断 HyperOS 私有 `appname` 音频参数，避免 Oplus HAL 拒绝参数后触发输出流 standby。 |
 | [`features/fix_linear_haptic`](features/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
-| [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle。 |
+| [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle；要求底包提供 NXP 服务契约，不适用于 TMS 栈机型（如一加 Ace 6）。 |
 | [`features/oplus_displayfeature_bridge`](features/oplus_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
 | [`features/fix_oplus_lhdc`](features/fix_oplus_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
 | [`features/fix_oplus_ltpo`](features/fix_oplus_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
 | [`features/oplus_millet_core_bridge`](features/oplus_millet_core_bridge/README.md) | `system_ext`、`vendor` | 接入 Millet 核心桥预编译 KO、init.rc 和 SELinux bundle；KO 存放在 `system_ext/lib64/modules`，由 `KMI` 选择仓库内 KMI。 |
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
-| [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限。 |
+| [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限；多平台底包可通过 `ultrasonic.fp.target` 按 SoC Target 过滤 PanelResolution。 |
 
 ### 一加 15 专属模块（`devices/oneplus15`）
 
@@ -152,6 +156,19 @@ bash OP15_port.sh
 | [`devices/oneplus15/fix_refresh_rate_switch`](devices/oneplus15/fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
 
 启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
+
+### 一加 Ace 6 系列专属模块（`devices/oneplus_ace6`、`devices/oneplus_ace6t`）
+
+一加 Ace 6（PLQ110，Target `sun`，内核 6.6）与 Ace 6T（PLR110，Target `canoe`，内核 android16-6.12）的专属模块和传给共享模块的硬件参数见 [`devices/oneplus_ace6/README.md`](devices/oneplus_ace6/README.md) 与 [`devices/oneplus_ace6t/README.md`](devices/oneplus_ace6t/README.md)。组合流程为 `OPAce6_port.sh` 与 `OPAce6T_port.sh`，与一加 15 流程的差异见 [`README_ACE6.md`](README_ACE6.md)。
+
+| 模块 | 适用机型 | 改动分区 | 用途 |
+| --- | --- | --- | --- |
+| [`devices/oneplus_ace6/fix_nfc_tms_bridge`](devices/oneplus_ace6/fix_nfc_tms_bridge/README.md) | 仅 Ace 6 | `odm`、`system`、`vendor` | 青藤 THN31（TMS 栈）NFC 桥接：保留底包栈、注入 `/dev/st21nfc` 别名、登记最小 SELinux bundle 并写兼容属性。 |
+| [`devices/oneplus_ace6/fix_vendor_selinux_files`](devices/oneplus_ace6/fix_vendor_selinux_files/README.md) | 仅 Ace 6 | `vendor` | 补齐底包缺失的 `plat_sepolicy_vers.txt` 与 `genfs_labels_version.txt`（实测固化为 `202504`）。 |
+| [`devices/oneplus_ace6/fix_auto_brightness`](devices/oneplus_ace6/fix_auto_brightness/README.md) | 仅 Ace 6 | `odm`、`product` | P7 面板自动亮度曲线、物理亮度边界与启动亮度。 |
+| [`devices/oneplus_ace6/fix_refresh_rate_switch`](devices/oneplus_ace6/fix_refresh_rate_switch/README.md) | 仅 Ace 6 | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
+| [`devices/oneplus_ace6t/fix_auto_brightness`](devices/oneplus_ace6t/fix_auto_brightness/README.md) | 仅 Ace 6T | `odm`、`product` | P7 面板自动亮度曲线、物理亮度边界与启动亮度。 |
+| [`devices/oneplus_ace6t/fix_refresh_rate_switch`](devices/oneplus_ace6t/fix_refresh_rate_switch/README.md) | 仅 Ace 6T | `product`、`system_ext` | 保留完整刷新率列表；DC/PWM 策略与 Ace 6 相同。 |
 
 ## 鸣谢
 

@@ -1,0 +1,11 @@
+# 类型	目标	相对 fix_nfc_tms_bridge 目录的片段或项目内必需文件
+require	project	odm/bin/hw/android.hardware.nfc-service-tms
+require	project	odm/bin/hw/android.hardware.secure_element-service-tms
+require	project	odm/etc/init/nfc-service-tms.rc
+require	project	odm/etc/vintf/manifest/manifest_nfc_thn31.xml
+require	project	odm/lib64/nfc_nci.thn31nfc.tms.so
+policy	vendor_policy	config/selinux_policy.cil.in
+contexts	vendor_file_contexts	config/nfc_tms_file_contexts
+contexts	precompiled_file_contexts	config/nfc_tms_file_contexts
+contexts	vendor_service_contexts	config/nfc_tms_service_contexts
+contexts	precompiled_service_contexts	config/nfc_tms_service_contexts

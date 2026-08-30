@@ -20,6 +20,8 @@ Settings 分辨率逻辑位于本目录的 `patch_settings_apk.sh`。在 `OP15_p
 - `odm/etc/build.prop`：读取现有默认刷新率、低帧率和策略尾部，生成最终属性。
 - `odm/etc/sdm_display_resolution_extn.xml`：读取面板和缩放分辨率；缺失时只跳过分辨率数组更新。
 
+多平台底包的显示配置含多个 `Target`（如 Ace 6 同时含 anorak 异平台大屏与 sun 本机面板）。组合入口可通过可选环境变量 `PORT_DISPLAY_TARGET` 指定本机 Target：设置后只收集匹配 `Target` 下的面板与缩放分辨率，配置中不存在该 `Target` 时在修改工作树前失败；未设置时收集全部面板，行为不变。
+
 刷新率列表按降序生成，并只把 `>=60Hz` 的显示栈模式写入 `smart_fps_value` 与 `fpsList`。当前底包的 `canoe -> target.version 6` 会得到 `165、144、120、90、60Hz`。生成的属性包括：
 
 - `ro.vendor.display.default_fps`

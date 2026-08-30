@@ -135,11 +135,34 @@ def parse_fps(advanced_xml: Path, version: str) -> tuple[list[int], list[int]]:
     return ui_fps, all_fps
 
 
-def parse_resolutions(resolution_xml: Path) -> tuple[list[int], list[tuple[int, int]]]:
+def parse_resolutions(
+    resolution_xml: Path, target_filter: str | None = None
+) -> tuple[list[int], list[tuple[int, int]]]:
     try:
         root = ET.parse(resolution_xml).getroot()
     except (OSError, ET.ParseError) as error:
         fail(f"解析分辨率配置失败：{resolution_xml}：{error}")
+
+    # 可选：只收集指定 Target（SoC 平台）下的 PanelResolution，避免多平台底包
+    # 混入其他平台面板（如 Ace 6 底包含 anorak 7104x3840 与 sun 本机面板）。
+    # 指定 Target 不存在时在修改工作树前失败。
+    if target_filter:
+        targets = [
+            node for node in root.iter("Target") if node.get("name", "") == target_filter
+        ]
+        if not targets:
+            available = "、".join(
+                node.get("name", "") for node in root.iter("Target")
+            )
+            fail(
+                f"分辨率配置中没有 Target {target_filter!r}"
+                f"（可用：{available or '（无 Target 层级）'}）：{resolution_xml}"
+            )
+        panel_nodes = (
+            panel for target in targets for panel in target.iter("PanelResolution")
+        )
+    else:
+        panel_nodes = root.iter("PanelResolution")
 
     widths: list[int] = []
     seen_widths: set[int] = set()
@@ -150,7 +173,7 @@ def parse_resolutions(resolution_xml: Path) -> tuple[list[int], list[tuple[int, 
             fail(f"分辨率配置无效：{resolution_xml}:{description}={value!r}")
         return int(value)
 
-    for panel in root.iter("PanelResolution"):
+    for panel in panel_nodes:
         panel_width = positive_int(panel.get("width"), "PanelResolution width")
         panel_height = positive_int(panel.get("height"), "PanelResolution height")
         panels.append((panel_width, panel_height))
@@ -320,7 +343,9 @@ def build_model(args: argparse.Namespace) -> dict[str, object]:
         odm_props = read_props(Path(args.odm_prop), set(REFRESH_PROP_NAMES))
         result["props"] = generated_props(odm_props, fps, all_fps)
     if args.resolution_xml:
-        widths, panels = parse_resolutions(Path(args.resolution_xml))
+        widths, panels = parse_resolutions(
+            Path(args.resolution_xml), args.target_filter
+        )
         result["widths"] = widths
         result["panels"] = panels
     return result
@@ -333,6 +358,7 @@ def main() -> int:
     parser.add_argument("--init-script", required=True)
     parser.add_argument("--advanced-xml", required=True)
     parser.add_argument("--resolution-xml")
+    parser.add_argument("--target-filter")
     parser.add_argument("--model-output", required=True)
     parser.add_argument("--props-output")
     parser.add_argument("--feature-input")

@@ -1,0 +1,10 @@
+# 一加 Ace 6 Oplus HBP 双击亮屏参数。
+# 初始值沿用一加 15 同平台触控栈，属未实测推断：实机双击不生效或误触时，
+# 用 getevent 校准 gesture 节点号与 scan code 后重跑补丁。
+oplus.double_tap.panel_id=0
+oplus.double_tap.gesture_cfg_node=4100
+oplus.double_tap.gesture_enable_node=4101
+oplus.double_tap.gesture_cfg_value=2
+oplus.double_tap.input_device_name=touchpanel
+oplus.double_tap.scan_code=62
+oplus.double_tap.touchfeature_type=247

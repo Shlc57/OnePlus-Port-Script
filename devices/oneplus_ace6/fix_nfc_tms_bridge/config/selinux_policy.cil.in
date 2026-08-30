@@ -1,0 +1,22 @@
+;; Ace 6 TMS NFC bridge contract owned by devices/oneplus_ace6/fix_nfc_tms_bridge.
+;; TMS（青藤 THN31）NFC HAL 服务二进制复用 hal_nfc_default domain（file_contexts 标注），
+;; 此处仅补最小缺口：读取 /odm/etc/nfc 配置/固件、管理 /data/vendor/nfc 运行时目录。
+(allow hal_nfc_default system_file (dir (read search open getattr)))
+(allow hal_nfc_default system_file (file (read getattr map open)))
+(allow hal_nfc_default vendor_data_file (dir (create read write open search getattr add_name setattr)))
+(allow hal_nfc_default vendor_data_file (file (create read write open getattr map setattr)))
+(allow hal_nfc_default vendor_data_file (filesystem (associate)))
+;; /dev/tms_nfc 设备节点已由 ueventd 标注为 hal_nfc_device（标准 NFC 设备类型，无需额外规则）
+;; SE 服务复用 hal_secure_element_default domain，同样无需额外规则
+;; 小米 NfcNci（com.android.nfc 由 plat_seapp_contexts 映射到 nfc 域）注册 "mi_nfc" Binder 服务所需权限。
+;; 底包 ColorOS CIL 的 nfc 域缺少这些 add/find/call 权限（降级合并丢失小米规则），
+;; 必须由本补丁显式补回，否则 MiNfcAdapterService.<init> 抛 SELinux denied 崩溃。
+(allow nfc nfc_service (service_manager (add)))
+(allow nfc nfc_service (service_manager (find)))
+(allow nfc nfc_service (binder (call)))
+;; NfcService 初始化后 bind TMS 注册的 INfc HAL（android.hardware.nfc.INfc/default）
+(allow nfc hal_nfc_service (service_manager (find)))
+(allow nfc hal_nfc_service (binder (call)))
+;; 访问 Secure Element 服务（secure_element / eSE 接口）
+(allow nfc secure_element_service (service_manager (find)))
+(allow nfc secure_element_service (binder (call)))

@@ -1,0 +1,18 @@
+# 一加 Ace 6T 超声波指纹目标设备硬件参数（面板实测 1272x2800）。
+# features/fix_ultrasonic_fingerprint 只读取此显式配置，不从小米原包推断。
+# 传感器中心按一加 15 实机 HAL 相对位置 (50%, 74.6%) 换算，属估算值；
+# 刷机后如对不上可用实机实测值直接修改本文件后重跑补丁。
+ultrasonic.fp.reference.width=1272
+ultrasonic.fp.reference.height=2800
+ultrasonic.fp.sensor.center.x=636
+ultrasonic.fp.sensor.center.y=2089
+ultrasonic.fp.icon.width=195
+ultrasonic.fp.icon.height=195
+ultrasonic.fp.sensor.area.width=220
+ultrasonic.fp.sensor.area.height=244
+ultrasonic.fp.vendor=oplus
+ultrasonic.fp.fingerdown.delay.ms=20
+# 底包 sdm_display_resolution_extn.xml 中本机 SoC 对应的 Target 条目。
+# Ace 6T（SM8845，第五代骁龙 8）对应 Target "canoe"；设置后只收集该
+# Target 下的 PanelResolution，避免混入底包中其他平台的面板分辨率。
+ultrasonic.fp.target=canoe

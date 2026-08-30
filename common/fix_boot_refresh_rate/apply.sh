@@ -28,6 +28,10 @@ odm_policy_source="${DISPLAY_POLICY_ODM_PROPERTIES_FILE:-}"
 vendor_policy_source="${DISPLAY_POLICY_VENDOR_PROPERTIES_FILE:-}"
 odm_policy_list="$patcher_dir/config/odm_props.list"
 vendor_policy_list="$patcher_dir/config/vendor_props.list"
+# 可选：按 Target 名称过滤底包 sdm_display_resolution_extn.xml。多平台底包
+# （如 Ace 6 同时含 anorak 异平台大屏与 sun 本机面板）需要指定本机 Target
+# 才能唯一解析面板分辨率；未设置时保持全量收集行为不变。
+display_target_filter="${PORT_DISPLAY_TARGET:-}"
 
 optional_regular_file() {
 	local file_path="${1:-}"
@@ -272,6 +276,9 @@ if (( capability_prop_ready == 1 || feature_patch_ready == 1 )); then
 		parser_args+=(--feature-input "$device_feature_xml" --feature-output "$temporary_xml")
 		if (( resolution_ready == 1 )); then
 			parser_args+=(--resolution-xml "$display_resolution_config")
+			if [[ -n "$display_target_filter" ]]; then
+				parser_args+=(--target-filter "$display_target_filter")
+			fi
 		fi
 	fi
 

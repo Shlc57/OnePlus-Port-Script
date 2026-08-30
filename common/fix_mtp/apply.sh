@@ -11,7 +11,12 @@ std_print
 
 check_part_exists system
 
+# 默认使用模块内置的一加 15 底包 rc；其他底包由组合入口通过
+# FIX_MTP_SOURCE_RC 提供本机型来源，缺失或类型错误时失败。
 source_file="$patcher_dir/init.usb.configfs.rc"
+if [[ -n "${FIX_MTP_SOURCE_RC:-}" ]]; then
+	source_file="${FIX_MTP_SOURCE_RC}"
+fi
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
 target_file="$project_dir/system/system/etc/init/hw/init.usb.configfs.rc"

@@ -1,0 +1,8 @@
+# 一加 Ace 6T 组合流程为目标 NXP NFC 栈选择的 Xiaomi 上层兼容开关。
+# features/fix_nci_nfc 不从小米原包复制这些目标硬件属性。
+# Ace 6T 底包需提供 NXP NFC 服务契约；实机表现异常需重新核对。
+ro.vendor.nfc.repair=1
+ro.vendor.nfc.wallet_fusion=1
+ro.vendor.nfc.secure_display_optim=1
+ro.vendor.nfc.mitouch=1
+ro.vendor.nfc.phonecase=1

@@ -1,0 +1,6 @@
+# Ace 6 TMS NFC 栈文件标签：TMS 服务二进制复用标准 HAL 执行域。
+/odm/bin/hw/android\.hardware\.nfc-service-tms u:object_r:hal_nfc_default_exec:s0
+/odm/bin/hw/android\.hardware\.secure_element-service-tms u:object_r:hal_secure_element_default_exec:s0
+# THN31 配置/固件目录与 VINTF manifest（底包 odm 自带，随 odm 刷入）。
+/odm/etc/nfc(/.*)? u:object_r:system_file:s0
+/odm/etc/vintf/manifest/manifest_nfc_thn31(_.*)?\.xml u:object_r:system_file:s0

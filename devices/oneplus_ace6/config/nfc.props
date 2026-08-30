@@ -1,0 +1,8 @@
+# 一加 Ace 6 组合流程写入 odm/build.prop 的 Xiaomi NFC 上层兼容属性。
+# features/fix_nci_nfc 不从小米原包复制这些目标硬件属性；
+# Ace 6 的 NFC 芯片为青藤 THN31，这些属性由 devices/oneplus_ace6/fix_nfc_tms_bridge 消费。
+ro.vendor.nfc.repair=1
+ro.vendor.nfc.wallet_fusion=1
+ro.vendor.nfc.secure_display_optim=1
+ro.vendor.nfc.mitouch=1
+ro.vendor.nfc.phonecase=1

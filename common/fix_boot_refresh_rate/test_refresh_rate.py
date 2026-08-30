@@ -83,6 +83,9 @@ class RefreshRateTest(unittest.TestCase):
                   <ScalingResolution w="1080" h="2354" />
                 </PanelResolution>
               </Target>
+              <Target name="anorak">
+                <PanelResolution width="7104" height="3840" />
+              </Target>
             </Targets>
             """,
         )
@@ -108,35 +111,37 @@ class RefreshRateTest(unittest.TestCase):
             "feature": feature,
         }
 
-    def run_tool(self, inputs: dict[str, Path]) -> tuple[dict[str, object], str, Path]:
+    def run_tool(
+        self, inputs: dict[str, Path], target_filter: str | None = None
+    ) -> tuple[dict[str, object], str, Path]:
         model = self.root / "model.json"
         props = self.root / "generated.props"
         output = self.root / "feature-output.xml"
-        subprocess.run(
-            [
-                "python3",
-                str(SCRIPT),
-                "--vendor-prop",
-                str(inputs["vendor"]),
-                "--odm-prop",
-                str(inputs["odm"]),
-                "--init-script",
-                str(inputs["init"]),
-                "--advanced-xml",
-                str(inputs["advanced"]),
-                "--resolution-xml",
-                str(inputs["resolution"]),
-                "--model-output",
-                str(model),
-                "--props-output",
-                str(props),
-                "--feature-input",
-                str(inputs["feature"]),
-                "--feature-output",
-                str(output),
-            ],
-            check=True,
-        )
+        command = [
+            "python3",
+            str(SCRIPT),
+            "--vendor-prop",
+            str(inputs["vendor"]),
+            "--odm-prop",
+            str(inputs["odm"]),
+            "--init-script",
+            str(inputs["init"]),
+            "--advanced-xml",
+            str(inputs["advanced"]),
+            "--resolution-xml",
+            str(inputs["resolution"]),
+            "--model-output",
+            str(model),
+            "--props-output",
+            str(props),
+            "--feature-input",
+            str(inputs["feature"]),
+            "--feature-output",
+            str(output),
+        ]
+        if target_filter:
+            command += ["--target-filter", target_filter]
+        subprocess.run(command, check=True)
         return json.loads(model.read_text(encoding="utf-8")), props.read_text(), output
 
     def test_generates_refresh_model_props_and_feature_xml(self):
@@ -144,7 +149,8 @@ class RefreshRateTest(unittest.TestCase):
         self.assertEqual(model["platform"], "canoe")
         self.assertEqual(model["target_version"], "6")
         self.assertEqual(model["fps"], [165, 144, 120, 90, 60])
-        self.assertEqual(model["widths"], [1272, 1080])
+        self.assertEqual(model["panels"], [[1272, 2772], [7104, 3840]])
+        self.assertEqual(model["widths"], [1272, 1080, 7104])
         self.assertIn(
             "ro.vendor.display.dynamic_refresh_rate=165,144,120,90,60,30:100,60,5\n",
             props,
@@ -164,8 +170,50 @@ class RefreshRateTest(unittest.TestCase):
                     "./integer-array[@name='screen_resolution_supported']"
                 )
             ],
+            [1272, 1080, 7104],
+        )
+
+    def test_target_filter_collects_only_matching_target(self):
+        model, _, output = self.run_tool(self.inputs(), target_filter="canoe")
+        self.assertEqual(model["panels"], [[1272, 2772]])
+        self.assertEqual(model["widths"], [1272, 1080])
+        root = ET.parse(output).getroot()
+        self.assertEqual(
+            [
+                int(item.text)
+                for item in root.find(
+                    "./integer-array[@name='screen_resolution_supported']"
+                )
+            ],
             [1272, 1080],
         )
+
+    def test_target_filter_without_match_fails(self):
+        inputs = self.inputs()
+        model = self.root / "model.json"
+        result = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT),
+                "--vendor-prop",
+                str(inputs["vendor"]),
+                "--init-script",
+                str(inputs["init"]),
+                "--advanced-xml",
+                str(inputs["advanced"]),
+                "--resolution-xml",
+                str(inputs["resolution"]),
+                "--target-filter",
+                "nonexistent",
+                "--model-output",
+                str(model),
+            ],
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("没有 Target 'nonexistent'", result.stderr)
+        self.assertIn("canoe、anorak", result.stderr)
 
     def test_feature_patch_is_idempotent(self):
         inputs = self.inputs()
@@ -321,6 +369,14 @@ class RefreshRateTest(unittest.TestCase):
         self.assertIn(
             "vendor.display.disable_stc_dimming=1",
             paths["vendor_prop"].read_text(encoding="utf-8"),
+        )
+        target_environment = environment.copy()
+        target_environment["PORT_DISPLAY_TARGET"] = "canoe"
+        third = subprocess.run(
+            command, text=True, capture_output=True, env=target_environment, check=True
+        )
+        self.assertIn(
+            "底包分辨率：面板 1272x2772；可切换宽度 1272、1080", third.stdout
         )
 
 

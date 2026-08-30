@@ -12,6 +12,8 @@
 
 模块从底包 `odm/etc/sdm_display_resolution_extn.xml` 读取唯一 `PanelResolution`，分别按 X/Y 比例换算目标坐标，再写入以下属性族：
 
+底包显示配置可能含多个 `Target`（如 Ace 6 同时含 anorak 异平台大屏与 sun 本机面板）。参数文件可提供可选键 `ultrasonic.fp.target` 指定本机 Target：设置后模块只收集匹配 `Target` 下的 `PanelResolution`，配置中不存在该 `Target` 时在修改工作树前失败；未设置时按全部面板收集，一加 15 流程行为不变。
+
 ```text
 ro.hardware.fp.fod.*
 persist.vendor.sys.fp.vendor

@@ -48,6 +48,10 @@ sensor_area_width="$(read_fingerprint_parameter ultrasonic.fp.sensor.area.width)
 sensor_area_height="$(read_fingerprint_parameter ultrasonic.fp.sensor.area.height)"
 fingerprint_vendor="$(read_fingerprint_parameter ultrasonic.fp.vendor)"
 fingerdown_delay_ms="$(read_fingerprint_parameter ultrasonic.fp.fingerdown.delay.ms)"
+# 底包 sdm_display_resolution_extn.xml 可能含多个 Target 的 PanelResolution
+# （如 Ace 6 同时含 anorak 异平台大屏与 sun 本机面板），此时按 ultrasonic.fp.target
+# 过滤取本机面板。该键可选：未设置时保持全量收集行为不变。
+target_filter="$(read_prop_value ultrasonic.fp.target "$fingerprint_properties_file" 2>/dev/null || true)"
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
 # shellcheck disable=SC2154
@@ -149,7 +153,8 @@ coordinate_summary="$(python3 - \
 	"$sensor_area_width" \
 	"$sensor_area_height" \
 	"$fingerprint_vendor" \
-	"$fingerdown_delay_ms" <<'PY'
+	"$fingerdown_delay_ms" \
+	"$target_filter" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -191,6 +196,7 @@ except ValueError as error:
     raise SystemExit(f"超声波指纹参数无效：{error}")
 
 fingerprint_vendor = sys.argv[11]
+target_filter = sys.argv[13] if len(sys.argv) > 13 else ""
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", fingerprint_vendor):
     raise SystemExit(
         f"超声波指纹参数无效：厂商协议值包含非法字符：{fingerprint_vendor!r}"
@@ -239,16 +245,32 @@ except (OSError, ET.ParseError) as error:
     raise SystemExit(f"解析显示配置失败：{display_config_path}：{error}")
 
 panel_resolutions = []
-for panel in display_root.iter("PanelResolution"):
-    try:
-        panel_resolution = (
-            positive_int(panel.get("width"), "PanelResolution width"),
-            positive_int(panel.get("height"), "PanelResolution height"),
+# 可选：只收集指定 Target（SoC 平台）下的 PanelResolution，避免混入其他平台分辨率。
+# 例如 Ace 6 底包含 anorak（7104x3840）与 sun（1272x2800），只收集 sun 才能得到
+# 真实面板分辨率；指定 Target 不存在时在修改工作树前失败。
+targets = list(display_root.iter("Target"))
+if target_filter:
+    matched = [t for t in targets if t.get("name", "") == target_filter]
+    if not matched:
+        available = "、".join(t.get("name", "") for t in targets) or "（无 Target 层级）"
+        raise SystemExit(
+            f"显示配置中没有 Target {target_filter!r}（可用：{available}），"
+            "无法按指定 Target 收集面板分辨率"
         )
-    except ValueError as error:
-        raise SystemExit(f"显示配置无效：{display_config_path}：{error}")
-    if panel_resolution not in panel_resolutions:
-        panel_resolutions.append(panel_resolution)
+    scopes = matched
+else:
+    scopes = [display_root]
+for scope in scopes:
+    for panel in scope.iter("PanelResolution"):
+        try:
+            panel_resolution = (
+                positive_int(panel.get("width"), "PanelResolution width"),
+                positive_int(panel.get("height"), "PanelResolution height"),
+            )
+        except ValueError as error:
+            raise SystemExit(f"显示配置无效：{display_config_path}：{error}")
+        if panel_resolution not in panel_resolutions:
+            panel_resolutions.append(panel_resolution)
 
 if not panel_resolutions:
     raise SystemExit(f"显示配置中没有 PanelResolution：{display_config_path}")

@@ -1,0 +1,8 @@
+/product/etc/displayconfig u:object_r:system_file:s0
+/product/etc/displayconfig/display_id_4630946850534658451\.xml u:object_r:system_file:s0
+/product/etc/displayconfig/display_id_4630946916234099603\.xml u:object_r:system_file:s0
+/product/etc/displayconfig/display_id_4630947039571902850\.xml u:object_r:system_file:s0
+/product/etc/displayconfig/display_id_4630947039571902851\.xml u:object_r:system_file:s0
+/product/etc/displayconfig/display_id_4630947075271898515\.xml u:object_r:system_file:s0
+/product/etc/displayconfig/display_layout_configuration\.xml u:object_r:system_file:s0
+/product/overlay/Ace6TBootBrightnessOverlay\.apk u:object_r:system_file:s0

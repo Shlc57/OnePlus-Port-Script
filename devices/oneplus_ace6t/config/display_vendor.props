@@ -1,0 +1,4 @@
+# 一加 Ace 6T 组合流程选择的目标 vendor 显示策略。
+vendor.display.disable_3d_adaptive_tm=1
+vendor.display.disable_stc_dimming=1
+vendor.display.disable_sdr_dimming=0

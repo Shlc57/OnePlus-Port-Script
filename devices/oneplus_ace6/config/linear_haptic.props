@@ -1,0 +1,45 @@
+# 一加 Ace 6 组合流程选择的目标触感映射（X 轴线性马达）。
+# 这些值由目标设备流程显式提供，features/fix_linear_haptic 不从小米原包读取。
+# 振动强度档位沿用一加 15 实测映射，马达型号不同时需实机核对。
+sys.haptic.infinitelevel=true
+sys.haptic.dynamiceffect=false
+sys.haptic.dynamiceffect.richtap=true
+sys.haptic.down.weak=0
+sys.haptic.down.normal=2
+sys.haptic.down.strong=5
+sys.haptic.down=5,2
+sys.haptic.tap.normal=3,2
+sys.haptic.tap.light=5,2
+sys.haptic.flick=5,2
+sys.haptic.flick.light=7,2
+sys.haptic.switch=9,2
+sys.haptic.mesh.heavy=8,2
+sys.haptic.mesh.normal=5,2
+sys.haptic.mesh.light=5,1
+sys.haptic.long.press=0,1
+sys.haptic.popup.normal=6,2
+sys.haptic.popup.light=6,1
+sys.haptic.pickup=2,2
+sys.haptic.scroll.edge=7,0
+sys.haptic.trigger.drawer=2,0
+sys.haptic.hold=4,0
+sys.haptic.runin=13
+sys.haptic.intensityforkeyboard=true
+sys.haptic.ignoreWhenCamera=true
+sys.haptic.onetrack=true
+sys.haptic.BCLMode=true
+sys.haptic.lowPowerMode=true
+sys.haptic.boundary_spatial=0,2
+sys.haptic.boundary_time=1,2
+sys.haptic.button_large=2,2
+sys.haptic.button_middle=3,2
+sys.haptic.button_small=4,2
+sys.haptic.gear_light=5,2
+sys.haptic.gear_heavy=6,2
+sys.haptic.keyboard=7,2
+sys.haptic.alert=8,2
+sys.haptic.zaxis_switch=9,2
+sys.haptic.demo_video_delay=450
+sys.haptic.longVib.notify.camera=true
+sys.haptic.demo_first_video_delay=50
+sys.haptic.supportTouchListener=true

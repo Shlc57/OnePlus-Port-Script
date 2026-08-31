@@ -10,6 +10,8 @@
 
 ## 模块说明
 
+> 注意（2026-08-31）：实机确认为 1.5K LTPS **120Hz** 面板（全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM），下文的 165Hz 五档与 144/165Hz PWM 策略沿用一加 15 假设，与本机面板不符；启用本模块前需按实机档位重审互斥策略与 `dc_backlight_fps_incompatible` 链路。
+
 本模块与 `devices/oneplus15/fix_refresh_rate_switch` 采用同一套互斥策略与 Smali 锚点：
 Ace 6 与一加 15 同为 165Hz 五档屏（60/90/120/144/165），DC/PWM 档位策略一致；
 修补目标（原包机型 XML、MISettings、Settings）均在小米原包侧，与 OPPO 底包机型无关。

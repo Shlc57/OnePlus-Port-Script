@@ -1,6 +1,6 @@
 # 一加 Ace 6T 组合流程选择的目标显示/触控策略；4 个刷新率数值属性由底包自动生成。
-# 初始策略沿用一加 15 流程的 BOE 165Hz OLED 共性开关，
-# Ace 6T 面板能力（touchfeature 位、DC 阈值等）仍需实机核对后调整。
+# 初始策略沿用一加 15 流程共性开关；面板实为 1.5K LTPS 120Hz（1920Hz PWM + 低亮度 DC），
+# oled 相关开关（ro.vendor.display.type 等）与 DC 阈值需实机核对后调整。
 ro.vendor.fps.switch.default=true
 ro.vendor.fps.switch.thermal=true
 ro.vendor.dfps.enable=false

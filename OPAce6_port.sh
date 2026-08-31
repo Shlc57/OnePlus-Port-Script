@@ -112,7 +112,6 @@ declare -a ace6_modules=(
 	common/fix_vendor_avc
 	common/fix_launcher
 	common/fix_device_identity
-	features/fix_oplus_ltpo
 	common/fix_oplus_avc
 	common/fix_wechat_safe_mode
 	common/fix_settings_haptic

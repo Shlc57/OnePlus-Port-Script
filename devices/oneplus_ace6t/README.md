@@ -10,7 +10,7 @@
 | 设备代号 / OEM | PLR110 / OP6117 |
 | 处理器 | 第五代骁龙 8（SM8845），显示 Target `canoe` |
 | 内核 | `android16-6.12`（与一加 15 相同，Millet 核心桥直接使用仓库预编译 KO） |
-| 屏幕 | 6.83″ 直面屏，面板实测 **1272x2800**，165Hz（60/90/120/144/165 档） |
+| 屏幕 | 6.83″ 1.5K LTPS **120Hz**，面板实测 **1272x2800**；全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM（档位待实机核对） |
 | 物理 Display ID | `4630946700822127507`（dumpsys uniqueId 实测） |
 | 电池 | 8300mAh（典型值） |
 | 摄像头 | 后置 50MP+8MP，前置 16MP（按官方规格；参考流程中的三摄/32MP 数据为模板残留，未采纳） |
@@ -22,7 +22,7 @@
 | 模块 | 改动分区 | 说明 |
 | --- | --- | --- |
 | [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配 Ace 6T 的传感器属性、显示配置、自动亮度曲线与启动亮度（Display ID 由入口 `PORT_TARGET_DISPLAY_ID` 注入）。 |
-| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表（60/90/120/144/165Hz）；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
+| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。注意：其互斥策略沿用一加 15 的 165Hz 五档屏假设（60/90/120/144/165、144/165Hz PWM），与本机 120Hz LTPS 面板不符，需按实机档位重审。 |
 
 ## 实测不适用：fix_oplusreserve_context
 

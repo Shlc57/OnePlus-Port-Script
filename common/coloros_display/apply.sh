@@ -66,6 +66,7 @@ profile_name="${profile_dir#"$patcher_dir"/profiles/}"
 profile_display_name="$(coloros_profile_prop "$profile_dir/profile.props" display_name)"
 profile_panel_table="$(coloros_profile_prop "$profile_dir/profile.props" panel_table)"
 profile_disable_high_pwm_rgb="$(coloros_profile_prop "$profile_dir/profile.props" disable_high_pwm_rgb)"
+profile_dark_anchor="$(coloros_profile_prop "$profile_dir/profile.props" dark_anchor_value)"
 fusion_manifest="$profile_dir/config/fusionlight_files.tsv"
 rro_manifest="$profile_dir/config/display_rro_files.tsv"
 
@@ -205,12 +206,20 @@ if [[ -f "$brightness_panel_source" && -f "$brightness_lux_source" ]]; then
 	brightness_generated_dir="$(mktemp -d "$(get_config_path '.coloros_display_brightness.XXXXXX')")"
 	temporary_directories+=("$brightness_generated_dir")
 	brightness_generated="$brightness_generated_dir/display_id_${target_display_id}.xml"
+	# Profile 未设 dark_anchor_value 时显式关闭重映射，保留上游曲线。
+	brightness_generator_args=()
+	if [[ -n "$profile_dark_anchor" ]]; then
+		brightness_generator_args+=(--min-visible-value "$profile_dark_anchor")
+	else
+		brightness_generator_args+=(--no-dark-anchor)
+	fi
 	python3 "$brightness_generator" \
 		--panel "$brightness_panel_source" \
 		--lux "$brightness_lux_source" \
 		--output "$brightness_generated" \
 		--display-id "$target_display_id" \
-		--hbm-enter-lux "${COLOROS_HBM_ENTER_LUX:-40000}"
+		--hbm-enter-lux "${COLOROS_HBM_ENTER_LUX:-40000}" \
+		"${brightness_generator_args[@]}"
 	replace_file_if_different "$brightness_generated" "$vendor_target_display_config"
 	source_display_config="$vendor_target_display_config"
 	std_print "✅ 已从 my_product 官方亮度表生成 DisplayDeviceConfig"

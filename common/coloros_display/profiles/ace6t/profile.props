@@ -5,3 +5,5 @@ market_names=OnePlus Ace 6T
 display_targets=canoe
 panel_table=display_brightness_config_P_7.xml
 disable_high_pwm_rgb=1
+# 暗端锚点来自 Ace 6T 真机可见性阶梯实测：节点 3 不可见、节点 9 勉强可见、节点 20 可见。
+dark_anchor_value=0.0055

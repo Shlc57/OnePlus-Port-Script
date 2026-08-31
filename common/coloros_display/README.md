@@ -16,6 +16,16 @@
 - 用 Profile 指定的 `my_product/vendor/etc` 面板表（OP15 为 P_3，Ace 6/6T 为 P_7）
   和 expressiveness lux 表生成包含完整物理亮度表、`autoBrightness` lux map 与 HBM
   门限的 DisplayDeviceConfig，写入最终 `vendor`/`product`。
+- 生成时按 Profile 执行可选的暗端锚点重映射（profile.props 的 `dark_anchor_value`，
+  传入生成器 `--min-visible-value`；未设置的 Profile 传 `--no-dark-anchor` 保留
+  上游曲线）：ColorOS 面板表的暗端 nit 标定与真实面板节点不符（Ace 6T 实测
+  level 2/3 节点不可见，而 HyperOS nit 模型在 0 lux 请求 2 nit，会驱动到全黑
+  节点），重映射把首个可见 nit 点抬到锚点背光值（0.0055，节点约 22），暗端
+  过渡区间（至 1.5 倍首个可见 nit）线性承接，其余区间原样保留。锚点值来自
+  Ace 6T 真机可见性阶梯实测（节点 3 不可见、节点 9 勉强可见、节点 20 可见）；
+  Ace 6 跟随 Ace 6T（同款 P_7 表），OnePlus 15 不启用、跟随上游。面板表首个
+  可见点或暗端过渡段本身不比锚点更细时自动跳过并打印 `DARK_ANCHOR_SKIPPED=...`
+  原因（此时 2 nit 请求已落在可见节点）。
 - 按 Profile manifest 迁移 `my_product/etc/fusionlight_profile` 到最终
   `system_ext/etc/fusionlight_profile`，并把 `my_product/overlay` 的 display RRO
   原名迁到最终 `product/overlay`（OP15 为 android+oplus 两份 24831，Ace 6T 仅

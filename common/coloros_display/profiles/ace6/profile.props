@@ -6,3 +6,5 @@ market_names=OnePlus Ace 6
 display_targets=sun
 panel_table=display_brightness_config_P_7.xml
 disable_high_pwm_rgb=1
+# 暗端锚点跟随 Ace 6T（同款 P_7 表）；待 Ace 6 实机可见性数据后单独定值。
+dark_anchor_value=0.0055

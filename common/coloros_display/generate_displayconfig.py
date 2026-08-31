@@ -98,12 +98,81 @@ def backlight_for_nit(nit: float, nits: list[float]) -> float:
     return level / (len(nits) - 1)
 
 
+def build_dark_anchor_warp(
+    nits: list[float], min_visible_value: float
+) -> "callable[[float], float]":
+    """构造暗端重映射：把首个可见 nit 点搬到 min_visible_value。
+
+    ColorOS 面板表按自身亮度刻度标定，其声称的首个可见 nit（如 2.06 nit 在
+    level 2）直接按 level/(len-1) 落到背光浮点后，对应面板节点几乎不可见；
+    HyperOS 的 nit 模型在 0 lux 时恰好请求 2 nit，会因此驱动到全黑节点。
+
+    分三段重映射，只修正暗端、保持中高段不动：
+    - [0, 首个可见点] 线性拉伸到 [0, min_visible_value]；
+    - [首个可见点, 1.5 倍首个可见 nit 边界] 线性压缩到
+      [min_visible_value, 边界值]，承接暗端抬升并平滑汇合；
+    - [边界值, 1] 原样保留。
+    全程单调、端点不变。
+
+    面板表暗端本身不比锚点更细（首个可见点或暗端边界落在锚点之上）时，
+    HyperOS 的 2 nit 请求已落在可见节点，无需重映射，安全跳过并打印原因。
+    """
+    first_visible = next((level for level, nit in enumerate(nits) if nit > 0), None)
+    if first_visible is None or first_visible == 0:
+        print("DARK_ANCHOR_SKIPPED=no_zero_padding")
+        return lambda value: value
+    total_max = len(nits) - 1
+    first_visible_value = first_visible / total_max
+    first_visible_nit = nits[first_visible]
+    boundary = next(
+        (
+            level
+            for level in range(first_visible + 1, len(nits))
+            if nits[level] >= first_visible_nit * 1.5
+        ),
+        None,
+    )
+    if boundary is None:
+        print("DARK_ANCHOR_SKIPPED=no_dark_segment")
+        return lambda value: value
+    boundary_value = boundary / total_max
+    if min_visible_value <= first_visible_value:
+        print(
+            "DARK_ANCHOR_SKIPPED="
+            f"first_visible_at_{first_visible_value:.9f}_ge_{min_visible_value}"
+        )
+        return lambda value: value
+    if min_visible_value >= boundary_value:
+        print(
+            "DARK_ANCHOR_SKIPPED="
+            f"dark_segment_end_{boundary_value:.9f}_le_{min_visible_value}"
+        )
+        return lambda value: value
+
+    print(
+        f"DARK_ANCHOR_APPLIED=first_visible_{first_visible_value:.9f}"
+        f"->anchor_{min_visible_value}->boundary_{boundary_value:.9f}"
+    )
+
+    def warp(value: float) -> float:
+        if value <= first_visible_value:
+            return value * (min_visible_value / first_visible_value)
+        if value >= boundary_value:
+            return value
+        return min_visible_value + (value - first_visible_value) * (
+            (boundary_value - min_visible_value)
+            / (boundary_value - first_visible_value)
+        )
+
+    return warp
+
+
 def fmt(value: float, digits: int) -> str:
     return f"{value:.{digits}f}"
 
 
 def generate(panel: Path, lux_path: Path, output: Path, display_id: str,
-             hbm_enter: int) -> None:
+             hbm_enter: int, dark_anchor: bool, min_visible_value: float) -> None:
     if not re.fullmatch(r"[1-9][0-9]{0,19}", display_id):
         fail(f"Display ID 无效：{display_id}")
     expected_name = f"display_id_{display_id}.xml"
@@ -111,16 +180,25 @@ def generate(panel: Path, lux_path: Path, output: Path, display_id: str,
         fail(f"输出文件名必须是 {expected_name}")
     if hbm_enter <= 0:
         fail("HBM enter lux 必须为正数")
+    if dark_anchor and not 0.0 < min_visible_value < 1.0:
+        fail(f"暗端锚点必须在 (0,1) 内：{min_visible_value}")
 
     nits, normal_max, lux_mode, hbm_lux_mode = parse_panel(panel)
     lux_points = parse_lux(lux_path)
     total_max = len(nits) - 1
     if normal_max == total_max:
         fail("面板亮度表没有扩展 HBM 区间")
+    if dark_anchor:
+        warp = build_dark_anchor_warp(nits, min_visible_value)
+    else:
+        print("DARK_ANCHOR_DISABLED=upstream_curve_kept")
+
+        def warp(value: float) -> float:
+            return value
 
     auto_points: list[tuple[float, float]] = []
     for lux, nit in lux_points:
-        brightness = 1.0 if lux >= hbm_enter else backlight_for_nit(nit, nits)
+        brightness = 1.0 if lux >= hbm_enter else warp(backlight_for_nit(nit, nits))
         if auto_points and brightness < auto_points[-1][1]:
             brightness = auto_points[-1][1]
         auto_points.append((lux, min(1.0, brightness)))
@@ -140,7 +218,7 @@ def generate(panel: Path, lux_path: Path, output: Path, display_id: str,
     for level, nit in enumerate(nits):
         lines.extend([
             "    <point>",
-            f"      <value>{fmt(level / total_max, 9)}</value>",
+            f"      <value>{fmt(warp(level / total_max), 9)}</value>",
             f"      <nits>{fmt(nit, 6)}</nits>",
             "    </point>",
         ])
@@ -148,7 +226,7 @@ def generate(panel: Path, lux_path: Path, output: Path, display_id: str,
         "  </screenBrightnessMap>",
         "",
         '  <highBrightnessMode enabled="true">',
-        f"    <transitionPoint>{fmt(normal_max / total_max, 9)}</transitionPoint>",
+        f"    <transitionPoint>{fmt(warp(normal_max / total_max), 9)}</transitionPoint>",
         "    <minimumHdrPercentOfScreen>0.1</minimumHdrPercentOfScreen>",
         f"    <minimumLux>{hbm_enter}</minimumLux>",
         "    <timing>",
@@ -206,8 +284,21 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--display-id", required=True)
     parser.add_argument("--hbm-enter-lux", type=int, default=40000)
+    parser.add_argument(
+        "--dark-anchor",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="是否启用暗端锚点重映射（--no-dark-anchor 保留上游曲线）",
+    )
+    parser.add_argument(
+        "--min-visible-value",
+        type=float,
+        default=0.0055,
+        help="暗端锚点：首个可见 nit 点映射到的背光浮点值（0,1 开区间）",
+    )
     args = parser.parse_args()
-    generate(args.panel, args.lux, args.output, args.display_id, args.hbm_enter_lux)
+    generate(args.panel, args.lux, args.output, args.display_id,
+             args.hbm_enter_lux, args.dark_anchor, args.min_visible_value)
     return 0
 
 

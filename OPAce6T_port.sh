@@ -152,4 +152,10 @@ if [[ -f "$settings_apk_session_dir/ready" ]]; then
 		port_status=$finalize_status
 	fi
 fi
+
+if (( port_status == 0 )); then
+	printf '✅ 所有补丁处理完成，Settings 统一回编译已收尾\n'
+else
+	printf '! FAIL: 组合流程失败，exit=%s\n' "$port_status" >&2
+fi
 exit "$port_status"

@@ -1,6 +1,8 @@
-# Ace 6T 机型 Profile：识别值来自底包实测；manifest 按 Ace 6T my_product 实包整理。
+# Ace 6T 机型 Profile：识别跟随 OnePlus 15 方式，由组合入口显式指定，device_codes 留空。
+# 真机实测底包代号为 nezha，自动匹配兜底走 market_names/display_targets。
+# manifest 按 Ace 6T my_product 实包整理。
 display_name=Ace 6T
-device_codes=nezha
+device_codes=
 market_names=OnePlus Ace 6T
 display_targets=canoe
 panel_table=display_brightness_config_P_7.xml

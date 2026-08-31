@@ -43,7 +43,7 @@
 | Profile | 识别值 | 面板表 | RRO / FusionLight | high_pwm_rgb |
 | --- | --- | --- | --- | --- |
 | `oneplus15` | 入口显式指定 | `display_brightness_config_P_3.xml` | 24831 android+oplus；Main_1_A、Main_2_A | 保留 |
-| `ace6t` | 代号 `nezha`、Target `canoe`、市场名 `OnePlus Ace 6T` | `display_brightness_config_P_7.xml` | 24851 android；Main_2_3（取自实包） | 禁用 |
+| `ace6t` | 入口显式指定；兜底 Target `canoe`、市场名 `OnePlus Ace 6T`（真机实测底包代号 `nezha`） | `display_brightness_config_P_7.xml` | 24851 android；Main_2_3（取自实包） | 禁用 |
 | `ace6` | Target `sun`、市场名 `OnePlus Ace 6`（代号待实测） | `display_brightness_config_P_7.xml` | 暂按 ace6t 模板，待实机 `my_product` 核实 | 禁用 |
 
 Profile 识别顺序：显式 `COLOROS_DISPLAY_PROFILE` 优先；否则按底包设备代号、市场名

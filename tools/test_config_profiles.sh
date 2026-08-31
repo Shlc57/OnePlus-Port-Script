@@ -22,7 +22,7 @@ trap 'rm -rf -- "$tmp"' EXIT
 
 make_project() {
 	mkdir -p "$1"
-	printf 'project=%s\n' "$1"
+	printf '%s\n' "$1"
 }
 
 # 用例 1：仅有 DNA_config（DNA 命名）。

@@ -9,11 +9,17 @@ ace6_config_dir="$script_dir/devices/oneplus_ace6/config"
 # export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
 # 一加 Ace 6 组合流程固定覆盖原包机型显示名。
 export DEVICE_DISPLAY_NAME='OnePlus Ace 6'
-# 物理 Display ID（devices/oneplus_ace6/fix_auto_brightness 消费，Ace 6 实测 dumpsys uniqueId）。
+# 物理 Display ID（common/fix_boot_brightness 的 ace6 Profile 消费，Ace 6 实测 dumpsys uniqueId）。
 export PORT_TARGET_DISPLAY_ID="4630947185118785939"
 # 底包显示 Target（Ace 6 = sun）：fix_boot_refresh_rate 只收集该 Target 的
 # PanelResolution，避免混入 Ace 6 底包中其他平台（anorak 7104x3840）的分辨率。
 export PORT_DISPLAY_TARGET=sun
+# 自动亮度接入 OP15 同款 ColorOS displayconfig 方案：common/coloros_display 按
+# Ace 6 Profile 用 my_product 的 P_7 官方表生成原生 autoBrightness 配置。
+export COLOROS_DISPLAY_PROFILE=ace6
+# 开机默认亮度由 common/fix_boot_brightness 的 Ace 6 Profile 安装；Overlay 与校验
+# 文件都在模块 profiles/ace6/ 内，作为机型专属预编译产物提供。
+export BOOT_BRIGHTNESS_PROFILE=ace6
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6_config_dir/display_vendor.props"
 # Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 devices/oneplus_ace6/fix_nfc_tms_bridge
@@ -118,7 +124,8 @@ declare -a ace6_modules=(
 	common/fix_modem_xts
 	common/fix_mi_mtp_kill_self
 	features/fix_oplus_fingerprint_protocol
-	devices/oneplus_ace6/fix_auto_brightness
+	common/coloros_display
+	common/fix_boot_brightness
 	common/fix_boot_refresh_rate
 	devices/oneplus_ace6/fix_refresh_rate_switch
 	features/fix_linear_haptic

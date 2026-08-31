@@ -39,7 +39,7 @@
 
 6. 一加 15 的其余显示/触控策略、NFC、线性触感、超声波指纹和双击亮屏硬件参数保存在 `port/devices/oneplus15/config/` 下的 `.props` 文件，由 `OP15_port.sh` 显式传给对应补丁；4 个刷新率数值属性和分辨率由 `common/fix_boot_refresh_rate` 自动读取底包显示栈生成，`display_odm.props` 与 `display_vendor.props` 中不维护这些值。更换底包或目标机型时应重新核对目标设备配置和底包显示能力，不能照搬旧列表。
 
-7. 自动亮度模块通过 `PORT_TARGET_DISPLAY_ID` 接收目标设备的物理 Display ID。`OP15_port.sh` 默认使用当前一加 15 实机值 `4630946903293830803`；更换面板或底包时应使用实机 `dumpsys SurfaceFlinger --display-id` 的主屏结果覆盖该值。
+7. `common/coloros_display` 通过 `PORT_TARGET_DISPLAY_ID` 接收目标设备的物理 Display ID，将底包取材分区 `my_product/vendor/etc` 覆盖合并到最终 `vendor/etc`，并把其 P_3 官方面板表和 expressiveness lux 表生成的 DisplayDeviceConfig 写入 `product` 与 `vendor` 两条扫描路径；`my_product` 本身不进入最终运行时分区。模块会把同分区的 OnePlus 15 FusionLight profile 迁移到 `system_ext/etc`、将两份静态 display RRO 原名迁移到 `product/overlay`，并直接保留最终 `odm/vendor` 底包中的 CWB AIDL、VINTF 与 32/64 位库；不携带 OP13 专属 panel 或 native 替换。底包已有的两套 Dolby visual 配置仍复制到参考安装脚本的 fallback 路径。`common/fix_boot_brightness` 移除旧自动亮度曲线 Overlay，仅保留 135 nit 开机默认亮度 Overlay；更换面板或底包时应使用实机 `dumpsys SurfaceFlinger --display-id` 的主屏结果覆盖该值。
 
 8. `devices/oneplus15/fix_refresh_rate_switch` 复用 MISettings 的 DC/PWM 链路：关闭 Pro 时完整保留 60/90/120/144/165Hz，底层面板按刷新率使用 60–120Hz DC、144/165Hz PWM；开启 Pro 时保留原有 mode 20 全局 PWM 请求。补丁只保留 144/165Hz 与显式 DC 状态的既有互斥链路，移除 `mimotion_pwm_enable` 对列表和刷新率写入的过滤/120Hz 回退。该策略已完成主机静态迁移检查，真实设备仍需重启后验证 Pro 开关对应的面板调光结果。
 

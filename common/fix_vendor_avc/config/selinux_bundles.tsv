@@ -7,3 +7,4 @@ fix_oplus_double_tap_wake	features/fix_oplus_double_tap_wake	config/selinux_bund
 fix_ultrasonic_fingerprint	features/fix_ultrasonic_fingerprint	config/selinux_bundle.tsv
 oplus_millet_core_bridge	features/oplus_millet_core_bridge	config/selinux_bundle.tsv
 fix_oplus_avc	common/fix_oplus_avc	config/selinux_bundle.tsv
+coloros_display	common/coloros_display	config/selinux_bundle.tsv

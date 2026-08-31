@@ -1,0 +1,15 @@
+ro.display.screen_type u:object_r:vendor_display_prop:s0
+ro.vendor.oplus.display.cwb.display_id u:object_r:vendor_cwb_prop:s0
+ro.vendor.oplus.display.debug.xlog_enable u:object_r:vendor_oplus_display_prop:s0
+vendor.oplus.video.dump.output u:object_r:vendor_oplus_prop:s0
+persist.vendor.wifi.roam.threshold u:object_r:vendor_wlan_eht_prop:s0
+persist.vendor.wlan.disable.mlo u:object_r:vendor_wlan_eht_prop:s0
+persist.vendor.enable.force.2chain.disable.dtim u:object_r:vendor_wlan_eht_prop:s0
+persist.vendor.enable.disable.lp.fcs u:object_r:vendor_wlan_eht_prop:s0
+vendor.miui.wifi.p2phc u:object_r:vendor_miui_wifi_p2phc_prop:s0
+persist.vendor.qcom.bluetooth.aptx_adaptive_le. u:object_r:vendor_bluetooth_mi_prop:s0
+persist.vendor.bluetooth.ssrfile.chgperm u:object_r:vendor_bluetooth_prop:s0
+persist.radio.oplus.qcrild_start u:object_r:radio_prop:s0
+vendor.oppo.wifi.rus.version u:object_r:vendor_oplus_prop:s0
+vendor.oppo.wifi.rus.upgrade.ctl u:object_r:vendor_oplus_prop:s0
+ro.vendor.oplus.uniform_single_sim u:object_r:vendor_oplus_prop:s0

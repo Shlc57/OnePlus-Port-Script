@@ -104,6 +104,11 @@ def test_registry() -> None:
             "common/fix_oplus_avc",
             "config/selinux_bundle.tsv",
         ),
+        (
+            "coloros_display",
+            "common/coloros_display",
+            "config/selinux_bundle.tsv",
+        ),
     ]
     assert len(records) == len(set(records))
     for name, relative_dir, relative_manifest in records:

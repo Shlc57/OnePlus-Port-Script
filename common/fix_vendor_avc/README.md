@@ -23,6 +23,8 @@
 - `features/fix_ultrasonic_fingerprint` 交付的 FOD 与实机 AVC 指纹属性策略及 contexts bundle。
 - `features/oplus_millet_core_bridge` 交付的 Millet netlink 补充规则。
 - `common/fix_oplus_avc` 交付的实际 reserve 块节点 context，以及由 Enforcing 启动 AVC 证明所需的 ueventd 精确创建规则。
+- `common/coloros_display` 交付的 ColorOS 显示属性 contexts，以及 dmesg 证明所需的 CWB、显示 debug 和视频 dump 精确权限。
+- `common/fix_oplus_avc` 交付的 DSU `dmesg.log` 精确 Binder/zygote/property setter 规则；其中 `crash_dump -> init` 的 `ptrace` 拒绝因目标平台 `neverallow` 明确不导入。
 
 bundle 注册表只声明可消费模块；目录和清单必须使用安全相对路径，并在解析后仍位于当前 `port` 与对应 bundle 目录内。只有 requirement 完整满足时才会启用。半套 requirement、未知 contexts 目标、缺失类型、同一逻辑目标内跨 bundle 的重复 key（转义形式视为同一 key）、非幂等结果或 normal/debug 结果不一致都会在落盘前失败。业务策略归各模块所有，不会下沉到通用 merger。
 
@@ -42,6 +44,7 @@ bash port_main.sh common/fix_mi_account \
   features/oplus_displayfeature_bridge \
   features/fix_oplus_double_tap_wake \
   features/fix_ultrasonic_fingerprint \
+  common/coloros_display \
   common/fix_vendor_avc
 ```
 

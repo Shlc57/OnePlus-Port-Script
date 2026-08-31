@@ -1607,6 +1607,37 @@ validate_translated_fsconfig_prefix() {
 	return "$build_status"
 }
 
+merge_translated_contexts_prefix_replace_context() {
+	local source_contexts="${1:-}"
+	local destination_contexts="${2:-}"
+	local source_prefix="${3:-}"
+	local target_prefix="${4:-}"
+	local old_context="${5:-}"
+	local new_context="${6:-}"
+	local generated_file
+	local merge_status=0
+
+	if [[ -z "$old_context" || -z "$new_context" ]]; then
+		err_print "contexts 标签转换不能为空"
+		return 1
+	fi
+	check_file_exists "$destination_contexts" || return 1
+	generated_file="$(mktemp "${destination_contexts}.source.XXXXXX")" || return 1
+	if ! _partition_metadata_tool translate-prefix \
+		--kind contexts \
+		--source "$source_contexts" \
+		--source-prefix "$source_prefix" \
+		--target-prefix "$target_prefix" \
+		--context-override "$old_context" "$new_context" \
+		--output "$generated_file"; then
+		rm -f -- "$generated_file"
+		return 1
+	fi
+	merge_contexts_file "$generated_file" "$destination_contexts" || merge_status=$?
+	rm -f -- "$generated_file"
+	return "$merge_status"
+}
+
 merge_translated_contexts_prefix() {
 	local source_contexts="${1:-}"
 	local destination_contexts="${2:-}"

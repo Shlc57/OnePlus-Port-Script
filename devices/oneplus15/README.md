@@ -4,13 +4,12 @@
 
 ## 改动分区
 
-本目录下的专属补丁主要改动 `odm`、`product`；共享模块消费本目录参数时，实际目标分区以各自模块 README 为准。
+本目录下的专属补丁主要改动 `product`、`system_ext`；共享模块消费本目录参数时，实际目标分区以各自模块 README 为准。
 
 ## 专属模块
 
 | 模块 | 改动分区 | 说明 |
 | --- | --- | --- |
-| [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配一加 15 的传感器属性、显示配置、自动亮度曲线与启动亮度。 |
 | [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
 
 ## 共享模块参数
@@ -22,7 +21,7 @@
 | `config/linear_haptic.props` | `features/fix_linear_haptic` | `sys.haptic.*` 映射。 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟。 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位和设备专属 WAKE keylayout 参数。 |
-| `PORT_TARGET_DISPLAY_ID` | `devices/oneplus15/fix_auto_brightness` | Android framework 主屏物理 Display ID；组合入口提供默认值并允许调用方覆盖。 |
+| `PORT_TARGET_DISPLAY_ID` | `common/coloros_display` | Android framework 主屏物理 Display ID；组合入口提供默认值并允许调用方覆盖。 |
 
 这些参数依赖实际运行设备，不能从小米原包推断。更换底包、面板、指纹模组、触控驱动或 SKU 后必须重新核对，不能直接照搬。
 

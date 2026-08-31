@@ -71,6 +71,8 @@ def test_ueventd_create_policy_contract() -> None:
         "(allow vendor_init oppo_reserve_media_log (dir (read relabelfrom)))",
         "(allow vendor_init oppo_reserve_system_config (file (getattr)))",
         "(allow vendor_init oppo_reserve_media_log (file (getattr)))",
+        "(allow vendor_init oppo_reserve_system_config (file (relabelfrom)))",
+        "(allow vendor_init oppo_reserve_media_log (file (relabelfrom)))",
         "(allow qsguard kmsg_device (chr_file (write)))",
         "(allow wlchg kmsg_device (chr_file (write)))",
         "(allow wlchg kmsg_device (chr_file (open)))",
@@ -83,6 +85,27 @@ def test_ueventd_create_policy_contract() -> None:
         "(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))",
         "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))",
         "(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))",
+        "(allow system_app_202504 hal_bluetooth_default (binder (call)))",
+        "(allow system_app_202504 hal_bootctl_default (binder (call)))",
+        "(allow system_app_202504 hal_contexthub_default (binder (call)))",
+        "(allow system_app_202504 vendor_hal_gatekeeper_qti (binder (call)))",
+        "(allow system_app_202504 vendor_hal_gnss_qti (binder (call)))",
+        "(allow shell_202504 vendor_hal_perf_default (binder (call)))",
+        "(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))",
+        "(allow updater zygote (unix_stream_socket (getopt)))",
+        "(allow traceur_app zygote (unix_stream_socket (getopt)))",
+        "(allow priv_app zygote (unix_stream_socket (getopt)))",
+        "(allow mediaprovider zygote (unix_stream_socket (getopt)))",
+        "(allow shell_202504 zygote (unix_stream_socket (getopt)))",
+        "(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))",
+        "(allow untrusted_app_30 zygote (unix_stream_socket (getopt)))",
+        "(allow vendor_init_202504 radio_prop (property_service (set)))",
+        "(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))",
+        "(allow vendor_qti_init_shell vendor_oplus_prop (property_service (set)))",
+        "(allow mdm_feature vendor_oplus_prop (property_service (set)))",
+        "(allow vendor_init_202504 config_prop (property_service (set)))",
+        "(allow platform_app system_prop (property_service (set)))",
+        "(allow platform_app_36 system_prop (property_service (set)))",
     ]
     assert statements[0].endswith("(blk_file (create getattr setattr)))")
     policy = POLICY.read_text(encoding="utf-8")
@@ -97,6 +120,10 @@ def test_ueventd_create_policy_contract() -> None:
     assert "(allow qsguard kmsg_device (chr_file (write)))" in policy
     assert "(allow servicemanager vendor_hal_sensorscalibrate_qti_default (binder (call)))" in policy
     assert "(allow cameramind_app vendor_hal_perf_default (binder (call)))" in policy
+    assert "(allow system_app_202504 hal_bluetooth_default (binder (call)))" in policy
+    assert "(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))" in policy
+    assert "(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))" in policy
+    assert "(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))" in policy
     assert "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))" in policy
     assert "(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))" in policy
     apply_source = APPLY.read_text(encoding="utf-8")
@@ -113,7 +140,11 @@ def test_op15_order() -> None:
     text = OP15.read_text(encoding="utf-8")
     ltpo = text.index("features/fix_oplus_ltpo")
     oplus_avc = text.index("common/fix_oplus_avc")
+    coloros_display = text.index("common/coloros_display")
+    vendor_avc = text.index("common/fix_vendor_avc")
     assert ltpo < oplus_avc
+    assert oplus_avc < vendor_avc
+    assert coloros_display < vendor_avc
 
 
 if __name__ == "__main__":

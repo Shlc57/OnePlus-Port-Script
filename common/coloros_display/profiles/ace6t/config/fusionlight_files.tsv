@@ -1,0 +1,2 @@
+# 操作	相对 my_product 根目录的路径
+replace	etc/fusionlight_profile/fusionlight_Main_2_3.json

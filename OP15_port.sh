@@ -9,7 +9,12 @@ export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
 # 一加 15 组合流程固定覆盖原包机型显示名。
 export DEVICE_DISPLAY_NAME='OnePlus 15'
 # Android framework 使用的物理 Display ID；调用方可在环境中显式覆盖。
-export PORT_TARGET_DISPLAY_ID="4630946903293830803"
+export PORT_TARGET_DISPLAY_ID="${PORT_TARGET_DISPLAY_ID:-4630946903293830803}"
+# 开机亮度 Overlay 与旧自动亮度 Overlay 清理由 common/fix_boot_brightness 的
+# oneplus15 Profile 承担；该 Profile 不做曲线校准（显示取材在 common/coloros_display）。
+export BOOT_BRIGHTNESS_PROFILE=oneplus15
+# ColorOS displayconfig 接入锁定 oneplus15 Profile；未注入时模块会按底包识别值自动匹配。
+export COLOROS_DISPLAY_PROFILE=oneplus15
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
 # OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_oplus_ltpo 只消费这个显式
@@ -114,7 +119,6 @@ bash "$port" common/merge_mi_ext \
 	features/fix_oplus_double_tap_wake \
 	features/fix_ultrasonic_fingerprint \
 	features/oplus_millet_core_bridge \
-	common/fix_vendor_avc \
 	common/fix_launcher \
 	common/fix_device_identity \
 	features/fix_oplus_ltpo \
@@ -125,7 +129,9 @@ bash "$port" common/merge_mi_ext \
 	common/fix_mtp \
 	common/fix_mi_mtp_kill_self \
 	features/fix_oplus_fingerprint_protocol \
-	devices/oneplus15/fix_auto_brightness \
+	common/coloros_display \
+	common/fix_vendor_avc \
+	common/fix_boot_brightness \
 	common/fix_boot_refresh_rate \
 	devices/oneplus15/fix_refresh_rate_switch \
 	features/fix_linear_haptic

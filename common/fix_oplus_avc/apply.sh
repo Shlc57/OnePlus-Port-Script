@@ -174,6 +174,16 @@ required_policy_types=(
     zygote
     hal_graphics_composer_default
     vendor_smmu_proxy_device
+    hal_bluetooth_default
+    hal_bootctl_default
+    hal_contexthub_default
+    vendor_hal_gatekeeper_qti
+    vendor_hal_gnss_qti
+    vendor_bluetooth_prop
+    vendor_oplus_prop
+    radio_prop
+    config_prop
+    system_prop
 )
 for required_policy_type in "${required_policy_types[@]}"; do
     if ! grep -Fqx "(type $required_policy_type)" "$vendor_policy" && \
@@ -216,6 +226,8 @@ required_policy_rules=(
     '(allow vendor_init oppo_reserve_media_log (dir (read relabelfrom)))'
     '(allow vendor_init oppo_reserve_system_config (file (getattr)))'
     '(allow vendor_init oppo_reserve_media_log (file (getattr)))'
+    '(allow vendor_init oppo_reserve_system_config (file (relabelfrom)))'
+    '(allow vendor_init oppo_reserve_media_log (file (relabelfrom)))'
     '(allow qsguard kmsg_device (chr_file (write)))'
     '(allow wlchg kmsg_device (chr_file (write)))'
     '(allow wlchg kmsg_device (chr_file (open)))'
@@ -228,6 +240,27 @@ required_policy_rules=(
     '(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))'
     '(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))'
     '(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))'
+    '(allow system_app_202504 hal_bluetooth_default (binder (call)))'
+    '(allow system_app_202504 hal_bootctl_default (binder (call)))'
+    '(allow system_app_202504 hal_contexthub_default (binder (call)))'
+    '(allow system_app_202504 vendor_hal_gatekeeper_qti (binder (call)))'
+    '(allow system_app_202504 vendor_hal_gnss_qti (binder (call)))'
+    '(allow shell_202504 vendor_hal_perf_default (binder (call)))'
+    '(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))'
+    '(allow updater zygote (unix_stream_socket (getopt)))'
+    '(allow traceur_app zygote (unix_stream_socket (getopt)))'
+    '(allow priv_app zygote (unix_stream_socket (getopt)))'
+    '(allow mediaprovider zygote (unix_stream_socket (getopt)))'
+    '(allow shell_202504 zygote (unix_stream_socket (getopt)))'
+    '(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))'
+    '(allow untrusted_app_30 zygote (unix_stream_socket (getopt)))'
+    '(allow vendor_init_202504 radio_prop (property_service (set)))'
+    '(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))'
+    '(allow vendor_qti_init_shell vendor_oplus_prop (property_service (set)))'
+    '(allow mdm_feature vendor_oplus_prop (property_service (set)))'
+    '(allow vendor_init_202504 config_prop (property_service (set)))'
+    '(allow platform_app system_prop (property_service (set)))'
+    '(allow platform_app_36 system_prop (property_service (set)))'
 )
 for required_policy_rule in "${required_policy_rules[@]}"; do
     if ! grep -Fqx "$required_policy_rule" "$selinux_policy_fragment"; then

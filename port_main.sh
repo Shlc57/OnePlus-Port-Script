@@ -16,7 +16,8 @@ print_help() {
 补丁路径示例：
   common/fix_launcher
   features/fix_oplus_ltpo
-  devices/oneplus15/fix_auto_brightness
+  common/coloros_display
+  common/fix_boot_brightness
 
 未指定补丁时仅列出可用补丁。只有显式传入的补丁才会按参数顺序执行。
 为兼容旧用法，也可传入不含分类路径的补丁名；该名称必须全局唯一。

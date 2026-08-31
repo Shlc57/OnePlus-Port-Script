@@ -1,0 +1,8 @@
+# OnePlus 15 机型 Profile：上游原方案的取材参数。
+# 面板表与 lux 表均来自本机 my_product/vendor/etc。
+display_name=OnePlus 15
+device_codes=
+market_names=OnePlus 15
+display_targets=
+panel_table=display_brightness_config_P_3.xml
+disable_high_pwm_rgb=0

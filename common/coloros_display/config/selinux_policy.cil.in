@@ -1,0 +1,22 @@
+;; Display property compatibility for the OnePlus 15 ColorOS display bundle.
+;; The labels already exist in the bottom policy; these are only the exact
+;; property-service/file permissions needed by the Enforcing DSU log.
+(type vendor_wlan_eht_prop)
+(roletype object_r vendor_wlan_eht_prop)
+(type vendor_miui_wifi_p2phc_prop)
+(roletype object_r vendor_miui_wifi_p2phc_prop)
+(type vendor_bluetooth_mi_prop)
+(roletype object_r vendor_bluetooth_mi_prop)
+(typeattributeset property_type (vendor_wlan_eht_prop vendor_miui_wifi_p2phc_prop vendor_bluetooth_mi_prop))
+(typeattributeset system_property_type (vendor_wlan_eht_prop vendor_miui_wifi_p2phc_prop vendor_bluetooth_mi_prop))
+(typeattributeset system_public_property_type (vendor_wlan_eht_prop vendor_miui_wifi_p2phc_prop vendor_bluetooth_mi_prop))
+
+(allow vendor_init_${API_VERSION} vendor_cwb_prop (property_service (set)))
+(allow vendor_init_${API_VERSION} vendor_oplus_display_prop (property_service (set)))
+;; The source exported-system label has no compatible versioned mapping in
+;; this mixed policy. Use the bottom policy's complete Oplus property label.
+(allow mediacodec vendor_oplus_prop (property_service (set)))
+(allow mediacodec vendor_oplus_prop (file (read getattr map open)))
+(allow system_server_${API_VERSION} vendor_wlan_eht_prop (property_service (set)))
+(allow system_server_${API_VERSION} vendor_miui_wifi_p2phc_prop (property_service (set)))
+(allow bluetooth_${API_VERSION} vendor_bluetooth_mi_prop (property_service (set)))

@@ -9,11 +9,17 @@ ace6t_config_dir="$script_dir/devices/oneplus_ace6t/config"
 # export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
 # 一加 Ace 6T 组合流程固定覆盖原包机型显示名。
 export DEVICE_DISPLAY_NAME='OnePlus Ace 6T'
-# 物理 Display ID（devices/oneplus_ace6t/fix_auto_brightness 消费，Ace 6T 实测 dumpsys uniqueId）。
+# 物理 Display ID（common/fix_boot_brightness 的 ace6t Profile 消费，Ace 6T 实测 dumpsys uniqueId）。
 export PORT_TARGET_DISPLAY_ID="4630946700822127507"
 # 底包显示 Target（Ace 6T = canoe）：fix_boot_refresh_rate 只收集该 Target 的
 # PanelResolution，避免混入底包中其他平台的面板分辨率。
 export PORT_DISPLAY_TARGET=canoe
+# 自动亮度接入 OP15 同款 ColorOS displayconfig 方案：common/coloros_display 按
+# Ace 6T Profile 用 my_product 的 P_7 官方表生成原生 autoBrightness 配置。
+export COLOROS_DISPLAY_PROFILE=ace6t
+# 开机默认亮度由 common/fix_boot_brightness 的 Ace 6T Profile 安装；Overlay 与校验
+# 文件都在模块 profiles/ace6t/ 内，作为机型专属预编译产物提供。
+export BOOT_BRIGHTNESS_PROFILE=ace6t
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6t_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.props"
 export NFC_PROPERTIES_FILE="$ace6t_config_dir/nfc.props"
@@ -117,7 +123,8 @@ declare -a ace6t_modules=(
 	common/fix_modem_xts
 	common/fix_mi_mtp_kill_self
 	features/fix_oplus_fingerprint_protocol
-	devices/oneplus_ace6t/fix_auto_brightness
+	common/coloros_display
+	common/fix_boot_brightness
 	common/fix_boot_refresh_rate
 	devices/oneplus_ace6t/fix_refresh_rate_switch
 	features/fix_linear_haptic

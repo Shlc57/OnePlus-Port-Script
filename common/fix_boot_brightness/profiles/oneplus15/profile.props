@@ -1,0 +1,8 @@
+# OnePlus 15 机型 Profile：仅安装启动默认亮度 Overlay 并移除旧自动亮度曲线
+# Overlay；自动亮度取材由 common/coloros_display 负责。
+display_name=OnePlus 15
+device_codes=
+market_names=OnePlus 15
+display_targets=
+boot_overlay_name=OnePlus15BootBrightnessOverlay.apk
+remove_legacy_overlay=MiuiFrameworkResOverlay.apk

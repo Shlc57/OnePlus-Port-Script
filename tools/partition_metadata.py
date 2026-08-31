@@ -278,6 +278,7 @@ def translate_prefix(
     kind: MetadataKind,
     source_prefix: str,
     target_prefix: str,
+    context_overrides: dict[str, str] | None = None,
 ) -> list[str]:
     source_parts = validate_prefix(kind, source_prefix)
     target_parts = validate_prefix(kind, target_prefix)
@@ -295,7 +296,16 @@ def translate_prefix(
             continue
         target_path = f"{target_prefix}{raw_path[len(source_prefix):]}"
         target_key = target_path.replace("\\", "") if kind == "contexts" else target_path
-        translated[target_key] = replace_first_field(line, target_path)
+        translated_line = replace_first_field(line, target_path)
+        if kind == "contexts" and context_overrides:
+            fields = translated_line.split()
+            if len(fields) < 2:
+                raise MetadataError("contexts 条目缺少上下文字段")
+            replacement = context_overrides.get(fields[1])
+            if replacement is not None:
+                fields[1] = replacement
+                translated_line = " ".join(fields)
+        translated[target_key] = translated_line
     if not translated:
         raise MetadataError(f"原包 {kind} 中没有待转换路径：{source_prefix}")
     return list(translated.values())
@@ -329,11 +339,19 @@ def command_translate_manifest(args: argparse.Namespace) -> None:
 
 
 def command_translate_prefix(args: argparse.Namespace) -> None:
+    if args.context_override and args.kind != "contexts":
+        raise MetadataError("--context-override 只能用于 contexts")
+    context_overrides: dict[str, str] = {}
+    for old_context, new_context in args.context_override:
+        if old_context in context_overrides:
+            raise MetadataError(f"重复的 contexts 标签转换：{old_context}")
+        context_overrides[old_context] = new_context
     translated = translate_prefix(
         read_lines(Path(args.source)),
         args.kind,
         args.source_prefix,
         args.target_prefix,
+        context_overrides,
     )
     write_lines(Path(args.output), translated, args.kind)
 
@@ -374,6 +392,14 @@ def build_parser() -> argparse.ArgumentParser:
     prefix_parser.add_argument("--source-prefix", required=True)
     prefix_parser.add_argument("--target-prefix", required=True)
     prefix_parser.add_argument("--output", required=True)
+    prefix_parser.add_argument(
+        "--context-override",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("OLD", "NEW"),
+        help="仅 contexts 前缀转换时替换标签值",
+    )
     prefix_parser.set_defaults(handler=command_translate_prefix)
 
     return parser

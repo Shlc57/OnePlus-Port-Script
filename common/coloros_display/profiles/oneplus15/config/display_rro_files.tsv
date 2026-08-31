@@ -1,0 +1,3 @@
+# 操作	相对 my_product 根目录的路径
+replace	overlay/android_framework_res_overlay.display.product.24831.apk
+replace	overlay/oplus_framework_res_overlay.display.product.24831.apk

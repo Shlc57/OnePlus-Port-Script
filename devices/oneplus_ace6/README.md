@@ -22,7 +22,8 @@
 
 | 模块 | 改动分区 | 说明 |
 | --- | --- | --- |
-| [`fix_auto_brightness`](fix_auto_brightness/README.md) | `odm`、`product` | 适配 Ace 6 的传感器属性、显示配置、自动亮度曲线与启动亮度（Display ID 由入口 `PORT_TARGET_DISPLAY_ID` 注入）。 |
+| 自动亮度接入（[`common/coloros_display`](../../common/coloros_display/README.md)，Profile `ace6`） | `odm`、`product`、`system`、`system_ext`、`vendor`、`my_product` | OP15 同款方案：`my_product/vendor/etc` 覆盖合并入 vendor，用 P_7 官方表生成含 `autoBrightness` 的 Display ID 配置，迁移 FusionLight 与 display RRO，禁用 `high_pwm_rgb`。需解包 `my_product`；manifest 暂按 Ace 6T 模板，待实机核实。 |
+| 开机亮度（[`common/fix_boot_brightness`](../../common/fix_boot_brightness/README.md)，Profile `ace6`） | `product` | 安装启动亮度 Overlay 并移除 `MiuiFrameworkResOverlay.apk`。 |
 | [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。注意：其互斥策略沿用一加 15 的 165Hz 五档屏假设（60/90/120/144/165、144/165Hz PWM），与本机 120Hz LTPS 面板不符，需按实机档位重审。 |
 | [`fix_nfc_tms_bridge`](fix_nfc_tms_bridge/README.md) | `odm`、`system`、`vendor` | 青藤 THN31 TMS 栈桥接：保留底包 NFC 栈，注入 `/dev/st21nfc` 别名，登记最小 SELinux bundle。替代 NXP 专用的 `features/fix_nci_nfc`。 |
 | [`fix_vendor_selinux_files`](fix_vendor_selinux_files/README.md) | `vendor` | 补齐底包缺失的 `plat_sepolicy_vers.txt` 与 `genfs_labels_version.txt`（实测 `202504`），否则 `common/fix_vendor_avc` 会失败。 |
@@ -37,7 +38,9 @@
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟；`ultrasonic.fp.target=sun` 过滤底包多平台分辨率。 | 传感器中心为换算估算值，实机可校准后重跑 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位与 WAKE keylayout 参数。 | 沿用一加 15 触控栈值，实机需校准 |
 | `config/init.usb.configfs.rc` | `common/fix_mtp` | Ace 6 底包 USB configfs rc（`mtp.gs0` 纯触发器形态），替换被小米原包覆盖的目标。 | 已从底包提取，与 Ace 6T 版本逐字节一致 |
-| `PORT_TARGET_DISPLAY_ID` | `fix_auto_brightness` | Android framework 主屏物理 Display ID。 | 实测 |
+| `PORT_TARGET_DISPLAY_ID` | `common/coloros_display`、`common/fix_boot_refresh_rate` | Android framework 主屏物理 Display ID。 | 实测 |
+| `COLOROS_DISPLAY_PROFILE=ace6` | `common/coloros_display` | 显式锁定显示接入 Profile；未注入时按底包识别值自动匹配。 | 实测 |
+| `BOOT_BRIGHTNESS_PROFILE=ace6` | `common/fix_boot_brightness` | 显式锁定机型 Profile；未注入时按底包识别值自动匹配。Overlay、校验文件都在模块 `profiles/ace6/` 内。 | 实测 |
 
 这些参数依赖实际运行设备，不能从小米原包推断。更换底包、面板、指纹模组、触控驱动或 SKU 后必须重新核对，不能直接照搬一加 15、一加 Ace 6T 或其他机型。
 

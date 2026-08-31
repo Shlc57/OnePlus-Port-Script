@@ -25,9 +25,11 @@ ro.build.version.ota
 
 ## Oplus reserve AVC
 
-一加 15 的 `oplusreserve1` 实际指向 `/dev/block/sdf2`。本模块将该节点映射为 `oppo_block_device`，并提供由 Enforcing AVC 取证得出的 ueventd、reserve、gameopt、HAL 与守护进程最小规则。规则不包含 `rild` allow、`permissive`、`dontaudit` 或通配类型；CIL 仍由 `common/fix_vendor_avc` 统一合并到最终策略。
+一加 15 的 `oplusreserve1` 实际指向 `/dev/block/sdf2`。本模块将该节点映射为 `oppo_block_device`，并提供由 Enforcing AVC 取证得出的 ueventd、reserve（含 `secrecy.cfg`/日志文件 relabelfrom）、gameopt、HAL 与守护进程最小规则。规则不包含 `rild` allow、`permissive`、`dontaudit` 或通配类型；CIL 仍由 `common/fix_vendor_avc` 统一合并到最终策略。
 
 这是当前 Oplus 底包布局的明确前提。更换机型或分区布局前，必须重新核对实际 reserve 块设备和 AVC，不能直接复用该节点规则。
+
+同一份一加 15 Enforcing DSU `dmesg.log` 还记录了 `system_app` 到蓝牙、bootctl、contexthub、gatekeeper、GNSS HAL 的 Binder 调用，`shell` 到 perf HAL 的调用，以及多个 app domain 对 zygote USAP socket 的 `getopt`。模块按日志中的单一 source/target/class/permission 增加对应 allow；不包含 `crash_dump -> init` 的 `ptrace`，因为目标平台明确以 `neverallow` 禁止该组合。日志中的 property setter 会先在 `coloros_display` bundle 恢复专用标签，再由本模块只给记录到的 setter 域授权，避免对 `vendor_default_prop` 放宽。
 
 ## 执行
 

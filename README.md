@@ -54,8 +54,9 @@ bash port_main.sh features/fix_nci_nfc common/fix_face_unlock \
 bash port_main.sh features/fix_oplus_ltpo \
   features/fix_oplus_fingerprint_protocol
 
-# 执行一加 15 专属补丁与自动刷新率补丁
-bash port_main.sh devices/oneplus15/fix_auto_brightness \
+# 执行一加 15 ColorOS 显示配置、开机亮度与自动刷新率补丁
+PORT_TARGET_DISPLAY_ID=4630946903293830803 bash port_main.sh common/coloros_display \
+  common/fix_boot_brightness \
   common/fix_boot_refresh_rate
 
 # 单独执行当前一加 15 流程中的通用兼容补丁
@@ -117,7 +118,9 @@ bash OPAce6T_port.sh
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 | [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算；多平台底包可通过 `PORT_DISPLAY_TARGET` 按 SoC Target 过滤。 |
+| [`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) | `product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：安装启动默认亮度 Overlay 并移除旧自动亮度曲线 Overlay `MiuiFrameworkResOverlay.apk`。Profile 可按底包识别值自动匹配或用 `BOOT_BRIGHTNESS_PROFILE` 显式指定。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
+| [`common/coloros_display`](common/coloros_display/README.md) | `system`、`system_ext`、`odm`、`product`、`vendor`；另需解包 `my_product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：将底包 `my_product/vendor/etc` 覆盖合并至最终 vendor，从官方面板表生成含 `autoBrightness` 的 Display ID 配置；迁移 FusionLight profile 和显示 RRO，保留底包 CWB 原生服务链，并按 Profile 禁用 `high_pwm_rgb`。可用 `COLOROS_DISPLAY_PROFILE` 显式指定。 |
 | [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
@@ -129,7 +132,7 @@ bash OPAce6T_port.sh
 | [`common/fix_oplus_avc`](common/fix_oplus_avc/README.md) | `vendor`、`odm` | 修复实际 Oplus reserve 块设备标签、合并实测最小 AVC，并恢复 mdm_feature 的 SVN/OTA property labels。 |
 | [`common/fix_pangu`](common/fix_pangu/README.md) | `product`、`system` | 将 `product/pangu/system` 迁移到最终 system。 |
 | [`common/fix_settings_haptic`](common/fix_settings_haptic/README.md) | `system_ext` | 修复 Settings 的触感能力判断。 |
-| [`common/fix_vendor_avc`](common/fix_vendor_avc/README.md) | `vendor`、`odm` | 统一合并 vendor 策略、模块片段与 SELinux bundle。 |
+| [`common/fix_vendor_avc`](common/fix_vendor_avc/README.md) | `vendor`、`odm` | 统一合并 vendor 策略、模块片段与 SELinux bundle；ColorOS 显示属性策略需在它之前登记。 |
 | [`common/fix_wechat_safe_mode`](common/fix_wechat_safe_mode/README.md) | `odm` | 删除假的 Camera Extensions 实现。 |
 | [`common/merge_mi_ext`](common/merge_mi_ext/README.md) | `product`、`system_ext`、`system`；删除 `mi_ext` 来源 | 将 `mi_ext` 内容映射到真实最终分区。 |
 
@@ -154,7 +157,6 @@ bash OPAce6T_port.sh
 
 | 模块 | 改动分区 | 用途 |
 | --- | --- | --- |
-| [`devices/oneplus15/fix_auto_brightness`](devices/oneplus15/fix_auto_brightness/README.md) | `odm`、`product` | 适配自动亮度曲线、物理亮度边界和启动亮度。 |
 | [`devices/oneplus15/fix_refresh_rate_switch`](devices/oneplus15/fix_refresh_rate_switch/README.md) | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
 
 启用模块前应根据目标机型和底包确认适用性。不适用的模块不要传给 `port_main.sh`；设备专属模块不得跨机型混用。完整一加 15 组合流程见 [`README_OP15.md`](README_OP15.md)。
@@ -167,10 +169,10 @@ bash OPAce6T_port.sh
 | --- | --- | --- | --- |
 | [`devices/oneplus_ace6/fix_nfc_tms_bridge`](devices/oneplus_ace6/fix_nfc_tms_bridge/README.md) | 仅 Ace 6 | `odm`、`system`、`vendor` | 青藤 THN31（TMS 栈）NFC 桥接：保留底包栈、注入 `/dev/st21nfc` 别名、登记最小 SELinux bundle 并写兼容属性。 |
 | [`devices/oneplus_ace6/fix_vendor_selinux_files`](devices/oneplus_ace6/fix_vendor_selinux_files/README.md) | 仅 Ace 6 | `vendor` | 补齐底包缺失的 `plat_sepolicy_vers.txt` 与 `genfs_labels_version.txt`（实测固化为 `202504`）。 |
-| [`devices/oneplus_ace6/fix_auto_brightness`](devices/oneplus_ace6/fix_auto_brightness/README.md) | 仅 Ace 6 | `odm`、`product` | P7 面板自动亮度曲线、物理亮度边界与启动亮度。 |
 | [`devices/oneplus_ace6/fix_refresh_rate_switch`](devices/oneplus_ace6/fix_refresh_rate_switch/README.md) | 仅 Ace 6 | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
-| [`devices/oneplus_ace6t/fix_auto_brightness`](devices/oneplus_ace6t/fix_auto_brightness/README.md) | 仅 Ace 6T | `odm`、`product` | P7 面板自动亮度曲线、物理亮度边界与启动亮度。 |
 | [`devices/oneplus_ace6t/fix_refresh_rate_switch`](devices/oneplus_ace6t/fix_refresh_rate_switch/README.md) | 仅 Ace 6T | `product`、`system_ext` | 保留完整刷新率列表；DC/PWM 策略与 Ace 6 相同。 |
+
+Ace 6/6T 与一加 15 的显示接入方案已统一：[`common/coloros_display`](common/coloros_display/README.md) 按机型 Profile 用底包 `my_product` 官方面板表生成原生 `autoBrightness` 配置，[`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) 按机型 Profile 安装启动默认亮度 Overlay。两个模块都按底包设备代号/市场名/显示 Target 自动匹配机型 Profile，也可用 `COLOROS_DISPLAY_PROFILE` / `BOOT_BRIGHTNESS_PROFILE` 显式指定。Ace 6/6T 的亮度跟随表现需刷机验证。
 
 ## 鸣谢
 

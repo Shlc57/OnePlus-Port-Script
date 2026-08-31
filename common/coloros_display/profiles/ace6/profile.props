@@ -1,0 +1,8 @@
+# Ace 6 机型 Profile：底包设备代号与 my_product 取材暂未实测，优先按市场名或
+# 显示 Target 匹配；manifest 暂按 Ace 6T 实包模板，取得 Ace 6 my_product 后核实。
+display_name=Ace 6
+device_codes=
+market_names=OnePlus Ace 6
+display_targets=sun
+panel_table=display_brightness_config_P_7.xml
+disable_high_pwm_rgb=1

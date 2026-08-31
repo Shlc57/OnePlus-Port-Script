@@ -1,0 +1,7 @@
+# Ace 6T 机型 Profile：识别值来自底包实测；manifest 按 Ace 6T my_product 实包整理。
+display_name=Ace 6T
+device_codes=nezha
+market_names=OnePlus Ace 6T
+display_targets=canoe
+panel_table=display_brightness_config_P_7.xml
+disable_high_pwm_rgb=1

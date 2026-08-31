@@ -1,0 +1,8 @@
+# Ace 6 机型 Profile：底包设备代号与 my_product 取材暂未实测，优先按市场名或
+# 显示 Target 匹配；取得底包 build.prop 与 my_product 后补充核实。
+display_name=Ace 6
+device_codes=
+market_names=OnePlus Ace 6
+display_targets=sun
+boot_overlay_name=Ace6BootBrightnessOverlay.apk
+remove_legacy_overlay=MiuiFrameworkResOverlay.apk

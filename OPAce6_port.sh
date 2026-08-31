@@ -21,6 +21,10 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6_config_dir/display_vendor.pr
 export NFC_PROPERTIES_FILE="$ace6_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
+# Ace 6 底包 rc 走 mtp.gs0 纯触发器，与模块内置的一加 15 rc（use_ffs_mtp 形态）不同，
+# 由 fix_mtp 自适应校验并以这份真底包 rc 替换被原包覆盖的目标。
+# 该文件与 Ace 6T 底包 rc 逐字节一致，但各机型入口仍分别指向自己的 config 目录。
+export FIX_MTP_SOURCE_RC="$ace6_config_dir/init.usb.configfs.rc"
 # Ace 6 实机超声波指纹硬件快照。通用模块不从小米原包推断这些参数；
 # 传感器中心等坐标属换算估算值，刷机后如对不上可直接修改 fingerprint.props 重跑。
 export ULTRASONIC_FP_PROPERTIES_FILE="$ace6_config_dir/fingerprint.props"
@@ -87,6 +91,7 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
 
 declare -a ace6_modules=(
 	common/merge_mi_ext
+	common/fix_mtp
 	common/fuck_oplus_hybridzram
 	common/disable_mi_vulkan
 	features/fuck_audio_appname

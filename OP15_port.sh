@@ -106,6 +106,7 @@ bash "$port" common/merge_mi_ext \
 	common/disable_mi_vulkan \
 	features/fuck_audio_appname \
 	features/fix_oplus_lhdc \
+	features/fix_xiaoai_dsp_wakeup \
 	common/disable_odm_imports \
 	common/fake_device_params \
 	common/fix_pangu \

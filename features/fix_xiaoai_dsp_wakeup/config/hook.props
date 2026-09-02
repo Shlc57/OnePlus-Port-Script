@@ -1,0 +1,31 @@
+# LSPosed 识别修复 hook（local.mio.xiaoairecognitionhook，versionCode 100）
+# 消费的运行时阈值。来源：OnePlus 13 (SM8750) HyperOS 移植实测调优；
+# 其他平台需真机复验，可在机型组合入口通过 XIAOAI_WAKEUP_PROPERTIES_FILE
+# 用同名 persist.sys.xiaoai.* 键覆盖。
+persist.sys.xiaoai.rec_profile=5
+persist.sys.xiaoai.pdk_l1_confidence=35
+persist.sys.xiaoai.udk_l1_confidence=12
+persist.sys.xiaoai.udk_l2_threshold=0.020
+persist.sys.xiaoai.udk_l2_max_ms=3500
+persist.sys.xiaoai.audioflow_watchdog_ms=4000
+persist.sys.xiaoai.lab_history_ms=2500
+persist.sys.xiaoai.lab_preroll_ms=1000
+persist.sys.xiaoai.l2_agc_target_peak=6000
+persist.sys.xiaoai.l2_agc_target_rms=800
+persist.sys.xiaoai.l2_agc_max_gain=8.0
+persist.sys.xiaoai.l2_agc_enabled=0
+persist.sys.xiaoai.l2_full_reinit=1
+persist.sys.xiaoai.l2_pcm_diagnostics=0
+persist.sys.xiaoai.l2_voice_gate_bypass=0
+persist.sys.xiaoai.l2_vad_ignore_ms=0
+persist.sys.xiaoai.l2_vad_rms=12
+persist.sys.xiaoai.l2_vad_peak=32
+persist.sys.xiaoai.l2_vad_voice_ms=40
+persist.sys.xiaoai.l2_vad_consecutive_ms=20
+persist.sys.xiaoai.voiceprint_threshold=0.0001
+persist.sys.xiaoai.enroll_accuracy=0.35
+persist.sys.xiaoai.enroll_voiceprint_min=0.15
+persist.sys.xiaoai.enroll_consistency=0.25
+persist.sys.xiaoai.enroll_accept_keyword_mismatch=1
+persist.sys.xiaoai.dsp_dedup_ms=4500
+persist.sys.xiaoai.launch_dedup_ms=5000

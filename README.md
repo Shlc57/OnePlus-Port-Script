@@ -150,6 +150,7 @@ bash OPAce6T_port.sh
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
 | [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限；多平台底包可通过 `ultrasonic.fp.target` 按 SoC Target 过滤 PanelResolution。 |
+| [`features/fix_xiaoai_dsp_wakeup`](features/fix_xiaoai_dsp_wakeup/README.md) | `odm`、`system_ext` | 迁移原包 Qualcomm 声学唤醒模型与声学属性到底包 odm、开启 PAL 并发采集，并预装小爱识别修复 LSPosed hook；原包缺声学模型时安全跳过。 |
 
 ### 一加 15 专属模块（`devices/oneplus15`）
 

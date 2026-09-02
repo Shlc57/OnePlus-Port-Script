@@ -101,6 +101,8 @@ declare -a ace6t_modules=(
 	common/disable_mi_vulkan
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
+	# 小爱同学 DSP 唤醒：迁移原包声学模型与属性到底包 odm；原包缺模型时自动跳过。
+	features/fix_xiaoai_dsp_wakeup
 	common/disable_odm_imports
 	common/fake_device_params
 	common/fix_pangu

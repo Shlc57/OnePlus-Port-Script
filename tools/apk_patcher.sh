@@ -180,7 +180,15 @@ apk_patcher_rollback() {
 
 apk_patcher_record_entry() {
 	local entry="${1:-}"
-	[[ "$entry" =~ ^[^/]+$ ]] || apk_patcher_fail "无效的归档条目：$entry"
+	local component
+	local -a components
+	[[ "$entry" =~ ^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$ ]] ||
+		apk_patcher_fail "无效的归档条目：$entry"
+	IFS='/' read -r -a components <<< "$entry"
+	for component in "${components[@]}"; do
+		[[ "$component" != . && "$component" != .. ]] ||
+			apk_patcher_fail "归档条目不能包含相对路径段：$entry"
+	done
 	touch "$SESSION_DIR/changed.entries"
 	if ! grep -Fqx -- "$entry" "$SESSION_DIR/changed.entries"; then
 		printf '%s\n' "$entry" >> "$SESSION_DIR/changed.entries"
@@ -208,7 +216,7 @@ apk_patcher_finalize() {
 		[[ -s "$entry_file" ]] || apk_patcher_fail "回编译结果中的条目为空：$entry"
 		[[ "$(apk_patcher_entry_count "$patched" "$entry")" == 1 ]] ||
 			apk_patcher_fail "目标条目数量异常：$entry"
-		(cd -- "$(dirname -- "$entry_file")" && zip -q -0 "$patched" "$(basename -- "$entry_file")") || return 1
+		(cd -- "$SESSION_DIR" && zip -q -0 "$patched" "$entry") || return 1
 		cmp -s "$entry_file" <(unzip -p "$patched" "$entry") ||
 			apk_patcher_fail "目标条目写回失败：$entry"
 	done <<< "$entries"

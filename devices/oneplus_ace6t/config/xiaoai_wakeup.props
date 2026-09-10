@@ -1,0 +1,8 @@
+# 小爱唤醒机型参数（Ace 6T 实测 ro.boot.prjname=24855）。
+# odm.prjname 非 0 时，模块额外把声学属性写入 import 链目标
+# /odm/etc/<prjname>/build.gsi.prop——odm/etc/build.prop 头部 import 链
+# 之后的属性段会被 HyperOS init 跳过（真机实测），D.N.A3 打包还会把
+# 尾部属性重排回 import 之后；多载体当前仍需 root 真机复核属性可见性。
+odm.prjname=24855
+# Ace 6T 当前验证方案显式测试 DSP 与普通录音并发；其他组合默认不修改 PAL。
+pal_concurrent_capture=true

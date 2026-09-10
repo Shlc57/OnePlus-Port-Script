@@ -1,0 +1,7 @@
+ro.vendor.audio.soundtrigger.xiaomievent u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.soundtrigger.permian u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.soundtrigger.wakeupword u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.soundtrigger.is_force_alarm_voiceassistant_deepbuffer u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.soundtrigger.support_record_type u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.voiceassist.support_record_type u:object_r:vendor_audio_prop:s0 exact
+ro.vendor.audio.soundtrigger.sva-7.0 u:object_r:vendor_audio_prop:s0 exact

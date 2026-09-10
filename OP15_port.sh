@@ -17,6 +17,7 @@ export BOOT_BRIGHTNESS_PROFILE=oneplus15
 export COLOROS_DISPLAY_PROFILE=oneplus15
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
+export XIAOAI_VOICETRIGGER_PATCH=false
 # OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_oplus_ltpo 只消费这个显式
 # 配置，不从小米原包、DT 或其他机型猜测 1/55Hz 策略。
 export OPLUS_ADFR_RUS_XML_FILE="$oneplus15_config_dir/adfr2minfps.xml"
@@ -106,11 +107,12 @@ bash "$port" common/merge_mi_ext \
 	common/disable_mi_vulkan \
 	features/fuck_audio_appname \
 	features/fix_oplus_lhdc \
-	features/fix_xiaoai_dsp_wakeup \
 	common/disable_odm_imports \
 	common/fake_device_params \
 	common/fix_pangu \
 	common/fix_mi_account \
+	features/fix_xiaoai_dsp_wakeup \
+	features/fix_xiaoai_voicetrigger \
 	common/fix_sn \
 	common/enable_hyperos_features \
 	common/fix_camera_mr \

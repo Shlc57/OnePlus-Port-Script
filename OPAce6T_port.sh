@@ -22,6 +22,13 @@ export COLOROS_DISPLAY_PROFILE=ace6t
 export BOOT_BRIGHTNESS_PROFILE=ace6t
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6t_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.props"
+# 小爱唤醒机型参数：odm.prjname=24855（真机 ro.boot.prjname 实测），
+# 声学属性经 /odm/etc/<prjname>/build.gsi.prop 走 import 链生效。
+export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6t_config_dir/xiaoai_wakeup.props"
+# 当前 APK 补丁仅依据 SM8845 原包分析，由 Ace 6T 显式启用；VoiceAssist
+# 使用 Build.DEVICE 精确匹配 cloudControl.device，因此明确传入真机代号。
+export XIAOAI_VOICETRIGGER_PATCH=true
+export XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 export NFC_PROPERTIES_FILE="$ace6t_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6t_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
@@ -101,12 +108,12 @@ declare -a ace6t_modules=(
 	common/disable_mi_vulkan
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
-	# 小爱同学 DSP 唤醒：迁移原包声学模型与属性到底包 odm；原包缺模型时自动跳过。
-	features/fix_xiaoai_dsp_wakeup
 	common/disable_odm_imports
 	common/fake_device_params
 	common/fix_pangu
 	common/fix_mi_account
+	features/fix_xiaoai_dsp_wakeup
+	features/fix_xiaoai_voicetrigger
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr

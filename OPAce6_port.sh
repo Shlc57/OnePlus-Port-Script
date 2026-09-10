@@ -22,6 +22,7 @@ export COLOROS_DISPLAY_PROFILE=ace6
 export BOOT_BRIGHTNESS_PROFILE=ace6
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6_config_dir/display_vendor.props"
+export XIAOAI_VOICETRIGGER_PATCH=false
 # Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 devices/oneplus_ace6/fix_nfc_tms_bridge
 # 消费本文件；NXP 专用适配 features/fix_nci_nfc 对 Ace 6 不适用。
 export NFC_PROPERTIES_FILE="$ace6_config_dir/nfc.props"
@@ -102,12 +103,12 @@ declare -a ace6_modules=(
 	common/disable_mi_vulkan
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
-	# 小爱同学 DSP 唤醒：迁移原包声学模型与属性到底包 odm；原包缺模型时自动跳过。
-	features/fix_xiaoai_dsp_wakeup
 	common/disable_odm_imports
 	common/fake_device_params
 	common/fix_pangu
 	common/fix_mi_account
+	features/fix_xiaoai_dsp_wakeup
+	features/fix_xiaoai_voicetrigger
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr

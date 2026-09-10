@@ -1,0 +1,6 @@
+# 类型	目标	相对 fix_xiaoai_dsp_wakeup 目录的片段或项目内必需文件
+require	project	product/app/VoiceTrigger/VoiceTrigger.apk
+require	project	product/priv-app/VoiceAssistAndroidT/VoiceAssistAndroidT.apk
+policy	vendor_policy	config/selinux_policy.cil.in
+contexts	vendor_property_contexts	config/xiaoai_property_contexts
+contexts	precompiled_property_contexts	config/xiaoai_property_contexts

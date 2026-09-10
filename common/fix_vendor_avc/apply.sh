@@ -133,8 +133,10 @@ effective_vendor_service_contexts=""
 validate_context_fragment() {
 	local fragment_file="${1:-}"
 	local policy_file="${2:-}"
+	local context_target="${3:-}"
 	local context_key
 	local context_value
+	local context_match
 	local extra_field
 	local normalized_context_key
 	local context_type
@@ -147,13 +149,16 @@ validate_context_fragment() {
 		err_print "SELinux context 片段不能是符号链接：$fragment_file"
 		return 1
 	fi
-	while IFS=$' \t' read -r context_key context_value extra_field || \
+	while IFS=$' \t' read -r context_key context_value context_match extra_field || \
 		[[ -n "$context_key" || -n "$context_value" ]]; do
 		context_key="${context_key%$'\r'}"
 		context_value="${context_value%$'\r'}"
+		context_match="${context_match%$'\r'}"
 		extra_field="${extra_field%$'\r'}"
 		[[ -z "$context_key" || "$context_key" == \#* ]] && continue
 		if [[ -z "$context_value" || -n "$extra_field" || \
+			( -n "$context_match" && \
+				( "$context_match" != exact || "$context_target" != *_property_contexts ) ) || \
 			! "$context_value" =~ ^u:object_r:([A-Za-z0-9_]+):s0$ ]]; then
 			err_print "SELinux context 片段格式错误：$fragment_file"
 			return 1
@@ -184,19 +189,22 @@ verify_context_fragment_applied() {
 	local target_file="${2:-}"
 	local context_key
 	local context_value
+	local context_match
 	local extra_field
 
 	check_file_exists "$fragment_file" || return 1
 	check_file_exists "$target_file" || return 1
-	while IFS=$' \t' read -r context_key context_value extra_field || \
+	while IFS=$' \t' read -r context_key context_value context_match extra_field || \
 		[[ -n "$context_key" || -n "$context_value" ]]; do
 		context_key="${context_key%$'\r'}"
 		context_value="${context_value%$'\r'}"
+		context_match="${context_match%$'\r'}"
 		extra_field="${extra_field%$'\r'}"
 		[[ -z "$context_key" || "$context_key" == \#* ]] && continue
 		if ! awk \
 			-v expected_key="$context_key" \
 			-v expected_context="$context_value" \
+			-v expected_match="$context_match" \
 			'
 				BEGIN {
 					gsub(/\\/, "", expected_key)
@@ -209,7 +217,9 @@ verify_context_fragment_applied() {
 					gsub(/\\/, "", actual_key)
 					if (actual_key == expected_key) {
 						key_count++
-						if (NF == 2 && $2 == expected_context) {
+						if ($2 == expected_context &&
+							((expected_match == "" && NF == 2) ||
+							(expected_match != "" && NF == 3 && $3 == expected_match))) {
 							exact_count++
 						}
 					}
@@ -556,7 +566,8 @@ for bundle_context_index in "${!bundle_context_fragments[@]}"; do
 		"${bundle_context_targets[$bundle_context_index]}")"
 	validate_context_fragment \
 		"$bundle_context_fragment" \
-		"${temporary_policy_files[0]}"
+		"${temporary_policy_files[0]}" \
+		"${bundle_context_targets[$bundle_context_index]}"
 	merge_contexts_file "$bundle_context_fragment" "$bundle_context_target"
 	verify_context_fragment_applied "$bundle_context_fragment" "$bundle_context_target"
 	verify_context_merge_idempotent "$bundle_context_fragment" "$bundle_context_target"

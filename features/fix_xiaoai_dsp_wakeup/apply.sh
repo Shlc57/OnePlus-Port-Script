@@ -29,6 +29,15 @@ odm_property_contexts="$project_dir/odm/etc/selinux/odm_property_contexts"
 selinux_bundle_manifest="$patcher_dir/config/selinux_bundle.tsv"
 selinux_policy_fragment="$patcher_dir/config/selinux_policy.cil.in"
 xiaoai_property_contexts="$patcher_dir/config/xiaoai_property_contexts"
+mi_vendor_acdb_manifest="$patcher_dir/config/mi_vendor_acdb_sources.tsv"
+# PAL 来源只接受相对于 project_dir 的安全路径，避免共享模块绑定机型绝对路径。
+xiaoai_pal_source_relative="${XIAOAI_PAL_CONFIG_FILE:-}"
+xiaoai_pal_source=""
+mi_vendor_acdb_enabled=false
+mi_vendor_contexts=""
+mi_vendor_fsconfig=""
+vendor_contexts=""
+vendor_fsconfig=""
 
 xiaoai_property_keys=(
 	ro.vendor.audio.soundtrigger.xiaomievent
@@ -135,6 +144,35 @@ fi
 
 check_part_exists odm
 check_part_exists vendor
+mi_vendor_acdb_source_dir="$project_dir/mi_vendor"
+if [[ -f "$mi_vendor_acdb_manifest" && ! -L "$mi_vendor_acdb_manifest" &&
+	-d "$mi_vendor_acdb_source_dir" && ! -L "$mi_vendor_acdb_source_dir" ]]; then
+	mi_vendor_acdb_enabled=true
+	while IFS=$'\t' read -r acdb_operation acdb_relative_path acdb_extra_field || [[ -n "$acdb_operation" || -n "$acdb_relative_path" ]]; do
+		acdb_operation="${acdb_operation%$'\r'}"
+		acdb_relative_path="${acdb_relative_path%$'\r'}"
+		[[ -z "$acdb_operation" || "$acdb_operation" == \#* ]] && continue
+		if [[ ! -f "$mi_vendor_acdb_source_dir/$acdb_relative_path" || -L "$mi_vendor_acdb_source_dir/$acdb_relative_path" ]]; then
+			mi_vendor_acdb_enabled=false
+			break
+		fi
+	done < "$mi_vendor_acdb_manifest"
+fi
+if [[ "$mi_vendor_acdb_enabled" == true ]]; then
+	mi_vendor_contexts="$(get_part_contexts_path mi_vendor)"
+	mi_vendor_fsconfig="$(get_part_fsconfig_path mi_vendor)"
+	vendor_contexts="$(get_part_contexts_path vendor)"
+	vendor_fsconfig="$(get_part_fsconfig_path vendor)"
+	for acdb_metadata_file in "$mi_vendor_contexts" "$mi_vendor_fsconfig" "$vendor_contexts" "$vendor_fsconfig"; do
+		check_file_exists "$acdb_metadata_file"
+	done
+	validate_source_file_manifest "$mi_vendor_acdb_source_dir" "$project_dir/vendor" "$mi_vendor_acdb_manifest"
+	validate_translated_contexts "$mi_vendor_contexts" "$mi_vendor_acdb_manifest" /mi_vendor /vendor
+	validate_translated_fsconfig "$mi_vendor_fsconfig" "$mi_vendor_acdb_manifest" mi_vendor vendor
+	std_print "已启用 Ace 6T alor ACDB 精确补丁"
+else
+	std_print "未发现完整 mi_vendor alor ACDB 来源，跳过 ACDB 补丁"
+fi
 for required_file in \
 	"$odm_build_prop" \
 	"$vendor_build_prop" \
@@ -207,9 +245,41 @@ if [[ -e "$odm_property_contexts" || -L "$odm_property_contexts" ]]; then
 	prepare_odm_property_contexts=true
 fi
 
-if [[ "$pal_concurrent_capture" == true ]] && [[ ! -s "$odm_pal_config" ]]; then
-	err_print "底包缺少 PAL 声学配置：odm/etc/resourcemanager.xml"
-	exit 1
+pal_uuid_updated=0
+if [[ -n "$xiaoai_pal_source_relative" ]]; then
+	case "$xiaoai_pal_source_relative" in
+		/*|../*|*/../*|*/..)
+			err_print "XIAOAI_PAL_CONFIG_FILE 必须是 project_dir 下的安全相对路径：$xiaoai_pal_source_relative"
+			exit 1
+			;;
+	esac
+	xiaoai_pal_source="$project_dir/$xiaoai_pal_source_relative"
+	if [[ -L "$xiaoai_pal_source" ]]; then
+		err_print "小爱 PAL 来源不能是符号链接：$xiaoai_pal_source"
+		exit 1
+	elif [[ ! -e "$xiaoai_pal_source" ]]; then
+		warn_print "小爱 PAL 来源不存在，跳过 PAL UUID 配置：$xiaoai_pal_source"
+		xiaoai_pal_source=""
+	elif [[ ! -f "$xiaoai_pal_source" ]]; then
+		err_print "小爱 PAL 来源不是普通文件：$xiaoai_pal_source"
+		exit 1
+	fi
+else
+	warn_print "未提供 XIAOAI_PAL_CONFIG_FILE，跳过 PAL UUID 配置"
+fi
+
+if [[ "$pal_concurrent_capture" == true || -n "$xiaoai_pal_source" ]]; then
+	if [[ -L "$odm_pal_config" ]]; then
+		err_print "底包 PAL 声学配置不能是符号链接：odm/etc/resourcemanager.xml"
+		exit 1
+	elif [[ ! -e "$odm_pal_config" ]]; then
+		warn_print "底包缺少 PAL 声学配置，跳过 PAL 调整：odm/etc/resourcemanager.xml"
+		xiaoai_pal_source=""
+		pal_concurrent_capture=false
+	elif [[ ! -f "$odm_pal_config" ]]; then
+		err_print "底包 PAL 声学配置不是普通文件：odm/etc/resourcemanager.xml"
+		exit 1
+	fi
 fi
 
 if [[ -L "$odm_etc_dir" || ! -d "$odm_etc_dir" ]]; then
@@ -380,6 +450,23 @@ if [[ "$pal_concurrent_capture" == true ]]; then
 	fi
 fi
 
+# 先在临时文件中完成小爱 PAL UUID/profile 的结构校验，最终与其他产物统一安装。
+generated_pal_uuid=""
+if [[ -n "$xiaoai_pal_source" ]]; then
+	generated_pal_uuid="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_pal_uuid.XXXXXX')")"
+	temporary_files+=("$generated_pal_uuid")
+	pal_uuid_target="$odm_pal_config"
+	if (( pal_updated == 1 )); then
+		pal_uuid_target="$generated_pal"
+	fi
+	if ! PYTHONDONTWRITEBYTECODE=1 python3 "$patcher_dir/xiaoai_pal_config.py" \
+		--source "$xiaoai_pal_source" --target "$pal_uuid_target" --output "$generated_pal_uuid"; then
+		err_print "小爱 PAL UUID 配置生成失败"
+		exit 1
+	fi
+	pal_uuid_updated=1
+fi
+
 generated_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_contexts.XXXXXX')")"
 generated_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_fsconfig.XXXXXX')")"
 temporary_files+=("$generated_odm_contexts" "$generated_odm_fsconfig")
@@ -516,6 +603,16 @@ cp -p -- "$odm_fsconfig" "$temporary_odm_fsconfig"
 merge_contexts_file "$generated_odm_contexts" "$temporary_odm_contexts"
 merge_fsconfig_file "$generated_odm_fsconfig" "$temporary_odm_fsconfig"
 
+temporary_vendor_contexts=""
+temporary_vendor_fsconfig=""
+if [[ "$mi_vendor_acdb_enabled" == true ]]; then
+	temporary_vendor_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_vendor_ctx.XXXXXX')")"
+	temporary_vendor_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_vendor_fsc.XXXXXX')")"
+	temporary_files+=("$temporary_vendor_contexts" "$temporary_vendor_fsconfig")
+	cp -p -- "$vendor_contexts" "$temporary_vendor_contexts"
+	cp -p -- "$vendor_fsconfig" "$temporary_vendor_fsconfig"
+fi
+
 if [[ "$recognition_hook" == true ]]; then
 	temporary_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_ctx.XXXXXX')")"
 	temporary_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_fsc.XXXXXX')")"
@@ -527,6 +624,12 @@ if [[ "$recognition_hook" == true ]]; then
 fi
 
 # 所有派生输出均已生成并校验，从这里开始才修改工作树。
+if [[ "$mi_vendor_acdb_enabled" == true ]]; then
+	apply_source_file_manifest "$mi_vendor_acdb_source_dir" "$project_dir/vendor" "$mi_vendor_acdb_manifest"
+	merge_translated_contexts "$mi_vendor_contexts" "$temporary_vendor_contexts" /mi_vendor /vendor "$mi_vendor_acdb_manifest"
+	merge_translated_fsconfig "$mi_vendor_fsconfig" "$temporary_vendor_fsconfig" mi_vendor vendor "$mi_vendor_acdb_manifest"
+	std_print "✅ 已从 mi_vendor 精确补齐两个 alor ACDB 文件到 vendor"
+fi
 for model_file in "${model_source_files[@]}"; do
 	model_name="$(basename -- "$model_file")"
 	replace_file_if_different "$model_file" "$odm_etc_dir/$model_name"
@@ -537,6 +640,10 @@ done
 if (( pal_updated == 1 )); then
 	_install_generated_file "$generated_pal" "$odm_pal_config"
 	std_print "✅ 已开启底包 PAL concurrent_capture（DSP 与普通录音并发）"
+fi
+if (( pal_uuid_updated == 1 )); then
+	_install_generated_file "$generated_pal_uuid" "$odm_pal_config"
+	std_print "✅ 已补齐小爱 PAL 唤醒 stream_config 与四个 capture_profile"
 fi
 
 if [[ "$recognition_hook" == true ]]; then
@@ -567,6 +674,10 @@ fi
 
 _install_generated_file "$temporary_odm_contexts" "$odm_contexts"
 _install_generated_file "$temporary_odm_fsconfig" "$odm_fsconfig"
+if [[ "$mi_vendor_acdb_enabled" == true ]]; then
+	_install_generated_file "$temporary_vendor_contexts" "$vendor_contexts"
+	_install_generated_file "$temporary_vendor_fsconfig" "$vendor_fsconfig"
+fi
 if [[ "$prepare_odm_property_contexts" == true ]]; then
 	_install_generated_file "$temporary_odm_property_contexts" "$odm_property_contexts"
 	std_print "✅ 已清理 ODM 中七个小爱属性的历史 vendor_default_prop exact 标签"

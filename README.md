@@ -143,6 +143,7 @@ bash OPAce6T_port.sh
 | [`features/fuck_audio_appname`](features/fuck_audio_appname/README.md) | `system_ext` | 定点阻断 HyperOS 私有 `appname` 音频参数，避免 Oplus HAL 拒绝参数后触发输出流 standby。 |
 | [`features/fix_linear_haptic`](features/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
 | [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle；要求底包提供 NXP 服务契约，不适用于 TMS 栈机型（如一加 Ace 6）。 |
+| [`features/fix_coloros_wallet`](features/fix_coloros_wallet/README.md) | `system`、`system_ext` | 原签名安装 ColorOS 钱包五件套（FinShell/TAS/银联 TSM/HTMS/eID 桥）并补齐 contexts/fsconfig；APK 由目标机型底包 system 提取后放入模块 `prebuilt/`，缺失时整体跳过；进程内兼容走无 LSP 路线（底包真值 + 系统 APK 固化 + 伴生脚本），LSPosed 非必需。 |
 | [`features/oplus_displayfeature_bridge`](features/oplus_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
 | [`features/fix_oplus_lhdc`](features/fix_oplus_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
 | [`features/fix_oplus_ltpo`](features/fix_oplus_ltpo/README.md) | `odm` | 补全 MI SurfaceFlinger LTPO 与 Oplus SDM OA/ADFR mode 开关。 |
@@ -150,7 +151,7 @@ bash OPAce6T_port.sh
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
 | [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限；多平台底包可通过 `ultrasonic.fp.target` 按 SoC Target 过滤 PanelResolution。 |
-| [`features/fix_xiaoai_dsp_wakeup`](features/fix_xiaoai_dsp_wakeup/README.md) | `odm`、`system_ext` | 迁移原包 Qualcomm 声学唤醒模型与声学属性到底包 odm、开启 PAL 并发采集，并可选预装小爱识别修复 LSPosed hook；原包缺声学模型时安全跳过。 |
+| [`features/fix_xiaoai_dsp_wakeup`](features/fix_xiaoai_dsp_wakeup/README.md) | `odm`、`vendor`、`system_ext` | 迁移原包 Qualcomm 声学唤醒模型与声学属性、按 Ace 6T 来源补齐最小 PAL 唤醒配置并开启 PAL 并发采集，可选预装小爱识别修复 LSPosed hook；原包缺声学模型时安全跳过。 |
 | [`features/fix_xiaoai_voicetrigger`](features/fix_xiaoai_voicetrigger/README.md) | `product` | 静态修复 VoiceTrigger.apk 的 DSP L1 置信度、LAB 前视缓冲、XATX/UDK 声纹门与回调保活（等价 LSPosed hook，无需 LSP）；方法形态不符时拒绝修改。 |
 
 ### 一加 15 专属模块（`devices/oneplus15`）

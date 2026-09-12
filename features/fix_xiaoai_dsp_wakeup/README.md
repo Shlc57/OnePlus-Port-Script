@@ -12,7 +12,8 @@
    移植后 `odm` 使用底包工作树，缺少这些文件，VoiceTrigger 无法加载 DSP 模型。
 3. 底包 PAL 配置 `odm/etc/resourcemanager.xml` 的
    `concurrent_capture`：底包默认 `false`，DSP 唤醒会话与普通录音并发时
-   VoiceTrigger 反复重启并可能拖垮音频 HAL。
+   VoiceTrigger 反复重启并可能拖垮音频 HAL；Ace 6T 真机另证实小爱 PAL
+   缺少指定 vendor UUID 的 stream_config 及其四个 capture_profile。
 4. `ro.vendor.audio.soundtrigger.*` / `ro.vendor.audio.voiceassist.*`
    声学属性（wakeupword、permian、sva 版本等）只在原包 odm 存在。
 
@@ -20,11 +21,17 @@
 
 - 迁移 `mi_odm/etc/*.udm|*.uim` 声学模型到 `odm/etc/`，并补齐 odm
   contexts（`vendor_configs_file`）与 fsconfig（`0 0 0644`）。
+- Ace 6T 从 `mi_vendor/etc/acdbdata/alor_mtp_wcd9378/` 精确补齐
+  `MTP_alor_wcd9378_acdb_cal.acdb` 与 `MTP_alor_wcd9378_workspaceFileXml.qwsp` 到
+  `vendor/etc/acdbdata/alor_mtp_wcd9378/`，同步迁移对应 contexts/fsconfig；不整体复制音频目录。
 - 把原包 odm 声学属性写入最终 `odm/etc/build.prop`、`vendor/build.prop`、
   ODM import 目标（配置 `odm.prjname` 时）及 `odm/etc/init/xiaoai_wakeup_props.rc`。
   七个目标属性在 `vendor_property_contexts` 与 `precompiled_property_contexts` 中
   精确标记为底包原生 `vendor_audio_prop`，并恢复 `platform_app` 对该标签的只读权限。
 - 将底包 PAL `concurrent_capture` 改为 `true`（可在参数中关闭）。
+- Ace 6T 由 `XIAOAI_PAL_CONFIG_FILE` 传入 `mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml`，仅提取 vendor UUID
+  `61696d69-30f2-11e6-b0ac-40a8f03d3f1e` 的唯一 `stream_config` 及其四个缺失 profile，合并到
+  `odm/etc/resourcemanager.xml`；不迁移整份 XML 或 PAL 二进制/音频配置。
 - 可选预装 LSPosed 识别修复 hook `local.mio.xiaoairecognitionhook` 到
   `system_ext/app/`，并写入其运行时阈值属性 `persist.sys.xiaoai.*`。
 
@@ -54,10 +61,13 @@
 
 ## 来源与目标分区
 
-- 来源：`mi_odm`（原包 odm：声学模型与声学属性）。
-- 目标：`odm`（模型、属性载体、PAL 配置与 metadata）、`vendor`（属性载体）、
-  `system_ext`（仅在启用 hook 时写入 APK 与 metadata）。
-- `mi_vendor` 不属于最终目标，模块不会写入该分区；SELinux bundle 只写最终
+- 来源：`mi_odm`（原包 odm：声学模型与声学属性）；Ace 6T ACDB 来源为
+  `mi_vendor/etc/acdbdata/alor_mtp_wcd9378/`，并要求来源 `mi_vendor` metadata
+  含两个文件的目录与文件条目。
+- 目标：`odm`（模型、属性载体、PAL 配置与 metadata）、`vendor`（属性载体及 Ace 6T
+  两个 alor ACDB 文件与 metadata）、`system_ext`（仅在启用 hook 时写入 APK 与 metadata）。
+- `mi_vendor` 仅作为 ACDB 来源，不作为最终目标分区；ACDB 仅按清单精确迁移，目标文件
+  已存在且内容相同则幂等跳过，内容不同则失败。SELinux bundle 只写最终
   `vendor_property_contexts` 与 `precompiled_property_contexts`，并清理可选
   `odm_property_contexts` 中七个目标键遗留的 `vendor_default_prop exact` 条目。
 
@@ -68,6 +78,7 @@
 | 键 | 取值 | 说明 |
 | --- | --- | --- |
 | `pal_concurrent_capture` | `true`/`false` | 是否把底包 PAL `concurrent_capture` 改为 `true`，共享模块默认 `false`；需要测试的组合入口显式开启 |
+| `XIAOAI_PAL_CONFIG_FILE` | project_dir 相对路径 | 可选 PAL 来源 XML；缺失时仅跳过 UUID/profile 子步骤，Ace 6T 由入口传入实测 `mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml` |
 | `recognition_hook` | `true`/`false` | 是否预装 LSPosed 识别修复 hook，默认 `false`（`.udm` 一代不需要且不应开启） |
 | `persist.sys.xiaoai.*` | 数值 | 覆盖 hook 阈值默认值 |
 | 七个 bundle 目标 `ro.vendor.audio.soundtrigger.*` / `ro.vendor.audio.voiceassist.support_record_type` 键 | 属性值 | 覆盖从原包迁移的声学属性；不接受目标集合外的音频属性 |
@@ -95,6 +106,10 @@
   只恢复 `platform_app_${API_VERSION}` 的 `read/getattr/map/open` 权限；底包
   `vendor_init` 原有 set 权限不变。该结论确认属性存在与读取契约，DSP 唤醒
   整体行为仍需刷入最终策略后验证。
+- Ace 6T 真机日志链为 `Input vendor uuid : 61696d69-30f2-11e6-b0ac-40a8f03d3f1e`、
+  `Failed to get sound model platform info`、`PAL -22`、`SoundTrigger INTERNAL_ERROR`，随后音频 HAL
+  持续重启。此次最小修复只补齐来源 XML 中该 UUID 的唯一 stream_config 与四个 capture_profile；
+  不迁移整个 XML、PAL 库、`usecaseKvManager` 或 `audio_module_config`，刷机后仍需复核 HAL 稳定性。
 - 静态分析（Ace 6T 原包 VoiceTrigger 反编译）表明 SM8845 唤醒链路的关键
   前提在系统层：odm 模型文件、`sva-7.0`/`support_record_type` 与底包
   DSP 实际麦克风路数一致、`device_provisioned=1`、小爱

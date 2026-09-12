@@ -25,6 +25,7 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.p
 # 小爱唤醒机型参数：odm.prjname=24855（真机 ro.boot.prjname 实测），
 # 声学属性经 /odm/etc/<prjname>/build.gsi.prop 走 import 链生效。
 export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6t_config_dir/xiaoai_wakeup.props"
+export XIAOAI_PAL_CONFIG_FILE="mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml"
 # 当前 APK 补丁仅依据 SM8845 原包分析，由 Ace 6T 显式启用；VoiceAssist
 # 使用 Build.DEVICE 精确匹配 cloudControl.device，因此明确传入真机代号。
 export XIAOAI_VOICETRIGGER_PATCH=true
@@ -119,6 +120,8 @@ declare -a ace6t_modules=(
 	common/fix_camera_mr
 	common/fix_face_unlock
 	features/fix_nci_nfc
+	# ColorOS 钱包五件套；prebuilt 由底包 system 提取后放置，缺失时整体跳过。
+	features/fix_coloros_wallet
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
 	features/fix_ultrasonic_fingerprint

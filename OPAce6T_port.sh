@@ -29,7 +29,9 @@ export XIAOAI_PAL_CONFIG_FILE="mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_
 # 当前 APK 补丁仅依据 SM8845 原包分析，由 Ace 6T 显式启用；VoiceAssist
 # 使用 Build.DEVICE 精确匹配 cloudControl.device，因此明确传入真机代号。
 export XIAOAI_VOICETRIGGER_PATCH=true
-export XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
+# 钱包 fix_coloros_wallet 将 odm.device 改为真值 OP6117L1（Build.DEVICE 随之
+# 变更），小爱 cloudControl.device 白名单必须与其保持一致。
+export XIAOAI_VOICEASSIST_DEVICE_CODE=OP6117L1
 export NFC_PROPERTIES_FILE="$ace6t_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6t_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
@@ -120,8 +122,6 @@ declare -a ace6t_modules=(
 	common/fix_camera_mr
 	common/fix_face_unlock
 	features/fix_nci_nfc
-	# ColorOS 钱包五件套；prebuilt 由底包 system 提取后放置，缺失时整体跳过。
-	features/fix_coloros_wallet
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
 	features/fix_ultrasonic_fingerprint
@@ -129,6 +129,10 @@ declare -a ace6t_modules=(
 	common/fix_vendor_avc
 	common/fix_launcher
 	common/fix_device_identity
+	# ColorOS 钱包五件套；必须在 fix_device_identity 之后执行，品牌身份键
+	# （odm.brand 等）需要在小米快照写入后再修正为 OnePlus。
+	# prebuilt 由底包/真机提取后放置，缺失时整体跳过。
+	features/fix_coloros_wallet
 	common/fix_oplus_avc
 	common/fix_wechat_safe_mode
 	common/fix_settings_haptic

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ColorOS 钱包移植：欢太账号（com.oplus.account）priv-app 权限白名单。
+     来源：Ace 6T 底包 PLR110（/product/priv-app/KeKeUserCenterAccount）。
+     底包 ro.control_privapp_permissions=enforce 且无该包显式白名单（部分
+     signature 权限在底包同样被拒），此处仅列账号/钱包链路明确需要的
+     signature|privileged 权限；未列出的按被拒处理（与底包行为一致）。 -->
+<permissions>
+    <privapp-permissions package="com.oplus.account">
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+        <permission name="android.permission.WRITE_SETTINGS"/>
+        <permission name="android.permission.QUERY_ALL_PACKAGES"/>
+        <permission name="oplus.permission.OPLUS_COMPONENT_SAFE"/>
+        <permission name="oppo.permission.OPPO_COMPONENT_SAFE"/>
+        <permission name="com.usercenter.permission.COMPONENT_SAFE"/>
+        <permission name="com.oplus.permission.safe.PROTECT"/>
+        <permission name="com.oplus.permission.safe.SECURITY"/>
+        <permission name="com.oplus.permission.safe.LOG"/>
+        <permission name="com.oplus.permission.safe.PRIVATE"/>
+        <permission name="com.oplus.permission.safe.SETTINGS"/>
+        <permission name="com.oppo.permission.safe.SECURITY"/>
+        <permission name="com.oppo.permission.safe.SAU"/>
+        <permission name="heytap.permission.cloud.ACCESS_CLOUD"/>
+    </privapp-permissions>
+</permissions>

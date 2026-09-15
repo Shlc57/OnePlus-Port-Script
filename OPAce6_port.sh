@@ -107,8 +107,7 @@ declare -a ace6_modules=(
 	common/fake_device_params
 	common/fix_pangu
 	common/fix_mi_account
-	features/fix_xiaoai_dsp_wakeup
-	features/fix_xiaoai_voicetrigger
+	features/fix_xiaoai_wakeup
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr

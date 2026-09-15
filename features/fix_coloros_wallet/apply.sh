@@ -291,7 +291,7 @@ fix_identity_build_props() {
 		"odm.manufacturer=OnePlus"
 		# 机型身份真值（2026-09-16 主系统 OP6117L1 实测）：Build.MODEL/DEVICE 由
 		# odm 分区键回填决定，必须写 odm 分区键（system 普通键仅作 native 兜底）。
-		# odm.device 由 nezha 改 OP6117L1 后，小爱 fix_xiaoai_voicetrigger 的
+		# odm.device 由 nezha 改 OP6117L1 后，小爱 fix_xiaoai_wakeup 的
 		# XIAOAI_VOICEASSIST_DEVICE_CODE 已同步改 OP6117L1（OPAce6T_port.sh）。
 		"odm.device=OP6117L1"
 		"odm.model=PLR110"

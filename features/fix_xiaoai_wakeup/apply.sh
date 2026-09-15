@@ -4,8 +4,27 @@ set -euo pipefail
 patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
-std_print "修复 HyperOS 小爱同学 DSP 唤醒"
-std_print "迁移原包 Qualcomm 声学唤醒模型到底包 odm，并对齐声学属性与 PAL 并发采集配置"
+std_print "修复 HyperOS 小爱同学唤醒（声学迁移 + APK 静态植入）"
+std_print "迁移原包 Qualcomm 声学唤醒模型到底包 odm 并对齐声学属性与 PAL 并发采集；"
+std_print "随后按开关静态修复 VoiceAssist 设备准入与 VoiceTrigger 唤醒逻辑"
+std_print
+
+xiaoai_voicetrigger_patch="${XIAOAI_VOICETRIGGER_PATCH:-false}"
+if [[ "$xiaoai_voicetrigger_patch" != true && "$xiaoai_voicetrigger_patch" != false ]]; then
+	err_print "XIAOAI_VOICETRIGGER_PATCH 只接受 true/false：$xiaoai_voicetrigger_patch"
+	exit 1
+elif [[ "$xiaoai_voicetrigger_patch" == false ]]; then
+	skip_print "未启用小爱唤醒 APK 补丁（XIAOAI_VOICETRIGGER_PATCH=false）"
+	exit 0
+fi
+
+voiceassist_device_code="${XIAOAI_VOICEASSIST_DEVICE_CODE:-}"
+if [[ ! "$voiceassist_device_code" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+	err_print "XIAOAI_VOICEASSIST_DEVICE_CODE 必须是安全的 Android device token：$voiceassist_device_code"
+	exit 1
+fi
+
+std_print "修复小爱 VoiceAssist 设备准入并静态植入 VoiceTrigger 唤醒修复"
 std_print
 
 hook_props_config="$patcher_dir/config/hook.props"
@@ -144,6 +163,8 @@ fi
 
 check_part_exists odm
 check_part_exists vendor
+# VoiceAssist/VoiceTrigger APK 补丁目标在 product 分区；先校验再动工作树。
+check_part_exists product
 mi_vendor_acdb_source_dir="$project_dir/mi_vendor"
 if [[ -f "$mi_vendor_acdb_manifest" && ! -L "$mi_vendor_acdb_manifest" &&
 	-d "$mi_vendor_acdb_source_dir" && ! -L "$mi_vendor_acdb_source_dir" ]]; then
@@ -345,7 +366,7 @@ trap cleanup EXIT
 printf -v xiaoai_property_key_list '%s\n' "${xiaoai_property_keys[@]}"
 temporary_odm_property_contexts=""
 if [[ "$prepare_odm_property_contexts" == true ]]; then
-	temporary_odm_property_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_property_contexts.XXXXXX')")"
+	temporary_odm_property_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_property_contexts.XXXXXX')")"
 	temporary_files+=("$temporary_odm_property_contexts")
 	# shellcheck disable=SC2016 # 属性键集合经 PORT_XIAOAI_PROPERTY_KEYS 注入 awk。
 	env PORT_XIAOAI_PROPERTY_KEYS="$xiaoai_property_key_list" awk '
@@ -371,7 +392,7 @@ if [[ "$prepare_odm_property_contexts" == true ]]; then
 	done
 fi
 
-generated_prop="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_prop.XXXXXX')")"
+generated_prop="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_prop.XXXXXX')")"
 temporary_files+=("$generated_prop")
 : >"$generated_prop"
 
@@ -416,7 +437,7 @@ if [[ "$recognition_hook" == true ]]; then
 fi
 
 if (( ${#parameter_prop_overrides[@]} > 0 )); then
-	override_prop="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_override.XXXXXX')")"
+	override_prop="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_override.XXXXXX')")"
 	temporary_files+=("$override_prop")
 	printf '%s\n' "${parameter_prop_overrides[@]}" >"$override_prop"
 	merge_prop_file "$override_prop" "$generated_prop"
@@ -436,7 +457,7 @@ if [[ "$pal_concurrent_capture" == true ]]; then
 		elif [[ "$concurrent_value" != "false" ]]; then
 			warn_print "底包 PAL concurrent_capture 取值不受支持：$concurrent_value，跳过 PAL 调整"
 		else
-			generated_pal="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_pal.XXXXXX')")"
+			generated_pal="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_pal.XXXXXX')")"
 			temporary_files+=("$generated_pal")
 			sed 's|<param concurrent_capture="false" />|<param concurrent_capture="true" />|' \
 				"$odm_pal_config" >"$generated_pal"
@@ -453,7 +474,7 @@ fi
 # 先在临时文件中完成小爱 PAL UUID/profile 的结构校验，最终与其他产物统一安装。
 generated_pal_uuid=""
 if [[ -n "$xiaoai_pal_source" ]]; then
-	generated_pal_uuid="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_pal_uuid.XXXXXX')")"
+	generated_pal_uuid="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_pal_uuid.XXXXXX')")"
 	temporary_files+=("$generated_pal_uuid")
 	pal_uuid_target="$odm_pal_config"
 	if (( pal_updated == 1 )); then
@@ -467,8 +488,8 @@ if [[ -n "$xiaoai_pal_source" ]]; then
 	pal_uuid_updated=1
 fi
 
-generated_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_contexts.XXXXXX')")"
-generated_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_fsconfig.XXXXXX')")"
+generated_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_contexts.XXXXXX')")"
+generated_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_fsconfig.XXXXXX')")"
 temporary_files+=("$generated_odm_contexts" "$generated_odm_fsconfig")
 : >"$generated_odm_contexts"
 : >"$generated_odm_fsconfig"
@@ -488,13 +509,13 @@ if grep -qE '^[[:space:]]*[^#[:space:]]' "$generated_prop"; then
 	validate_prop_file "$generated_prop"
 
 	# 先生成所有属性载体，完成派生输出校验前不写工作树。
-	temporary_odm_build_prop="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_prop.XXXXXX')")"
-	temporary_vendor_build_prop="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_vendor_prop.XXXXXX')")"
-	generated_rc="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_rc.XXXXXX')")"
+	temporary_odm_build_prop="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_prop.XXXXXX')")"
+	temporary_vendor_build_prop="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_vendor_prop.XXXXXX')")"
+	generated_rc="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_rc.XXXXXX')")"
 	temporary_files+=("$temporary_odm_build_prop" "$temporary_vendor_build_prop" "$generated_rc")
 	# shellcheck disable=SC2016 # 变量经 PORT_PROP_SOURCE/PORT_PROP_MARKER 注入。
 	if ! env PORT_PROP_SOURCE="$generated_prop" \
-		PORT_PROP_MARKER='# fix_xiaoai_dsp_wakeup 声学属性（追加区，勿上移）' \
+		PORT_PROP_MARKER='# fix_xiaoai_wakeup 声学属性（追加区，勿上移）' \
 		awk '
 			function trim_key(line) {
 				sep = index(line, "=")
@@ -582,8 +603,8 @@ fi
 generated_system_ext_contexts=""
 generated_system_ext_fsconfig=""
 if [[ "$recognition_hook" == true ]]; then
-	generated_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_contexts.XXXXXX')")"
-	generated_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_fsconfig.XXXXXX')")"
+	generated_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_contexts.XXXXXX')")"
+	generated_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_fsconfig.XXXXXX')")"
 	temporary_files+=("$generated_system_ext_contexts" "$generated_system_ext_fsconfig")
 	cat >"$generated_system_ext_contexts" <<'EOF'
 /system_ext/app/XiaoAiRecognitionHook u:object_r:system_file:s0
@@ -595,8 +616,8 @@ system_ext/app/XiaoAiRecognitionHook/XiaoAiRecognitionHook.apk 0 0 0644
 EOF
 fi
 
-temporary_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_ctx.XXXXXX')")"
-temporary_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_odm_fsc.XXXXXX')")"
+temporary_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_ctx.XXXXXX')")"
+temporary_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_fsc.XXXXXX')")"
 temporary_files+=("$temporary_odm_contexts" "$temporary_odm_fsconfig")
 cp -p -- "$odm_contexts" "$temporary_odm_contexts"
 cp -p -- "$odm_fsconfig" "$temporary_odm_fsconfig"
@@ -606,16 +627,16 @@ merge_fsconfig_file "$generated_odm_fsconfig" "$temporary_odm_fsconfig"
 temporary_vendor_contexts=""
 temporary_vendor_fsconfig=""
 if [[ "$mi_vendor_acdb_enabled" == true ]]; then
-	temporary_vendor_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_vendor_ctx.XXXXXX')")"
-	temporary_vendor_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_vendor_fsc.XXXXXX')")"
+	temporary_vendor_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_vendor_ctx.XXXXXX')")"
+	temporary_vendor_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_vendor_fsc.XXXXXX')")"
 	temporary_files+=("$temporary_vendor_contexts" "$temporary_vendor_fsconfig")
 	cp -p -- "$vendor_contexts" "$temporary_vendor_contexts"
 	cp -p -- "$vendor_fsconfig" "$temporary_vendor_fsconfig"
 fi
 
 if [[ "$recognition_hook" == true ]]; then
-	temporary_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_ctx.XXXXXX')")"
-	temporary_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_dsp_wakeup_sext_fsc.XXXXXX')")"
+	temporary_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_ctx.XXXXXX')")"
+	temporary_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_fsc.XXXXXX')")"
 	temporary_files+=("$temporary_system_ext_contexts" "$temporary_system_ext_fsconfig")
 	cp -p -- "$system_ext_contexts" "$temporary_system_ext_contexts"
 	cp -p -- "$system_ext_fsconfig" "$temporary_system_ext_fsconfig"
@@ -686,5 +707,43 @@ if [[ "$recognition_hook" == true ]]; then
 	_install_generated_file "$temporary_system_ext_contexts" "$system_ext_contexts"
 	_install_generated_file "$temporary_system_ext_fsconfig" "$system_ext_fsconfig"
 fi
+
+# project_dir 由 tools.sh 的 init_port_env 设置。
+# shellcheck disable=SC2154
+voiceassist_apk="$project_dir/product/priv-app/VoiceAssistAndroidT/VoiceAssistAndroidT.apk"
+voice_trigger_apk="$project_dir/product/app/VoiceTrigger/VoiceTrigger.apk"
+
+check_file_exists "$patcher_dir/patch_voiceassist_config.sh"
+check_file_exists "$patcher_dir/config/PortWakeupHooks.smali"
+check_file_exists "$patcher_dir/patch_voicetrigger.sh"
+
+# 两个 APK 都是替换既有文件的独立子步骤；任一目标缺失只警告并跳过该子步骤。
+if [[ ! -e "$voiceassist_apk" ]]; then
+	warn_print "原包未提供 VoiceAssistAndroidT.apk，跳过设备准入修复：${voiceassist_apk#"$project_dir"/}"
+elif [[ -L "$voiceassist_apk" ]]; then
+	err_print "VoiceAssistAndroidT.apk 不能是符号链接：$voiceassist_apk"
+	exit 1
+elif [[ ! -f "$voiceassist_apk" ]]; then
+	err_print "VoiceAssistAndroidT.apk 不是普通文件：$voiceassist_apk"
+	exit 1
+else
+	bash "$patcher_dir/patch_voiceassist_config.sh" "$voiceassist_apk" "$voiceassist_device_code"
+	std_print "VoiceAssistAndroidT.apk 已添加设备准入：$voiceassist_device_code"
+fi
+
+if [[ ! -e "$voice_trigger_apk" ]]; then
+	warn_print "原包未提供 VoiceTrigger.apk，跳过小爱唤醒静态植入：${voice_trigger_apk#"$project_dir"/}"
+elif [[ -L "$voice_trigger_apk" ]]; then
+	err_print "VoiceTrigger.apk 不能是符号链接：$voice_trigger_apk"
+	exit 1
+elif [[ ! -f "$voice_trigger_apk" ]]; then
+	err_print "VoiceTrigger.apk 不是普通文件：$voice_trigger_apk"
+	exit 1
+else
+	bash "$patcher_dir/patch_voicetrigger.sh" "$voice_trigger_apk"
+	std_print "VoiceTrigger.apk 已静态植入小爱唤醒修复"
+fi
+
+std_print "仅确认两个 APK 的原 Signing Block 字节保留；未确认内容签名摘要有效"
 
 std_print "处理完成"

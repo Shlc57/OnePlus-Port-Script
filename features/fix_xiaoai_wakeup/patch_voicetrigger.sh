@@ -218,10 +218,15 @@ s_e_patched = (
 )
 
 # 修改 4：v0/h.k() DSP 回调 wake lock 800ms -> 7000ms
+# 宽常量寄存器随编译版本漂移（v0/v1 或 v2/v3），状态判定与替换都按实际寄存器处理。
 h_k_match = method_block(h_text, h_k_method, h_smali, "h.k(Context)")[0]
 h_k_block = h_k_match.group(0)
-h_k_original = h_k_block.count("const-wide/16 v0, 0x320") == 1
-h_k_patched = h_k_block.count("const-wide/16 v0, 0x1b58") == 1 and not h_k_original
+h_k_duration = re.compile(r"const-wide/16 (v\d+), 0x320\b")
+h_k_original = len(h_k_duration.findall(h_k_block)) == 1
+h_k_patched = (
+    len(re.findall(r"const-wide/16 v\d+, 0x1b58\b", h_k_block)) == 1
+    and not h_k_original
+)
 
 helper_present = helper_smali.is_file()
 helper_methods = ("buildLabData", "putIntLE", "getIntProp", "clampInt")
@@ -279,9 +284,18 @@ if states["s_e"] == "original":
     write_file(s_smali, vp_gate.sub(lambda _match: vp_bypass, s_text, count=1), "声纹门放行")
 
 if states["h_k"] == "original":
+    h_k_reg = h_k_duration.search(h_k_block).group(1)
     write_file(
         h_smali,
-        h_text.replace("const-wide/16 v0, 0x320", "const-wide/16 v0, 0x1b58", 1),
+        h_text.replace(
+            h_k_block,
+            h_k_block.replace(
+                f"const-wide/16 {h_k_reg}, 0x320",
+                f"const-wide/16 {h_k_reg}, 0x1b58",
+                1,
+            ),
+            1,
+        ),
         "DSP 回调保活时长",
     )
 

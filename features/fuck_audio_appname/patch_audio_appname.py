@@ -111,7 +111,7 @@ def _pattern(name: str, before: str, after: str, count: int) -> PatternContract:
 
 
 # These anchors encode the C++ call operation instead of a release-wide file
-# digest: load the stream object's vtable, fetch slot 0x60 (setParameters),
+# digest: load the stream object's vtable, fetch slot 0x68 (setParameters),
 # invoke it, then continue with the adjacent String object. Each match is also
 # constrained to its exported function's symbol range and executable PT_LOAD.
 LIBRARIES = {
@@ -125,13 +125,13 @@ LIBRARIES = {
                 patterns=(
                     _pattern(
                         "app-output-primary",
-                        "f94002c8 d10083a2 aa1603e0 2a1f03e1 2a1f03e3 f9403108",
+                        "f9400328 aa1903e0 d10083a2 2a1f03e1 2a1f03e3 f9403508",
                         "d100a3a0",
                         1,
                     ),
                     _pattern(
                         "app-output-secondary",
-                        "f94002e8 f94002c9 d10083a2 aa1603e0 2a1f03e3 b940e101 f9403128",
+                        "f94002c8 f9400329 aa1903e0 d10083a2 2a1f03e3 b940e101 f9403528",
                         "d10083a0",
                         1,
                     ),
@@ -144,7 +144,7 @@ LIBRARIES = {
                 patterns=(
                     _pattern(
                         "system-client-output",
-                        "f9400288 910063a2 aa1403e0 2a1303e1 2a1f03e3 f9403108",
+                        "f9400288 910063a2 aa1403e0 2a1303e1 2a1f03e3 f9403508",
                         "910063a0",
                         1,
                     ),
@@ -160,13 +160,13 @@ LIBRARIES = {
                 patterns=(
                     _pattern(
                         "input-start-primary",
-                        "f94002c8 910023e2 aa1603e0 2a1303e1 2a1f03e3 f9403108",
+                        "f94002c8 910023e2 aa1603e0 2a1303e1 2a1f03e3 f9403508",
                         "910023e0",
                         1,
                     ),
                     _pattern(
                         "input-start-secondary",
-                        "f9404280 910043e2 2a1303e1 2a1f03e3 f9400008 f9403108",
+                        "f9404280 910043e2 2a1303e1 2a1f03e3 f9400008 f9403508",
                         "910043e0",
                         2,
                     ),
@@ -177,7 +177,7 @@ LIBRARIES = {
                 patterns=(
                     _pattern(
                         "input-stop",
-                        "f9404260 910063e2 2a1403e1 2a1f03e3 f9400008 f9403108",
+                        "f9404260 910063e2 2a1403e1 2a1f03e3 f9400008 f9403508",
                         "910063e0",
                         2,
                     ),

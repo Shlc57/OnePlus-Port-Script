@@ -78,7 +78,11 @@ FINAL_LIBRARY_NAMES = (JNI_NAME, *PREBUILT_CONTRACTS)
 AVB_ALGORITHM = "SHA256_RSA4096"
 
 SYSTEM_LIB_CONTEXT = "u:object_r:system_lib_file:s0"
-PAYLOAD_GROWTH_BYTES = 16 * 1024 * 1024
+# APEX payload ext4 通常按文件数精确分配 inode（0 空闲），且 resize2fs 只在
+# 跨块组增长时才追加 inode 表。16 MiB 只增加数据块，不足以让单块组镜像获得
+# 新 inode，因此增长量必须超过一个块组（32768 块 × 4096 = 128 MiB），并先
+# unshare_blocks 再 resize，保证新块组与 inode 表真正建立。
+PAYLOAD_GROWTH_BYTES = 128 * 1024 * 1024
 ELF_MACHINE_AARCH64 = 183
 PT_LOAD = 1
 PF_X = 1

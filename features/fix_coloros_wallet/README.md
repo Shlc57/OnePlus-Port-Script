@@ -55,10 +55,14 @@
   com.oplus.osense.task.BgRunningCallback`，移植系统缺失欧加 OSense 类导致
   `NoClassDefFoundError` 闪退。提供 1.4KB 最小空实现 jar
   （`BgRunningCallback`/`OsenseResEventClient`，方法签名取自 5.47.5 smali 引用）
-  并在 `init.zygote64.rc` 的 service zygote 块注入
-  `setenv BOOTCLASSPATH <运行值>:/system/framework/oplus-osense-stub.jar`
-  （BOOTCLASSPATH 原值存 `config/zygote_bootclasspath.txt`，原包更新后需重新
-  从真机 `cat /proc/$(pidof zygote64)/environ` 捕获）。已知限制：**模块不能
+  并在运行时加入 zygote BOOTCLASSPATH：HyperOS 新原包 rc 已无
+  `setenv BOOTCLASSPATH`，BCP 由 `derive_classpath` 从
+  `/system/etc/classpaths/*.pb` 生成。模块向原包 `bootclasspath.pb` 幂等追加
+  一条 stub 贡献条目（BOOTCLASSPATH 与 DEX2OATBOOTCLASSPATH 各一，wire
+  format 与原包条目一致），原包更新 framework jar 增删改名时 BCP 其余条目
+  自动跟随最新原包，无需人工维护快照（旧方案静态快照在原包
+  videoservice-V9→V12 改名后导致 zygote 崩溃卡二屏，已废弃）。历史注入的
+  setenv 行会被模块自动清除。已知限制：**模块不能
   替换 init.zygote64.rc 生效**（init 解析早于 KSU 挂载），必须走镜像重打包刷机；
   `resetprop -p` 对 KSU 版本不落盘，同样不可用。
 

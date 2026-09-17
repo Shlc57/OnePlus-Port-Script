@@ -34,7 +34,7 @@ core 必须导出 wrapper 实际消费的关键 `lhdcv5_util_*` 接口；wrapper
 
 ## payload 与签名边界
 
-写入前会先用 `avbtool erase_footer` 动态得到当前 OTA 的 ext 文件系统长度。ext 文件系统临时扩容 16 MiB，执行 `unshare_blocks`、写入和 fsck 后，再用项目私钥通过 `avbtool add_hashtree_footer` 生成新的 sha256 hashtree、RSA-4096 vbmeta 与 footer；不保留旧 AVB 尾部。
+写入前会先用 `avbtool erase_footer` 动态得到当前 OTA 的 ext 文件系统长度。ext 文件系统临时扩容至足够跨块组（至少超过 128 MiB，确保 resize2fs 创建新 inode 表），执行 `unshare_blocks`、写入和 fsck 后，再用项目私钥通过 `avbtool add_hashtree_footer` 生成新的 sha256 hashtree、RSA-4096 vbmeta 与 footer；不保留旧 AVB 尾部。
 
 对预装 APEX，apeXd 启动时从同名预装包的 `apex_pubkey` 取得期望公钥，再校验 payload vbmeta 的签名和公钥字节。因此这里不修改系统 CA、`apexkeys.txt` 或其他全局 trust store，而是把 `apex_pubkey` 替换为项目私钥对应的公钥。这是让同一个预装包自洽通过 apeXd AVB 校验所需的最小信任变更。
 

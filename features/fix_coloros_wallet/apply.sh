@@ -158,13 +158,17 @@ std_print "✅ 钱包五件套 contexts 与 fsconfig 已合并"
 #    保留给小米生态，仅覆盖运行时全局键。
 # 2) OSense stub：FinShell 解冻 SDK 引用 com.oplus.osense.* 欧加框架类，移植
 #    系统缺失导致 LongTimeUnfreezeManager NoClassDefFoundError 闪退。提供最小
-#    空实现 jar 并注入 zygote BOOTCLASSPATH，行为等价参考 LSP 方案的
+#    空实现 jar 并加入 zygote BOOTCLASSPATH，行为等价参考 LSP 方案的
 #    addDexPath + 强制空 fallback（EmptyLongUnfreezeManager 逻辑仍在 APK 内）。
+#    BCP 动态化：HyperOS 新原包 rc 已无 setenv BOOTCLASSPATH，BCP 运行时由
+#    derive_classpath 从 /system/etc/classpaths/*.pb 生成。向原包
+#    bootclasspath.pb 幂等追加一条 stub 贡献条目，原包更新 framework jar
+#    增删改名时 BCP 其余部分自动跟随，无需人工维护快照。
 
 wallet_props_rc_target="$project_dir/odm/etc/init/coloros_wallet_props.rc"
 wallet_osense_jar_target="$project_dir/system/system/framework/oplus-osense-stub.jar"
 wallet_zygote_rc_target="$project_dir/system/system/etc/init/hw/init.zygote64.rc"
-wallet_bcp_file="$patcher_dir/config/zygote_bootclasspath.txt"
+wallet_bcp_pb_target="$project_dir/system/system/etc/classpaths/bootclasspath.pb"
 
 # 单行 metadata 补丁文件：mktemp + 临时清理，兼容 merge_*_file 的存在性校验。
 append_wallet_metadata_patch() {
@@ -233,47 +237,68 @@ install_osense_stub() {
 	std_print "✅ OSense stub jar 已写入 system framework"
 }
 
-inject_zygote_bootclasspath() {
+remove_zygote_bootclasspath_injection() {
+	# 旧版本模块以静态快照 setenv 全量覆盖 BCP：原包更新后快照引用已改名的
+	# jar 会让 zygote 崩溃循环（卡二屏）。改为 pb 追加后必须清除历史注入行。
 	if [[ -L "$wallet_zygote_rc_target" ]]; then
 		err_print "zygote rc 目标不能是符号链接：$wallet_zygote_rc_target"
 		return 1
 	elif [[ ! -f "$wallet_zygote_rc_target" ]]; then
-		warn_print "zygote rc 不存在，跳过 BOOTCLASSPATH 注入：${wallet_zygote_rc_target#"$project_dir"/}"
+		warn_print "zygote rc 不存在，跳过 BOOTCLASSPATH 注入清理：${wallet_zygote_rc_target#"$project_dir"/}"
 		return 0
 	fi
-	if grep -q 'oplus-osense-stub' "$wallet_zygote_rc_target"; then
-		skip_print "zygote BOOTCLASSPATH 已包含 OSense stub"
+	if ! grep -q 'setenv BOOTCLASSPATH.*oplus-osense-stub\.jar' "$wallet_zygote_rc_target"; then
+		skip_print "zygote rc 无历史 BOOTCLASSPATH 注入"
 		return 0
 	fi
-	check_file_exists "$wallet_bcp_file" || return 1
-	local boot_classpath
-	boot_classpath="$(head -n1 "$wallet_bcp_file")"
-	if [[ -z "$boot_classpath" || "$boot_classpath" == *[[:space:]]* ]]; then
-		err_print "BOOTCLASSPATH 值无效（需为无空格单行）：$wallet_bcp_file"
+	local cleaned_rc
+	cleaned_rc="$(mktemp "$(get_config_path '.zygote64.rc.XXXXXX')")"
+	temporary_files+=("$cleaned_rc")
+	grep -v 'setenv BOOTCLASSPATH.*oplus-osense-stub\.jar' "$wallet_zygote_rc_target" > "$cleaned_rc"
+	replace_file_if_different "$cleaned_rc" "$wallet_zygote_rc_target"
+	std_print "✅ 已移除 zygote rc 历史 BOOTCLASSPATH 注入行（BCP 改由 pb 动态生成）"
+}
+
+append_stub_classpath_pb() {
+	# stub jar 必须已存在：derive_classpath 展开 pattern 无匹配时会失败。
+	if [[ ! -f "$wallet_osense_jar_target" ]]; then
+		err_print "OSense stub jar 不存在，无法追加 bootclasspath.pb 条目：${wallet_osense_jar_target#"$project_dir"/}"
 		return 1
 	fi
-	local patched_rc
-	patched_rc="$(mktemp "$(get_config_path '.zygote64.rc.XXXXXX')")"
-	wallet_rc_patch_files+=("$patched_rc")
-	awk -v bcp="$boot_classpath" '
-		{ print }
-		/^service zygote / && !done {
-			print "    setenv BOOTCLASSPATH " bcp ":/system/framework/oplus-osense-stub.jar"
-			done = 1
-		}
-		END { exit(done ? 0 : 3) }
-	' "$wallet_zygote_rc_target" > "$patched_rc" || {
-		rm -f -- "$patched_rc"
-		err_print "zygote rc 中未找到 service zygote 定义"
+	if [[ -L "$wallet_bcp_pb_target" ]]; then
+		err_print "bootclasspath.pb 目标不能是符号链接：$wallet_bcp_pb_target"
 		return 1
-	}
-	replace_file_if_different "$patched_rc" "$wallet_zygote_rc_target"
-	std_print "✅ zygote BOOTCLASSPATH 已注入 OSense stub"
+	elif [[ ! -f "$wallet_bcp_pb_target" ]]; then
+		warn_print "bootclasspath.pb 不存在，跳过 stub BCP 追加：${wallet_bcp_pb_target#"$project_dir"/}"
+		return 0
+	fi
+	if grep -aqF '/system/framework/oplus-osense-stub.jar' "$wallet_bcp_pb_target"; then
+		skip_print "bootclasspath.pb 已包含 OSense stub 条目"
+		return 0
+	fi
+	# Contribution 条目 wire format（与原包既有条目结构一致）：
+	#   field 1 (embedded message)：field 1 = pattern 字符串，
+	#                               field 2 varint = 1 BOOTCLASSPATH / 3 DEX2OATBOOTCLASSPATH
+	# pattern 为精确路径（derive_classpath 按 glob 展开，literal 可匹配）。
+	# 字节序列硬编码前提：stub 路径长度 39（0x27），条目长度 43（0x2b）。
+	local stub_path='/system/framework/oplus-osense-stub.jar'
+	if (( ${#stub_path} != 39 )); then
+		err_print "stub 路径长度变化，需重新计算 pb 条目字节：$stub_path"
+		return 1
+	fi
+	local merged_pb
+	merged_pb="$(mktemp "$(get_config_path '.bootclasspath.XXXXXX')")"
+	temporary_files+=("$merged_pb")
+	cat -- "$wallet_bcp_pb_target" > "$merged_pb"
+	printf '\x0a\x2b\x0a\x27%s\x10\x01\x0a\x2b\x0a\x27%s\x10\x03' "$stub_path" "$stub_path" >> "$merged_pb"
+	replace_file_if_different "$merged_pb" "$wallet_bcp_pb_target"
+	std_print "✅ OSense stub 已追加至 bootclasspath.pb（BCP 其余条目运行时按原包动态生成）"
 }
 
 install_wallet_props_rc
 install_osense_stub
-inject_zygote_bootclasspath
+remove_zygote_bootclasspath_injection
+append_stub_classpath_pb
 
 # ── 身份键 build.prop 修正 ─────────────────────────────────────────
 # init 的 PropertySet 拒绝覆盖已存在的 ro. 属性（post-fs-data rc setprop 对

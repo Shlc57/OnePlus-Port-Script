@@ -187,7 +187,7 @@ XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 | `wakeup/r.smali` `c()` | DSP L1 置信度 `0x45`（69）改为 `0x23`（35） |
 | `wakeup/r.smali` `e()` | 注入 20 字节 LAB 前视缓冲；history 2500ms / preroll 1000ms，可由 `persist.sys.xiaoai.lab_*_ms` 覆盖 |
 | `wakeup/s.smali` `e(w)` | XATX/UDK 命令下放行声纹门，保留关键词门 |
-| `v0/h.smali` `k()` | DSP 回调 wake lock 从 800ms 延长到 7000ms |
+| `v0/h.smali` `k()` | DSP 回调 wake lock 从 800ms 延长到 7000ms | 原位常量寄存器可能随 ROM 版本漂移（SM8845/SM8850 使用不同寄存器），补丁已适配寄存器无关检测与替换 |
 
 新增注入类 `com/miui/voicetrigger/wakeup/PortWakeupHooks` 仅构造 LAB，失败路径
 使用默认值。补丁逐方法核对指令结构；版本形态不符时拒绝盲目修改。

@@ -71,14 +71,16 @@ PY
 compare_archive_contract() {
     local before_apk=$1
     local after_apk=$2
-    local excluded_entry=${3:-}
+    shift 2
+    local excluded_entries=("$@")
 
-    python3 - "$before_apk" "$after_apk" "$excluded_entry" <<'PY'
+    python3 - "$before_apk" "$after_apk" "${excluded_entries[@]}" <<'PY'
 import sys
 import zipfile
 import zlib
 
-before_path, after_path, excluded_entry = sys.argv[1:]
+before_path, after_path = sys.argv[1:3]
+excluded_entries = set(sys.argv[3:])
 
 
 def fail(message):
@@ -105,7 +107,7 @@ after, after_infos = open_archive(after_path)
 try:
     if len(before_infos) != len(after_infos):
         fail(f"条目数量变化：{len(before_infos)} -> {len(after_infos)}")
-    if excluded_entry:
+    for excluded_entry in excluded_entries:
         before_excluded = [info for info in before_infos if info.filename == excluded_entry]
         after_excluded = [info for info in after_infos if info.filename == excluded_entry]
         if len(before_excluded) != 1 or len(after_excluded) != 1:
@@ -118,14 +120,14 @@ try:
                 f"{before_info.filename!r} -> {after_info.filename!r}）"
             )
         if (
-            before_info.filename != excluded_entry
+            before_info.filename not in excluded_entries
             and before_info.compress_type != after_info.compress_type
         ):
             fail(
                 f"条目压缩方式变化（{before_info.filename!r}: "
                 f"{before_info.compress_type} -> {after_info.compress_type}）"
             )
-        if before_info.filename == excluded_entry:
+        if before_info.filename in excluded_entries:
             continue
         try:
             before_content = before.read(before_info)
@@ -332,8 +334,7 @@ PY
 }
 
 validate_and_install_apk() {
-    local excluded_entry=$1
-    local expected_entry_file=$2
+    local excluded_entries=("$@")
 
     log "回插原 APK Signing Block"
     python3 "$SIGNING_BLOCK_TOOL" insert "$PATCHED_APK" "$SIGNING_BLOCK_BEFORE"
@@ -344,10 +345,13 @@ validate_and_install_apk() {
         fail "更新后的 APK 未通过 zipalign 校验"
 
     unzip -tq "$PATCHED_APK" >/dev/null || fail "更新后的 APK 完整性校验失败"
-    cmp -s "$expected_entry_file" <(unzip -p "$PATCHED_APK" "$excluded_entry") ||
-        fail "$excluded_entry 未正确写入 APK"
+    local excluded_entry
+    for excluded_entry in "${excluded_entries[@]}"; do
+        cmp -s "$DEX_DIR/$excluded_entry" <(unzip -p "$PATCHED_APK" "$excluded_entry") ||
+            fail "$excluded_entry 未正确写入 APK"
+    done
 
-    compare_archive_contract "$APK_PATH" "$PATCHED_APK" "$excluded_entry" ||
+    compare_archive_contract "$APK_PATH" "$PATCHED_APK" "${excluded_entries[@]}" ||
         fail "更新后 APK 的非目标归档契约发生变化"
 
     log "恢复原 TeleService.apk 文件属性"
@@ -440,13 +444,18 @@ resolve_dex_entry() {
 
 XTS_DEX_ENTRY=$(resolve_dex_entry "$XTS_SMALI_FILE")
 SCREEN_STATUS_DEX_ENTRY=$(resolve_dex_entry "$SCREEN_STATUS_SMALI_FILE")
-[[ "$XTS_DEX_ENTRY" == "$SCREEN_STATUS_DEX_ENTRY" ]] ||
-    fail "XtsApp 与 MiRilHook 不在同一 DEX：$XTS_DEX_ENTRY / $SCREEN_STATUS_DEX_ENTRY"
-DEX_ENTRY=$XTS_DEX_ENTRY
+# 目标类可能分布在不同 DEX（ROM 构建会重新拆分 DEX），收集去重后按各自 DEX
+# 分别执行增量替换，不再要求两类落在同一 DEX。
+mapfile -t DEX_ENTRIES < <(
+    printf '%s\n' "$XTS_DEX_ENTRY" "$SCREEN_STATUS_DEX_ENTRY" | awk '!seen[$0]++'
+)
+(( ${#DEX_ENTRIES[@]} >= 1 )) || fail "未识别到任何目标 DEX 条目"
 
-DEX_ENTRY_COUNT=$(archive_entry_count "$APK_PATH" "$DEX_ENTRY")
-(( DEX_ENTRY_COUNT == 1 )) ||
-    fail "原 APK 中 $DEX_ENTRY 数量异常：期望 1 个，实际 $DEX_ENTRY_COUNT 个"
+for DEX_ENTRY in "${DEX_ENTRIES[@]}"; do
+    DEX_ENTRY_COUNT=$(archive_entry_count "$APK_PATH" "$DEX_ENTRY")
+    (( DEX_ENTRY_COUNT == 1 )) ||
+        fail "原 APK 中 $DEX_ENTRY 数量异常：期望 1 个，实际 $DEX_ENTRY_COUNT 个"
+done
 
 XTS_SMALI_STATE=$(smali_patch_state "$XTS_SMALI_FILE" check xts) ||
     fail "XtsApp Smali 校验失败"
@@ -464,7 +473,7 @@ if (( VER_PATCHED == 1 && XTS_PATCHED == 1 && SCREEN_STATUS_PATCHED == 1 )); the
     exit 0
 fi
 
-log "修改 XtsApp 与 MiRilHook 的三个目标方法（目标 DEX：$DEX_ENTRY）"
+log "修改 XtsApp 与 MiRilHook 的三个目标方法（目标 DEX：${DEX_ENTRIES[*]}）"
 XTS_SMALI_STATE=$(smali_patch_state "$XTS_SMALI_FILE" patch xts) ||
     fail "修改 XtsApp Smali 失败"
 read -r VER_PATCHED XTS_PATCHED XTS_CHANGED_COUNT <<< "$XTS_SMALI_STATE"
@@ -478,25 +487,25 @@ CHANGED_COUNT=$((XTS_CHANGED_COUNT + SCREEN_STATUS_CHANGED_COUNT))
 (( VER_PATCHED == 1 && XTS_PATCHED == 1 && SCREEN_STATUS_PATCHED == 1 && CHANGED_COUNT > 0 )) ||
     fail "修改后的 Smali 状态异常：ver=$VER_PATCHED xts=$XTS_PATCHED screen=$SCREEN_STATUS_PATCHED changed=$CHANGED_COUNT"
 
-log "回编译 APK 以生成新的 $DEX_ENTRY"
+log "回编译 APK 以生成新的 ${DEX_ENTRIES[*]}"
 "${APKTOOL_COMMAND[@]}" b -o "$REBUILT_APK" "$DECODE_DIR"
 
 mkdir -p "$DEX_DIR"
-unzip -p "$REBUILT_APK" "$DEX_ENTRY" > "$DEX_DIR/$DEX_ENTRY" ||
-    fail "回编译结果中缺少 $DEX_ENTRY"
-[[ -s "$DEX_DIR/$DEX_ENTRY" ]] || fail "生成的 $DEX_ENTRY 为空"
+for DEX_ENTRY in "${DEX_ENTRIES[@]}"; do
+    unzip -p "$REBUILT_APK" "$DEX_ENTRY" > "$DEX_DIR/$DEX_ENTRY" ||
+        fail "回编译结果中缺少 $DEX_ENTRY"
+    [[ -s "$DEX_DIR/$DEX_ENTRY" ]] || fail "生成的 $DEX_ENTRY 为空"
+done
 
-log "仅将 $DEX_ENTRY 增量写入原 APK 副本"
+log "仅将 ${DEX_ENTRIES[*]} 增量写入原 APK 副本"
 cp -a -- "$APK_PATH" "$PATCHED_APK"
 (
     cd -- "$DEX_DIR"
-    zip -q -0 "$PATCHED_APK" "$DEX_ENTRY"
+    zip -q -0 "$PATCHED_APK" "${DEX_ENTRIES[@]}"
 )
 
 log "重新对齐 APK"
 "$ZIPALIGN_COMMAND" -f -P 16 4 "$PATCHED_APK" "$ALIGNED_APK" ||
     fail "zipalign 对齐失败"
 mv -- "$ALIGNED_APK" "$PATCHED_APK"
-validate_and_install_apk \
-    "$DEX_ENTRY" \
-    "$DEX_DIR/$DEX_ENTRY"
+validate_and_install_apk "${DEX_ENTRIES[@]}"

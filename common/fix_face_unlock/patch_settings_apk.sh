@@ -314,17 +314,23 @@ updated_text = (
     + original_text[matches[0].end() :]
 )
 
-worker_anchor = (
-    "    iget-object v2, p0, Lcom/android/settings/faceunlock/"
-    "MiuiNormalCameraMultiFaceInput$NewMultiFaceEnrollFragment;"
-    "->mFaceUnlockManager:Lcom/android/settings/faceunlock/"
-    "KeyguardSettingsFaceUnlockManager;\n\n"
-    "    new-instance v3, Lcom/android/settings/faceunlock/"
-    "MiuiNormalCameraMultiFaceInput$NewMultiFaceEnrollFragment"
-    "$$ExternalSyntheticLambda4;\n"
+# 反序列化 lambda 编号（$$ExternalSyntheticLambdaN）随 Settings 构建重排，
+# 锚点只约束工作线程派发结构：加载 mFaceUnlockManager 后紧接构造入参 lambda。
+worker_anchor_pattern = re.compile(
+    r"    iget-object v2, p0, Lcom/android/settings/faceunlock/"
+    r"MiuiNormalCameraMultiFaceInput\$NewMultiFaceEnrollFragment;"
+    r"->mFaceUnlockManager:Lcom/android/settings/faceunlock/"
+    r"KeyguardSettingsFaceUnlockManager;\n\n"
+    r"    new-instance v3, Lcom/android/settings/faceunlock/"
+    r"MiuiNormalCameraMultiFaceInput\$NewMultiFaceEnrollFragment"
+    r"\$\$ExternalSyntheticLambda\d+;\n"
 )
-if start_method_block.count(worker_anchor) != 1:
+worker_anchor_matches = list(
+    worker_anchor_pattern.finditer(start_method_block)
+)
+if len(worker_anchor_matches) != 1:
     raise SystemExit(f"无法唯一定位标准人脸录入启动位置：{outer_smali_path}")
+worker_anchor = worker_anchor_matches[0].group(0)
 start_progress = """    const/16 v2, 0x13
 
     invoke-direct {p0, v2}, Lcom/android/settings/faceunlock/MiuiNormalCameraMultiFaceInput$NewMultiFaceEnrollFragment;->updateFaceHelpInfo(I)V

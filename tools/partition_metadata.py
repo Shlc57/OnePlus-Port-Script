@@ -237,6 +237,19 @@ def parse_manifest(path: Path) -> list[str]:
     return relative_paths
 
 
+def raw_remainder_after_prefix(raw_path: str, source_prefix: str, kind: MetadataKind) -> str | None:
+    """返回 raw_path 中 source_prefix 之后的剩余部分。
+
+    优先保留原始表达形式（含转义），仅当前缀本身跨转义字符时才回退到
+    去转义形式比较（与 metadata_key 的匹配语义一致）。
+    """
+    if raw_path.startswith(source_prefix):
+        return raw_path[len(source_prefix):]
+    if kind == "contexts" and raw_path.replace("\\", "").startswith(source_prefix):
+        return raw_path.replace("\\", "")[len(source_prefix):]
+    return None
+
+
 def translate_manifest(
     source_lines: Iterable[str],
     manifest_paths: Iterable[str],
@@ -260,9 +273,10 @@ def translate_manifest(
         if key is None or key not in wanted:
             continue
         raw_path = line.split(maxsplit=1)[0]
-        if not raw_path.startswith(source_prefix):
+        remainder = raw_remainder_after_prefix(raw_path, source_prefix, kind)
+        if remainder is None:
             continue
-        target_path = f"{target_prefix}{raw_path[len(source_prefix):]}"
+        target_path = f"{target_prefix}{remainder}"
         target_key = target_path.replace("\\", "") if kind == "contexts" else target_path
         translated[target_key] = replace_first_field(line, target_path)
         found.add(key)
@@ -292,9 +306,10 @@ def translate_prefix(
         ):
             continue
         raw_path = line.split(maxsplit=1)[0]
-        if not raw_path.startswith(source_prefix):
+        remainder = raw_remainder_after_prefix(raw_path, source_prefix, kind)
+        if remainder is None:
             continue
-        target_path = f"{target_prefix}{raw_path[len(source_prefix):]}"
+        target_path = f"{target_prefix}{remainder}"
         target_key = target_path.replace("\\", "") if kind == "contexts" else target_path
         translated_line = replace_first_field(line, target_path)
         if kind == "contexts" and context_overrides:

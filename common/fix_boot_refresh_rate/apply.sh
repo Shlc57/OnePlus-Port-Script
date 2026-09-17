@@ -349,7 +349,7 @@ if (( vendor_policy_present == 1 )); then
 	std_print "✅ 已合并其余 vendor 显示策略：vendor/build.prop"
 fi
 if (( feature_patch_ready == 1 )); then
-	std_print "✅ 已更新：product/etc/device_features/$PORT_SOURCE_DEVICE_CODE.xml"
+	std_print "✅ 已更新：${device_feature_xml#"$project_dir"/}"
 	if (( resolution_ready == 1 )); then
 		std_print "✅ 底包分辨率：面板 $panel_summary；可切换宽度 $width_summary"
 	else

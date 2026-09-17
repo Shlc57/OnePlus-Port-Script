@@ -24,9 +24,8 @@ APK_PATCHER="$PORT_DIR/tools/apk_patcher.sh"
 log() { printf '[*] %s\n' "$*"; }
 fail() { printf '[!] %s\n' "$*" >&2; exit 1; }
 WORK_DIR=''
-SESSION_MODE=0
 cleanup() {
-    if (( SESSION_MODE == 0 )) && [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+    if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
         find "$WORK_DIR" -depth -delete >/dev/null 2>&1 || true
     fi
 }
@@ -38,6 +37,9 @@ rollback_on_exit() {
     cleanup
     return "$status"
 }
+# 本补丁修改的是 SecureElement.apk（system），与组合流程的 Settings 共享会话
+# 归档不同，必须使用独立会话目录。
+unset APK_PATCHER_SESSION_DIR
 # shellcheck disable=SC1090
 source "$APK_PATCHER"
 
@@ -46,14 +48,9 @@ APK_PATH=$1
 [[ -f "$APK_PATH" && ! -L "$APK_PATH" ]] || fail "找不到 SecureElement.apk：$APK_PATH"
 APK_PATH=$(cd -- "$(dirname -- "$APK_PATH")" && pwd -P)/$(basename -- "$APK_PATH")
 APK_DIR=$(dirname -- "$APK_PATH")
-if [[ -n "${APK_PATCHER_SESSION_DIR:-}" ]]; then
-    SESSION_MODE=1
-    SESSION_DIR="$APK_PATCHER_SESSION_DIR"
-else
-    WORK_DIR=$(mktemp -d "${SECURE_ELEMENT_PATCH_TMPDIR:-$APK_DIR}/.secure-element-patcher.XXXXXX")
-    SESSION_DIR="$WORK_DIR"
-    trap cleanup EXIT
-fi
+WORK_DIR=$(mktemp -d "${SECURE_ELEMENT_PATCH_TMPDIR:-$APK_DIR}/.secure-element-patcher.XXXXXX")
+SESSION_DIR="$WORK_DIR"
+trap cleanup EXIT
 apk_patcher_open "$SESSION_DIR" "$APK_PATH" apk || fail "无法打开 SecureElement.apk 会话"
 apk_patcher_snapshot || fail "无法保存 SecureElement.apk 补丁快照"
 trap rollback_on_exit EXIT
@@ -173,9 +170,5 @@ done
 grep -q ':cond_wallet_ese_grant' "$SMALI_FILE" || fail "修改后的 Smali 缺少授权块标签"
 
 apk_patcher_record_entry "$DEX_ENTRY" || fail "无法登记 SecureElement.apk 目标 DEX"
-if (( SESSION_MODE == 1 )); then
-    log "已登记 SecureElement.apk 的 $DEX_ENTRY 修改，等待统一回编译"
-else
-    apk_patcher_finalize || fail "SecureElement.apk 最终回编译失败"
-    log "APPLY：补丁完成：$APK_PATH"
-fi
+apk_patcher_finalize || fail "SecureElement.apk 最终回编译失败"
+log "APPLY：补丁完成：$APK_PATH"

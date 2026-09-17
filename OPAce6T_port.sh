@@ -26,6 +26,13 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.p
 # 声学属性经 /odm/etc/<prjname>/build.gsi.prop 走 import 链生效。
 export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6t_config_dir/xiaoai_wakeup.props"
 export XIAOAI_PAL_CONFIG_FILE="mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml"
+# 运行时设备代号：钱包 fix_coloros_wallet 将 odm.device 改为真值 OP6117L1
+# （2026-09-16 主系统实测）后 Build.DEVICE 随之变化，miui FeatureParser 按
+# Build.DEVICE 查找 product/etc/device_features/<代号>.xml（分辨率/刷新率/DC
+# 等机型特性入口），common/fix_device_identity 据此把原包机型 XML 从
+# nezha.xml 改名为 OP6117L1.xml；小爱 cloudControl.device 白名单
+# （XIAOAI_VOICEASSIST_DEVICE_CODE）与钱包 fdid 校验都必须与其保持一致。
+export RUNTIME_DEVICE_CODE=OP6117L1
 # 当前 APK 补丁仅依据 SM8845 原包分析，由 Ace 6T 显式启用；VoiceAssist
 # 使用 Build.DEVICE 精确匹配 cloudControl.device，因此明确传入真机代号。
 export XIAOAI_VOICETRIGGER_PATCH=true
@@ -38,7 +45,7 @@ export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # Ace 6T 底包 rc 走 mtp.gs0 纯触发器，与模块内置的一加 15 rc（use_ffs_mtp 形态）不同，
 # 由 fix_mtp 自适应校验并以这份真底包 rc 替换被原包覆盖的目标。
 export FIX_MTP_SOURCE_RC="$ace6t_config_dir/init.usb.configfs.rc"
-# Millet 核心桥按 KMI 选择仓库预编译 KO；Ace 6T 实机内核与一加 15 相同（android16-6.12）。
+# Millet 核心桥按 KMI 选择仓库内预编译 KO；Ace 6T 实机内核与一加 15 相同（android16-6.12）。
 export KMI='android16-6.12'
 # Ace 6T 实机超声波指纹硬件快照。通用模块不从小米原包推断这些参数；
 # 传感器中心等坐标属换算估算值，刷机后如对不上可直接修改 fingerprint.props 重跑。
@@ -119,7 +126,6 @@ declare -a ace6t_modules=(
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr
-	common/fix_face_unlock
 	features/fix_nci_nfc
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
@@ -128,6 +134,9 @@ declare -a ace6t_modules=(
 	common/fix_vendor_avc
 	common/fix_launcher
 	common/fix_device_identity
+	# 人脸特性 XML 补丁目标是运行时代号命名的机型 XML（RUNTIME_DEVICE_CODE
+	# 改名由 fix_device_identity 完成），因此必须位于 fix_device_identity 之后。
+	common/fix_face_unlock
 	# ColorOS 钱包五件套；必须在 fix_device_identity 之后执行，品牌身份键
 	# （odm.brand 等）需要在小米快照写入后再修正为 OnePlus。
 	# prebuilt 由底包/真机提取后放置，缺失时整体跳过。

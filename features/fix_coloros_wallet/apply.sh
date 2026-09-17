@@ -182,6 +182,10 @@ append_wallet_metadata_patch() {
 			merge_fsconfig_file "$patch_file" "$(get_part_fsconfig_path system)" ;;
 		contexts_system)
 			merge_contexts_file "$patch_file" "$(get_part_contexts_path system)" ;;
+		fsconfig_system_ext)
+			merge_fsconfig_file "$patch_file" "$(get_part_fsconfig_path system_ext)" ;;
+		contexts_system_ext)
+			merge_contexts_file "$patch_file" "$(get_part_contexts_path system_ext)" ;;
 		*)
 			err_print "未知 metadata 类型：$kind"
 			return 1
@@ -291,8 +295,11 @@ fix_identity_build_props() {
 		"odm.manufacturer=OnePlus"
 		# 机型身份真值（2026-09-16 主系统 OP6117L1 实测）：Build.MODEL/DEVICE 由
 		# odm 分区键回填决定，必须写 odm 分区键（system 普通键仅作 native 兜底）。
-		# odm.device 由 nezha 改 OP6117L1 后，小爱 fix_xiaoai_wakeup 的
-		# XIAOAI_VOICEASSIST_DEVICE_CODE 已同步改 OP6117L1（OPAce6T_port.sh）。
+		# odm.device 由 nezha 改 OP6117L1 后：小爱 fix_xiaoai_wakeup 的
+		# XIAOAI_VOICEASSIST_DEVICE_CODE 已同步改 OP6117L1（OPAce6T_port.sh）；
+		# miui FeatureParser 按 Build.DEVICE 查找机型 XML，由组合入口
+		# RUNTIME_DEVICE_CODE 声明同值并经 common/fix_device_identity 把
+		# device_features/nezha.xml 改名为 OP6117L1.xml。
 		"odm.device=OP6117L1"
 		"odm.model=PLR110"
 		"odm.name=PLR110"
@@ -399,13 +406,20 @@ install_heytap_account() {
 	mkdir -p -- "$account_dir_target" "$(dirname -- "$account_perm_target")"
 	copy_tree_missing_only "$prebuilt_root/system_ext/priv-app/KeKeUserCenterAccount" "$account_dir_target"
 	copy_file_missing_only "$account_perm_source" "$account_perm_target"
-	append_wallet_metadata_patch fsconfig_system \
+	# KeKe 文件在 system_ext 分区：metadata 必须写入 system_ext 的
+	# contexts/fsconfig。历史版本误写 system 分区，打包后该路径无逐文件
+	# 条目被打成 unlabeled（真机 2026-09-17 实证），并在此清理残留条目。
+	remove_contexts_prefix "$(get_part_contexts_path system)" \
+		"/system_ext/priv-app/KeKeUserCenterAccount" || return 1
+	remove_contexts_prefix "$(get_part_contexts_path system)" \
+		"/system_ext/etc/permissions/privapp-permissions-keke-usercenter.xml" || return 1
+	append_wallet_metadata_patch fsconfig_system_ext \
 		'system_ext/priv-app/KeKeUserCenterAccount/KeKeUserCenterAccount.apk 0 0 0644'
-	append_wallet_metadata_patch fsconfig_system \
+	append_wallet_metadata_patch fsconfig_system_ext \
 		'system_ext/etc/permissions/privapp-permissions-keke-usercenter.xml 0 0 0644'
-	append_wallet_metadata_patch contexts_system \
+	append_wallet_metadata_patch contexts_system_ext \
 		'/system_ext/priv-app/KeKeUserCenterAccount(/.*)? u:object_r:system_file:s0'
-	append_wallet_metadata_patch contexts_system \
+	append_wallet_metadata_patch contexts_system_ext \
 		'/system_ext/etc/permissions/privapp-permissions-keke-usercenter\.xml u:object_r:system_file:s0'
 	std_print "✅ 欢太账号已就绪（system_ext/priv-app/KeKeUserCenterAccount）"
 }

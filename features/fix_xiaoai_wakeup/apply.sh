@@ -19,7 +19,8 @@ elif [[ "$xiaoai_voicetrigger_patch" == false ]]; then
 fi
 
 voiceassist_device_code="${XIAOAI_VOICEASSIST_DEVICE_CODE:-}"
-if [[ ! "$voiceassist_device_code" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+# Oplus 真机代号为全大写（如 OP6117L1），与 Build.DEVICE 精确匹配，不能转小写。
+if [[ ! "$voiceassist_device_code" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
 	err_print "XIAOAI_VOICEASSIST_DEVICE_CODE 必须是安全的 Android device token：$voiceassist_device_code"
 	exit 1
 fi

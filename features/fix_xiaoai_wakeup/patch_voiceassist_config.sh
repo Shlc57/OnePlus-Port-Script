@@ -31,7 +31,8 @@ source "$APK_PATCHER"
 APK_PATH=$1
 DEVICE_CODE=$2
 [[ -f "$APK_PATH" && ! -L "$APK_PATH" ]] || fail "找不到 VoiceAssistAndroidT.apk：$APK_PATH"
-[[ "$DEVICE_CODE" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || fail "无效的 Android device token：$DEVICE_CODE"
+# Oplus 真机代号为全大写（如 OP6117L1），与 Build.DEVICE 精确匹配，不能转小写。
+[[ "$DEVICE_CODE" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || fail "无效的 Android device token：$DEVICE_CODE"
 APK_PATH=$(cd -- "$(dirname -- "$APK_PATH")" && pwd -P)/$(basename -- "$APK_PATH")
 [[ "$(apk_patcher_entry_count "$APK_PATH" "$ASSET_ENTRY")" == 1 ]] ||
 	fail "VoiceAssistAndroidT.apk 中目标资产条目数量异常：$ASSET_ENTRY"

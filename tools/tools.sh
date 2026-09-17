@@ -557,9 +557,20 @@ _port_detect_identity_role() {
 }
 
 _port_export_device_identities() {
+	local feature_code
 	PORT_SOURCE_DEVICE_FEATURE_FILE=""
 	if [[ -n "$PORT_SOURCE_DEVICE_CODE" ]]; then
-		PORT_SOURCE_DEVICE_FEATURE_FILE="$project_dir/product/etc/device_features/$PORT_SOURCE_DEVICE_CODE.xml"
+		# 机型 XML 安装名必须等于运行时 Build.DEVICE：miui FeatureParser 按
+		# ro.product.device（由 odm 分区键回填）查找 device_features/<代号>.xml。
+		# 组合流程通过 RUNTIME_DEVICE_CODE 声明真机运行时代号（钱包身份修正会
+		# 把 odm.device 从原包代号改为真值），common/fix_device_identity 负责
+		# 按该代号改名机型 XML 并同步 metadata；未设置时与原包代号一致。
+		feature_code="$PORT_SOURCE_DEVICE_CODE"
+		if [[ -n "${RUNTIME_DEVICE_CODE:-}" ]]; then
+			_port_identity_validate_component "运行时设备代号" "$RUNTIME_DEVICE_CODE" || return 1
+			feature_code="$RUNTIME_DEVICE_CODE"
+		fi
+		PORT_SOURCE_DEVICE_FEATURE_FILE="$project_dir/product/etc/device_features/$feature_code.xml"
 	fi
 
 	export \

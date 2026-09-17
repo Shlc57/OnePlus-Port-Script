@@ -126,15 +126,20 @@ apk_patcher_open() {
 	local archive_kind="${3:-apk}"
 	local absolute_path
 
-	[[ "$archive_kind" == apk || "$archive_kind" == jar ]] || apk_patcher_fail "不支持的归档类型：$archive_kind"
-	[[ -n "$session_dir" && -d "$session_dir" ]] || apk_patcher_fail "会话目录不存在：$session_dir"
-	[[ -f "$archive_path" && ! -L "$archive_path" ]] || apk_patcher_fail "归档不存在或是符号链接：$archive_path"
+	[[ "$archive_kind" == apk || "$archive_kind" == jar ]] ||
+		{ apk_patcher_fail "不支持的归档类型：$archive_kind"; return 1; }
+	[[ -n "$session_dir" && -d "$session_dir" ]] ||
+		{ apk_patcher_fail "会话目录不存在：$session_dir"; return 1; }
+	[[ -f "$archive_path" && ! -L "$archive_path" ]] ||
+		{ apk_patcher_fail "归档不存在或是符号链接：$archive_path"; return 1; }
 	absolute_path=$(cd -- "$(dirname -- "$archive_path")" && pwd -P)/$(basename -- "$archive_path")
 	apk_patcher_require cp && apk_patcher_require find && apk_patcher_require mkdir && apk_patcher_require mktemp && apk_patcher_require mv && apk_patcher_require python3 && apk_patcher_require rm && apk_patcher_require unzip && apk_patcher_require zip || return 1
 	apk_patcher_resolve_apktool || return 1
 	if [[ -f "$session_dir/ready" ]]; then
-		[[ "$(<"$session_dir/archive.path")" == "$absolute_path" ]] || apk_patcher_fail "会话归档目标不一致：$absolute_path"
-		[[ "$(<"$session_dir/archive.kind")" == "$archive_kind" ]] || apk_patcher_fail "会话归档类型不一致：$archive_kind"
+		[[ "$(<"$session_dir/archive.path")" == "$absolute_path" ]] ||
+			{ apk_patcher_fail "会话归档目标不一致：$absolute_path"; return 1; }
+		[[ "$(<"$session_dir/archive.kind")" == "$archive_kind" ]] ||
+			{ apk_patcher_fail "会话归档类型不一致：$archive_kind"; return 1; }
 	else
 		find "$session_dir" -mindepth 1 -depth -delete >/dev/null 2>&1 || return 1
 		printf '%s\n' "$absolute_path" > "$session_dir/archive.path"
@@ -152,7 +157,7 @@ apk_patcher_open() {
 
 apk_patcher_snapshot() {
 	local snapshot_dir="$SESSION_DIR/snapshot"
-	[[ -d "$SESSION_DECODE_DIR" ]] || apk_patcher_fail '共享解包目录不存在'
+	[[ -d "$SESSION_DECODE_DIR" ]] || { apk_patcher_fail '共享解包目录不存在'; return 1; }
 	if [[ -e "$snapshot_dir" ]]; then
 		find "$snapshot_dir" -depth -delete >/dev/null 2>&1 || return 1
 	fi
@@ -183,11 +188,11 @@ apk_patcher_record_entry() {
 	local component
 	local -a components
 	[[ "$entry" =~ ^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$ ]] ||
-		apk_patcher_fail "无效的归档条目：$entry"
+		{ apk_patcher_fail "无效的归档条目：$entry"; return 1; }
 	IFS='/' read -r -a components <<< "$entry"
 	for component in "${components[@]}"; do
 		[[ "$component" != . && "$component" != .. ]] ||
-			apk_patcher_fail "归档条目不能包含相对路径段：$entry"
+			{ apk_patcher_fail "归档条目不能包含相对路径段：$entry"; return 1; }
 	done
 	touch "$SESSION_DIR/changed.entries"
 	if ! grep -Fqx -- "$entry" "$SESSION_DIR/changed.entries"; then
@@ -202,7 +207,7 @@ apk_patcher_finalize() {
 	local entry entry_file entries replacement
 
 	apk_patcher_require grep && apk_patcher_require cmp || return 1
-	[[ -f "$SESSION_DIR/ready" ]] || apk_patcher_fail '共享 APK/JAR 会话尚未准备完成'
+	[[ -f "$SESSION_DIR/ready" ]] || { apk_patcher_fail '共享 APK/JAR 会话尚未准备完成'; return 1; }
 	[[ ! -f "$SESSION_DIR/finalized" ]] || return 0
 	[[ -s "$SESSION_DIR/changed.entries" ]] || return 0
 	"${APK_PATCHER_APKTOOL_COMMAND[@]}" b -o "$rebuilt" "$SESSION_DECODE_DIR" || return 1
@@ -213,12 +218,13 @@ apk_patcher_finalize() {
 		entry_file="$SESSION_DIR/$entry"
 		mkdir -p -- "$(dirname -- "$entry_file")"
 		unzip -p "$rebuilt" "$entry" > "$entry_file" || return 1
-		[[ -s "$entry_file" ]] || apk_patcher_fail "回编译结果中的条目为空：$entry"
+		[[ -s "$entry_file" ]] ||
+			{ apk_patcher_fail "回编译结果中的条目为空：$entry"; return 1; }
 		[[ "$(apk_patcher_entry_count "$patched" "$entry")" == 1 ]] ||
-			apk_patcher_fail "目标条目数量异常：$entry"
+			{ apk_patcher_fail "目标条目数量异常：$entry"; return 1; }
 		(cd -- "$SESSION_DIR" && zip -q -0 "$patched" "$entry") || return 1
 		cmp -s "$entry_file" <(unzip -p "$patched" "$entry") ||
-			apk_patcher_fail "目标条目写回失败：$entry"
+			{ apk_patcher_fail "目标条目写回失败：$entry"; return 1; }
 	done <<< "$entries"
 	apk_patcher_compare_contract "$SESSION_DIR/original.archive" "$patched" \
 		"$SESSION_DIR/changed.entries" || return 1
@@ -228,7 +234,8 @@ apk_patcher_finalize() {
 		mv -- "$aligned" "$patched"
 		apk_patcher_compare_contract "$SESSION_DIR/original.archive" "$patched" \
 			"$SESSION_DIR/changed.entries" || return 1
-		[[ -r "$APK_PATCHER_SIGNING_TOOL" ]] || apk_patcher_fail '找不到 APK Signing Block 工具'
+		[[ -r "$APK_PATCHER_SIGNING_TOOL" ]] ||
+			{ apk_patcher_fail '找不到 APK Signing Block 工具'; return 1; }
 		python3 "$APK_PATCHER_SIGNING_TOOL" extract "$SESSION_DIR/original.archive" "$SESSION_DIR/signing.before" >/dev/null || return 1
 		python3 "$APK_PATCHER_SIGNING_TOOL" insert "$patched" "$SESSION_DIR/signing.before" || return 1
 	fi

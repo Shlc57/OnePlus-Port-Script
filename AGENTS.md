@@ -47,6 +47,7 @@
 
 - `init_port_env` 必须在首个补丁修改工作树前集中识别底包与原包设备，并保证同一移植流程中的所有补丁消费同一份身份快照。
 - 下游补丁统一读取 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*`；机型 XML 使用 `PORT_SOURCE_DEVICE_FEATURE_FILE`。
+- 机型 XML 安装名必须等于运行时 `Build.DEVICE`（miui FeatureParser 按 `ro.product.device` 即 odm 分区键回填值查找 `product/etc/device_features/<代号>.xml`）。当组合流程会让 `odm.device` 偏离原包代号（如钱包身份真值修正）时，必须由组合入口通过 `RUNTIME_DEVICE_CODE` 声明运行时代号，由 `common/fix_device_identity` 改名机型 XML 并同步 contexts/fsconfig；依赖运行时代号的模块（小爱白名单、按代号匹配的机型 XML 补丁）必须与该值保持一致，且机型 XML 补丁应排在 `fix_device_identity` 之后。
 - 补丁内不得写死原包或底包设备名、代号、机型 XML 文件名，也不得重新从可能已被前序补丁修改的 ODM 属性推断身份。
 - 明确由组合流程选用的 SKU 附加 prop 不属于设备识别结果，可以由组合入口通过 `DEVICE_IDENTITY_PROP` 指定；公共补丁不得自行写死其文件名。附加 prop 不存在时只弱警告并跳过附加合并，基础设备标识写入继续执行。
 - 依赖实际运行设备的面板、传感器、马达、指纹位置等能力或试错参数，不得从原包推断；优先从底包可靠配置读取，否则由目标机型组合入口通过校验过的 `.props` 文件显式提供。逻辑可参数化时放在 `features`，只有逻辑或资源仍无法复用时才放在 `devices/<device>`。设备专属目录名和专属预编译产物名不属于运行时身份识别接口。

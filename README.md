@@ -89,6 +89,8 @@ bash OPAce6T_port.sh
 
 下游统一使用 `PORT_BASE_DEVICE_CODE`、`PORT_BASE_DEVICE_NAME`、`PORT_BASE_DEVICE_MODEL`、`PORT_BASE_DEVICE_MARKET_NAME` 及对应的 `PORT_SOURCE_DEVICE_*` 变量；原包机型 XML 路径由 `PORT_SOURCE_DEVICE_FEATURE_FILE` 提供。SKU 附加 prop 不属于设备识别结果，也不会按代号自动猜选；需要时由组合入口通过 `DEVICE_IDENTITY_PROP` 明确指定文件名，再交给 `common/fix_device_identity`。指定文件不存在时只输出弱警告并忽略附加配置，`mi_odm/etc/build.prop` 的基础设备标识写入继续执行。`common/fix_device_identity` 只有在显式提供 `DEVICE_DISPLAY_NAME` 时才覆盖 `ro.product.odm.marketname`，未提供时沿用 `mi_odm` 基础属性或附加 prop，其他原包身份和认证字段不受影响。
 
+组合入口可以通过 `RUNTIME_DEVICE_CODE` 声明真机运行时代号：miui FeatureParser 按 `ro.product.device`（odm 分区键回填）查找 `product/etc/device_features/<代号>.xml`，当后续补丁（如钱包身份修正）会把 `odm.device` 改为与原包代号不同的真值时，`common/fix_device_identity` 会据此把机型 XML 改名为运行时代号并同步 contexts/fsconfig 条目；未设置该变量时机型 XML 保持原包代号命名。
+
 `tools/tools.sh` 统一管理配置目录与 contexts/fsconfig 名称解析。支持工程根目录下的 `DNA_config/` 与 `config/` 两个配置目录，且**两个目录都兼容以下两套文件名模板**（目录名与文件名可任意组合，适配不同解包工具的产物）：
 
 | 模板风格 | contexts 文件名 | fsconfig 文件名 |
@@ -121,7 +123,7 @@ bash OPAce6T_port.sh
 | [`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) | `product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：安装启动默认亮度 Overlay 并移除旧自动亮度曲线 Overlay `MiuiFrameworkResOverlay.apk`。Profile 可按底包识别值自动匹配或用 `BOOT_BRIGHTNESS_PROFILE` 显式指定。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
 | [`common/coloros_display`](common/coloros_display/README.md) | `system`、`system_ext`、`odm`、`product`、`vendor`；另需解包 `my_product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：将底包 `my_product/vendor/etc` 覆盖合并至最终 vendor，从官方面板表生成含 `autoBrightness` 的 Display ID 配置；迁移 FusionLight profile 和显示 RRO，保留底包 CWB 原生服务链，并按 Profile 禁用 `high_pwm_rgb`。可用 `COLOROS_DISPLAY_PROFILE` 显式指定。 |
-| [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system` | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖。 |
+| [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system`、`product`（可选改名） | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖；设置 `RUNTIME_DEVICE_CODE` 时把机型 XML 改名为运行时代号。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
 | [`common/fix_mi_account`](common/fix_mi_account/README.md) | `odm`、`vendor` | 迁移账号、支付与安全环境资源并登记 SELinux bundle。 |

@@ -116,6 +116,7 @@ bash OPAce6T_port.sh
 | --- | --- | --- |
 | [`common/disable_odm_imports`](common/disable_odm_imports/README.md) | `odm` | 禁用 ODM 对项目专属和 `my_manifest` 属性文件的外部导入。 |
 | [`common/disable_mi_vulkan`](common/disable_mi_vulkan/README.md) | `product` | 禁用不兼容的 Xiaomi Vulkan pipeline cache 属性。 |
+| [`common/disable_hyperos_preread`](common/disable_hyperos_preread/README.md) | `product`、`odm` | 把 `persist.sys.stability.PrereadEnable` 置为 `false`（属性默认值 + odm 运行时 rc），让原包 iorapd 停在自带的 `stop` 触发器上——它需要的 `/dev/iorap_dev` 在 OnePlus 底包内核不存在，不关会无限重启。 |
 | [`common/enable_hyperos_features`](common/enable_hyperos_features/README.md) | `product`、`vendor` | 写入模糊、材质、画质、游戏、声效与相册 XDR 属性。 |
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |

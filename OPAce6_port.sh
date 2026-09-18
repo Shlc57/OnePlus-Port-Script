@@ -101,6 +101,8 @@ declare -a ace6_modules=(
 	common/fix_mtp
 	common/fuck_oplus_hybridzram
 	common/disable_mi_vulkan
+	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。
+	common/disable_hyperos_preread
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
 	common/disable_odm_imports

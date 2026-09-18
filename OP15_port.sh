@@ -105,6 +105,7 @@ set +e
 bash "$port" common/merge_mi_ext \
 	common/fuck_oplus_hybridzram \
 	common/disable_mi_vulkan \
+	common/disable_hyperos_preread \
 	features/fuck_audio_appname \
 	features/fix_oplus_lhdc \
 	common/disable_odm_imports \

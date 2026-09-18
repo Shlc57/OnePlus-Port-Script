@@ -138,6 +138,17 @@ product 分区 APK 静态补丁在后）。
   `XiaoAiTongXue` 主模型）时模块整体安全跳过。
 - 未迁移 `mi_odm/etc/acdbdata` 声学校准；底包保留自身校准数据，
   如真机出现 DSP 校准类错误再评估。
+- **DSP 硬件唤醒在 Ace 6T 上已封闭（2026-09-12 五组实验矩阵）**：
+  「底包 / mi_dsp 三件套 × 原包 / 混合 resourcemanager × 原生 UUID /
+  借用原生 UUID」全部停在 `getMIID: Failed to get tag info`、
+  `StartCapture failed 10` 与零检出；图形能跑（session ACTIVE、PCM 保持）。
+  决定性事实：custom-config 载荷是**从模型内容派生**的，而原包
+  `XiaoAiTongXueMi.udm`（eai2 / eNPU 2.6.2，按 SM8850 训练）在任何可达配置下
+  都被 SM8845/molokai ADSP 侧的 DSP 模块拒收 —— 属结构性不兼容，不是配置缺陷。
+  小米侧不存在 SM8845 机型（原包机型为 SM8850），因此拿不到按 molokai 训练的
+  小爱模型；在 Ace 6T 上唯一剩余可行性是放弃 DSP L1、改走 CPU 软件 KWS。
+  本模块因此只保留 XML/PAL 与属性层的最小修复，不再尝试模型容器或
+  DSP 模块替换路线。
 
 ---
 

@@ -2,8 +2,9 @@
 
 在 HyperOS 移植系统上恢复 ColorOS 钱包能力：把目标机型底包的 ColorOS 钱包五件套
 原签名安装回原包 `system`、`system_ext`，并补齐 contexts/fsconfig。完整方案（LSPosed
-运行时兼容、NFC eSE 路由、真机验证步骤）见
-`docs/designs/2026-09-13-coloros-wallet-port-design.md`。
+运行时兼容、NFC eSE 路由、真机验证步骤）见本地设计记录
+`docs/designs/2026-09-13-coloros-wallet-port-design.md`（`docs/` 不入库，外部读者以本
+README 为准）。
 
 ## 来源与目标
 
@@ -156,11 +157,19 @@ am broadcast -a com.nfc.action.default_pay.changed \
 
 ### 已知未决
 
-- **登录无反应 / 乘车页闪退（卡列表为空）**：钱包依赖欢太账号
-  `com.heytap.usercenter`（action `com.heytap.usercenter.account_login`、账号
-  token -202），移植系统缺失该包，需从目标机型底包补提取安装。
+- **登录 / 乘车与门禁链路**：曾因缺失欢太账号包而`As-TaskGetToken -202`
+  （登录无反应）；2026-09-15 已把 `com.oplus.account`
+  （`KeKeUserCenterAccount`）作为第六依赖预置并安装，09-16 用
+  `pm install` 临时验证过登录成功。服务端按（model, device）校验机型身份，
+  真值已写入 `fix_identity_build_props`；完整效果仍需刷机复验。
 - **USB 用途弹窗缺 USB 网络共享/MIDI 选项**：内核 configfs 具备
-  `midi.gs5`/`gsi.rndis` function，缺失发生在 MIUI 设置判定层，待查。
+  `midi.gs5`/`gsi.rndis` function；MIDI feature 声明已排除
+  （`vendor/etc/permissions/android.software.midi.xml` 在位），剩余嫌疑为
+  framework overlay 的 tethering 正则与实际 gadget 接口名不匹配、或 MIUI
+  设置判定层，需设备侧 `ls /config/usb_gadget/g1/functions` 与
+  `dumpsys usb` 取证后再定（不盲改）。
 - **Nfc_st eSE NFCEE 路由**：小米 NFC 包 `OFFHOST_ROUTE_ESE={01}` 寻址不存在的
   0x0401（SN220T 实际 NFCEE 待真机核对），影响非接触刷卡路由，见设计文档 §6-B。
-- 伴生脚本尚未入库（设计见 `docs/designs/2026-09-13-coloros-wallet-port-design.md` §6）。
+- 运行时开关已不再需要伴生脚本：`nfc_multise_active` 与刷新广播由本模块的
+  `odm/etc/init/coloros_wallet_nfc_settings.rc` 开机自动补写（见上文）；
+  仅默认支付组件 `nfc_payment_default_component` 保留为排障时手工执行。

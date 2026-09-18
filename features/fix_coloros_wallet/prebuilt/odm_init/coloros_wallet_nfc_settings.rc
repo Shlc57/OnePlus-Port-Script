@@ -1,0 +1,8 @@
+# ColorOS 钱包 NFC 运行时设置自动补写（features/fix_coloros_wallet）。
+# 钱包 isNfcEseMode 依赖 settings global nfc_multise_active == "Embedded SE"，
+# 缺失时开门/乘车弹"设为默认 NFC 应用"对话框。该键由欧加 Nfc 写入而小米
+# Nfc_st 不写；data 分区设置无法在镜像侧写入，只能开机后由 init exec 补写。
+# 机制说明：shell 域可执行 settings/am（与 adb 手工操作等价），每次开机幂等
+# 覆写同一值；补写完成后延迟通知钱包刷新缓存（小米 Nfc 不发该 Oplus 广播）。
+on property:sys.boot_completed=1
+    exec_background u:r:shell:s0 shell shell -- /system/bin/sh /odm/etc/init/coloros_wallet_nfc_settings.sh

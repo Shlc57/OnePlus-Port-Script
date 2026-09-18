@@ -17,11 +17,11 @@ product 分区 APK 静态补丁在后）。
 
 ---
 
-# fix_xiaoai_dsp_wakeup
+## DSP 唤醒链路子步骤（历史模块名 `fix_xiaoai_dsp_wakeup`）
 
 修复 HyperOS 移植后小爱同学 DSP 唤醒不可用的问题。
 
-## 原理
+### 原理
 
 小爱语音唤醒链路依赖三方配合：
 
@@ -54,7 +54,7 @@ product 分区 APK 静态补丁在后）。
 - 可选预装 LSPosed 识别修复 hook `local.mio.xiaoairecognitionhook` 到
   `system_ext/app/`，并写入其运行时阈值属性 `persist.sys.xiaoai.*`。
 
-## hook 的定位（默认关闭）
+### hook 的定位（默认关闭）
 
 对一加 Ace 6T 原包（SM8845）VoiceTrigger 的静态反编译结论：
 
@@ -78,7 +78,7 @@ product 分区 APK 静态补丁在后）。
 | Ace 6T | SM8845 | `XiaoAiTongXueMi.udm` 等原生 odm 直读 | 不应开启 |
 | 一加 15 | SM8850 | 以其原包实际内容为准（模块自动适配） | 不应开启 |
 
-## 来源与目标分区
+### 来源与目标分区
 
 - 来源：`mi_odm`（原包 odm：声学模型与声学属性）；Ace 6T ACDB 来源为
   `mi_vendor/etc/acdbdata/alor_mtp_wcd9378/`，并要求来源 `mi_vendor` metadata
@@ -90,7 +90,7 @@ product 分区 APK 静态补丁在后）。
   `vendor_property_contexts` 与 `precompiled_property_contexts`，并清理可选
   `odm_property_contexts` 中七个目标键遗留的 `vendor_default_prop exact` 条目。
 
-## 参数
+### 参数
 
 机型组合入口可通过 `XIAOAI_WAKEUP_PROPERTIES_FILE` 提供可选 `.props`：
 
@@ -102,7 +102,7 @@ product 分区 APK 静态补丁在后）。
 | `persist.sys.xiaoai.*` | 数值 | 覆盖 hook 阈值默认值 |
 | 七个 bundle 目标 `ro.vendor.audio.soundtrigger.*` / `ro.vendor.audio.voiceassist.support_record_type` 键 | 属性值 | 覆盖从原包迁移的声学属性；不接受目标集合外的音频属性 |
 
-## 验证边界
+### 验证边界
 
 - 模型迁移与属性对齐来自原包数据，属于确定性迁移。
 - `concurrent_capture=true` 与 hook 阈值在 OnePlus 13 (SM8750) 移植上
@@ -141,14 +141,14 @@ product 分区 APK 静态补丁在后）。
 
 ---
 
-# fix_xiaoai_voicetrigger
+## VoiceAssist / VoiceTrigger 准入修补子步骤（历史模块名 `fix_xiaoai_voicetrigger`）
 
 修复小爱同学的 VoiceAssist 设备准入和 VoiceTrigger DSP 唤醒链路。模块默认关闭，
 只有组合入口显式设置 `XIAOAI_VOICETRIGGER_PATCH=true` 才会执行；开关只接受
 `true`/`false`。启用时还必须通过 `XIAOAI_VOICEASSIST_DEVICE_CODE` 提供安全的
 Android device token。
 
-## 精确根因
+### 精确根因
 
 Ace 6T 运行日志为 `device support:false, voice trigger:true`。静态检查
 `product/priv-app/VoiceAssistAndroidT/VoiceAssistAndroidT.apk` 已确认：
@@ -165,9 +165,9 @@ XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 
 其他机型入口不启用本模块，也不从原包或运行中属性推断目标设备代码。
 
-## 两个 APK 子步骤
+### 两个 APK 子步骤
 
-### VoiceAssistAndroidT.apk 设备准入
+#### VoiceAssistAndroidT.apk 设备准入
 
 目标为 `product/priv-app/VoiceAssistAndroidT/VoiceAssistAndroidT.apk`，只替换
 `assets/voiceassist.ai.voice.trigger.config` ZIP 条目，不修改任何 DEX。
@@ -177,7 +177,7 @@ XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 `{"device": <code>, "os": 9}`；完全一致时安全跳过。序列化格式固定，保留原有根结构、
 字段和既有数组顺序。
 
-### VoiceTrigger.apk 唤醒链路
+#### VoiceTrigger.apk 唤醒链路
 
 目标为 `product/app/VoiceTrigger/VoiceTrigger.apk`。对 SM8845 原包的静态反编译
 确认以下行为硬编码在 app 内，无属性或资源通道：
@@ -192,7 +192,7 @@ XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 新增注入类 `com/miui/voicetrigger/wakeup/PortWakeupHooks` 仅构造 LAB，失败路径
 使用默认值。补丁逐方法核对指令结构；版本形态不符时拒绝盲目修改。
 
-## 事务、缺失与元数据
+### 事务、缺失与元数据
 
 两个 APK 分别使用 `tools/apk_patcher.sh` 的独立事务会话，具有补丁快照、失败回滚、
 目标条目登记、非目标条目内容校验、`zipalign -P 16` 和原子替换。VoiceAssist 事务只
@@ -203,14 +203,14 @@ XIAOAI_VOICEASSIST_DEVICE_CODE=nezha
 设备条目重复或目标设备内容冲突时失败。两个目标都只修改 product 分区中的既有文件
 内容，不改路径、所有者或权限，无需新增 contexts/fsconfig。
 
-## 签名风险
+### 签名风险
 
 事务会把原 APK Signing Block 字节原样回插，但资产或 DEX 字节变化都会使其中覆盖
 APK 内容的 v2/v3 摘要存在失效风险。Signing Block 字节保留不代表内容签名有效，
 也不能证明无需重新签名。若需要重签名，还必须评估平台授权、共享 UID 和签名级权限
 影响。
 
-## 验证边界
+### 验证边界
 
 - VoiceAssist 可在真实 Ace 6T 原包 APK 的临时副本上静态验证：目标设备只添加一次、
   重复执行幂等、非目标 ZIP 条目内容不变且 `unzip -t` 通过。

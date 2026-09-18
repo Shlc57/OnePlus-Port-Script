@@ -49,6 +49,14 @@
 Profile 识别顺序：显式 `COLOROS_DISPLAY_PROFILE` 优先；否则按底包设备代号、市场名
 或显示 Target 自动匹配；无法匹配时报错并列出可用 Profile。
 
+### 关于顶层 `config/`（不是死文件）
+
+本模块只读 `profiles/<机型>/config/` 下的两份 manifest；顶层 `config/` 的
+`selinux_bundle.tsv`、`selinux_policy.cil.in`、`display_property_contexts`、
+`display_rro_files.tsv`、`fusionlight_files.tsv` 当前无代码引用，是按上游一加 15
+方案原样保留的参考基准，供后续 Ace 6 系列适配时比对与取真值，**不得当作无用
+产物删除**（已发生过一次误删后从 git 索引恢复）。
+
 ## 执行
 
 ```bash

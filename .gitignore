@@ -2,8 +2,6 @@ __pycache__
 local.properties
 .trae/
 .qoder/
-debug-xiaoai-dsp-wakeup.md
 docs/
-debug-coloros-wallet-phase2.md
-debug-auto-brightness-als.md
+debug-*.md
 

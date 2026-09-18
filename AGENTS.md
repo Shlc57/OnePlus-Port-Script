@@ -76,6 +76,8 @@
 - 明确用于替换或修补既有文件的子步骤，若目标文件不存在，应使用 `warn_print` 警告并只跳过该子步骤；同一补丁中的独立迁移或其他处理继续执行。已经存在但类型错误、版本或校验不受支持、内容冲突或使用不安全符号链接的目标仍应失败。此规则不适用于本来就要新增的文件、跨分区迁移目标、生成产物或 metadata 输出，不得通过放宽 `replace_file_if_different` 等公共接口把新增与替换语义混为一谈。
 - 临时文件必须使用 `mktemp`，并通过 `trap` 或明确清理路径回收。
 - 优先使用 `tools.sh` 中已有的安全操作函数，不要重复实现复制、替换、属性合并或受控删除逻辑。
+  `replace_file_if_different` 替换已存在的普通文件时保留目标原模式，新增文件沿用来源模式；
+  补丁内不要再加 `chmod --reference` 兜底（新增文件仍需按预期显式 `chmod`，不得依赖打包工具猜测）。
 - 删除项目文件必须使用 `remove_path_if_exists`；不得使用宽泛变量、未解析 glob 或面向项目根目录的递归删除。
 - 不要修改与当前补丁目标无关的分区内容。
 
@@ -166,7 +168,12 @@
 git diff --check
 rg --files -g '*.sh' -0 | xargs -0 -n1 bash -n
 PYTHONDONTWRITEBYTECODE=1 python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("tools/partition_metadata.py").read_text(encoding="utf-8"))'
+bash tools/test_config_profiles.sh
+bash tools/test_file_operations.sh
 ```
+
+`tools/test_file_operations.sh` 覆盖 `replace_file_if_different` 的模式保持与幂等契约；修改
+`tools/tools.sh` 的安全文件操作接口后必须继续通过。
 
 修改过的 Shell 脚本还应运行 ShellCheck。对 `SC2016`、`SC2154` 等确有意图的情况，只允许有依据地局部处理。
 

@@ -308,9 +308,7 @@ inject_zygote_bootclasspath() {
 		skip_print "zygote BOOTCLASSPATH 注入值已是最新"
 		return 0
 	fi
-	# replace_file_if_different 用 cp -a 保留来源权限，mktemp 产物是 0600，
-	# 直接替换会把 rc 从 0644 降级；按目标原模式对齐，保持工作树语义不变。
-	chmod --reference="$wallet_zygote_rc_target" -- "$patched_rc"
+	# replace_file_if_different 替换既有普通文件时保留目标模式（原包 rc 为 0644）。
 	replace_file_if_different "$patched_rc" "$wallet_zygote_rc_target"
 	std_print "✅ zygote BOOTCLASSPATH 已注入 OSense stub"
 }

@@ -1741,6 +1741,15 @@ replace_file_if_different() {
 		rm -f -- "$temporary_file"
 		return 1
 	fi
+	# cp -a 会把来源模式带到临时件上，而来源常是 mktemp 产物（0600），直接替换会
+	# 把既有文件从 0644 降级。与 _install_generated_file 保持一致：替换已存在的
+	# 普通文件时保留目标原模式；新增文件没有可参照的目标模式，仍沿用来源模式，
+	# 预置可执行文件的执行位不会被抹掉。符号链接目标保持原行为，不按引用对象改模式。
+	if [[ -e "$destination_file" && ! -L "$destination_file" ]] && \
+		! chmod --reference="$destination_file" -- "$temporary_file"; then
+		rm -f -- "$temporary_file"
+		return 1
+	fi
 	if ! mv -fT -- "$temporary_file" "$destination_file"; then
 		rm -f -- "$temporary_file"
 		return 1

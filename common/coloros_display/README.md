@@ -32,6 +32,26 @@
   android 24851）。
 - `disable_high_pwm_rgb=1` 的 Profile（Ace 6/6T）会注释底包 odm 的
   `ro.vendor.oplus.sensor.high_pwm_rgb`；目标缺失或已禁用时仅警告跳过。
+
+  该开关是**有意取舍**，两侧代价均已实机确认：
+  - 置 `true`（底包原生）：传感器 HAL 隐藏原始 ALS，只暴露
+    `qti.sensor.high_pwm_rgb`/`qti.sensor.high_pwm_cct`，HyperOS 框架读不到
+    `android.sensor.light` → 自动亮度直接拉满。
+  - 禁用（本模块选择）：HAL 退回自己算 lux 的标准路径（日志
+    `handle_oplus_wise_rgb_event:242, ambient_light:`），而该路径的屏光补偿不足。
+    2026-09-19 Ace 6T DSU 完全暗室实测：把亮度钉在固定值时，屏幕自身光仍会被
+    光感读到 —— `brl≈1794` 时 10.4 lux、`brl≈3586`（最亮）时 63.8 lux，且呈超线性；
+    由此构成“亮→读到高 lux→降到中亮度→泄漏变小→再降”的正反馈楼梯，
+    强光移开后亮度需约 56 秒才回到低光环境值（框架侧渐变参数正常，
+    单次动画上限 3s，耗时来自目标值被反复重评定）。
+    影响面限于暗光/夜间（户外几百至上万 lux 时泄漏占比 <10%），表现为屏幕偏亮
+    与少量额外功耗；用户体感已评定为可接受，因此不计划进一步修正。
+  - 底包无此问题是因为它走 type-5 的 **OPLUS Fusion Light Sensor Next Gen**，屏光补偿由
+    ColorOS framework 侧 `libsensorserviceextimpl.so` 消费 `fusionlight_profile/*.json` 完成；
+    HyperOS SensorService 无 `ExtendedFactory::createSensorServiceExt()` 钩子。移植系统已保留
+    标定文件（`system_ext/etc/fusionlight_profile/fusionlight_Main_2_3.json`）缺的是消费者；
+    且传感器 HAL 内 `wise_rgb` 原始流正常运行而 `fusion_light` 分支不输出，说明如需做桥接，
+    原始数据已具备。
 - 底包 Dolby visual/decoder 配置、qti-testscripts 禁用、CWB 原生链保留、SELinux
   bundle 登记等流程与机型无关，对所有 Profile 一致。
 

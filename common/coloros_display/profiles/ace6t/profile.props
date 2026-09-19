@@ -6,6 +6,10 @@ device_codes=
 market_names=OnePlus Ace 6T
 display_targets=canoe
 panel_table=display_brightness_config_P_7.xml
+# 禁用底包 high_pwm_rgb：置 true 时传感器 HAL 不暴露标准 type-5 光感，HyperOS 框架
+# 读不到 android.sensor.light 会把自动亮度直接拉满。禁用后改走 HAL 标准路径，代价是
+# 屏光补偿不足（暗室实测最亮时屏幕自身泄漏≈64 lux，强光移开后亮度约 56 秒才回落）；
+# 两侧代价与完整数据见 ../README.md。体感已实机评定为可接受，不再进一步修正。
 disable_high_pwm_rgb=1
 # 暗端锚点来自 Ace 6T 真机可见性阶梯实测：节点 3 不可见、节点 9 勉强可见、节点 20 可见。
 dark_anchor_value=0.0055

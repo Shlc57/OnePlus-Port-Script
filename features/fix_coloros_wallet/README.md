@@ -136,11 +136,33 @@ isNfcEseMode 判定，缺失时开门/乘车弹"设为默认NFC应用"对话框�
 写键并延迟广播刷新钱包缓存（小米 Nfc 不发该 Oplus 广播）。镜像侧无法写入
 data 分区设置，故采用 init 运行时补写；每次开机幂等覆写同一值。
 
-> 未验证风险：`exec_background u:r:shell:s0` 依赖 init→shell 域转换与 shell 读
-> `vendor_configs_file` 的 SELinux 许可，尚未在真机确认（本仓首次使用该机制）。
-> 若刷机后 `settings get global nfc_multise_active` 仍为 null，应先查 avc denied；
-> 被拒时改走 `common/fake_device_params` 模式（自建 disabled service + 专属 exec
-> 上下文 + CIL，经 `config/selinux_bundle.tsv` 交给 `common/fix_vendor_avc` 合并）。
+> **2026-09-19 DSU 实机定位：补写必须用 uid root，不能用 uid shell。**
+> 早先版本这里写的是 `exec_background u:r:shell:s0 shell shell`，开机后该键仍为
+> null。当时推测的两个原因（init→shell 域转换被拒、shell 读不到 `vendor_configs_file`）
+> 均被证据排除：原包 `plat_sepolicy.cil` 里 `(allow init shell (process (transition)))`、
+> `(allow init shell (process (siginh rlimitinh)))` 与
+> `(allow domain vendor_configs_file (file (read getattr map open)))`（shell ∈ domain）全部存在，
+> 真机在 `u:r:shell:s0` 下 `wc -c` 该脚本也返回成功。真正的拦截点在框架层而非 SELinux：
+>
+> | uid | 域 | `settings put global nfc_multise_active` |
+> | --- | --- | --- |
+> | 2000 shell | `shell` | `SecurityException: must have WRITE_SECURE_SETTINGS` |
+> | 2000 shell | `ksu` | 同上（→ 与域无关，纯由 uid 决定） |
+> | 1000 system | `shell` | `NullPointerException`（更糟，不可用） |
+> | 0 root | `shell` | ✅ 脚本完整跑通，键写入成功 |
+>
+> 注意两个易误判点：`dumpsys package com.android.shell` 显示该包
+> `WRITE_SECURE_SETTINGS: granted=true`，但 `settings` 是 `app_process` 拉起的无包身份
+> 命令，权限按 uid 判定，所以该 granted 不代表可用；而本机的 `adb shell` 因设备
+> 侧已授予 shell root 而处于 uid 0，因此“手工 adb 能写”不能当作 uid 2000 可用的证据。
+> 保留 `u:r:shell:s0` 是为了复用其 `/system/bin/sh` entrypoint 与读 odm 脚本的许可，
+> 只把 uid 换为 root，不新增任何 SELinux 规则。
+>
+> 以上是在等价运行态（`uid=0` + `u:r:shell:s0` + 同一脚本）下验证的结论；
+> **init 本身能否拉起该配置尚需下次刷机开机确认**（未被 KernelSU 参与的冷启动证据）。
+> 若开机后仍为 null，再改走 `common/fake_device_params` 模式（专属 coredomain + 专用
+> exec 上下文 + CIL，并需重算 `plat_sepolicy_and_mapping.sha256` 以阻止旧 precompiled
+> policy 覆盖新规则）。
 
 仍需手工执行的开关（仅排障时使用）：
 
@@ -154,6 +176,10 @@ settings put global nfc_multise_active "Embedded SE"
 am broadcast -a com.nfc.action.default_pay.changed \
   -n com.finshell.wallet/com.nearme.wallet.nfc.NfcDefaultPayChangedReceiver
 ```
+
+> 上述手工命令同样需要 **uid root**（`adb root` 或已授予 shell root 的环境）。
+> 在未放开该权限的 HyperOS 上，普通 `adb shell`（uid 2000）执行会被
+> SettingsProvider 以 `WRITE_SECURE_SETTINGS` 拒绝，原因为上文所述，与本模块无关。
 
 ### 已知未决
 

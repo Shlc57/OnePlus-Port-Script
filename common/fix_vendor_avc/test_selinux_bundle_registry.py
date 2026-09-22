@@ -32,7 +32,7 @@ def is_safe_relative_path(value: str) -> bool:
     return all(segment not in {"", ".", ".."} for segment in value.split("/"))
 
 
-def context_keys(path: Path) -> list[str]:
+def context_keys(path: Path, target: str) -> list[str]:
     keys: list[str] = []
     for line_number, raw_line in enumerate(
         path.read_text(encoding="utf-8").splitlines(), start=1
@@ -41,7 +41,16 @@ def context_keys(path: Path) -> list[str]:
         if not stripped or stripped.startswith("#"):
             continue
         fields = stripped.split()
-        assert len(fields) == 2, f"invalid context at {path}:{line_number}"
+        # 与 common/fix_vendor_avc/apply.sh 的 validate_context_fragment 保持一致：
+        # 只有 *_property_contexts 允许额外的 exact 匹配类型，其它目标必须恰好两列。
+        property_exact_entry = (
+            len(fields) == 3
+            and target.endswith("_property_contexts")
+            and fields[2] == "exact"
+        )
+        assert len(fields) == 2 or property_exact_entry, (
+            f"invalid context at {path}:{line_number}"
+        )
         keys.append(fields[0].replace("\\", ""))
     assert keys, f"empty context fragment: {path}"
     return keys
@@ -67,6 +76,11 @@ def test_registry() -> None:
         (
             "fix_mi_account",
             "common/fix_mi_account",
+            "config/selinux_bundle.tsv",
+        ),
+        (
+            "fix_xiaoai_wakeup",
+            "features/fix_xiaoai_wakeup",
             "config/selinux_bundle.tsv",
         ),
         (
@@ -154,7 +168,7 @@ def test_context_keys_are_unique_across_registered_bundles() -> None:
         ):
             if record_type != "contexts":
                 continue
-            for key in context_keys(bundle_dir / relative_fragment):
+            for key in context_keys(bundle_dir / relative_fragment, target):
                 owned_keys.append((owner, target, key))
     assert_unique_context_owners(owned_keys)
 

@@ -14,9 +14,9 @@ README 为准）。
 | `system_ext` | `system_ext/app/EidService` | `prebuilt/system_ext/app/EidService` |
 | `system_ext` | `system_ext/priv-app/KeKeUserCenterAccount`、`system_ext/etc/permissions/privapp-permissions-keke-usercenter.xml` | `prebuilt/system_ext/...` |
 | `system` | `system/system/framework/oplus-osense-stub.jar` | `prebuilt/framework/oplus-osense-stub.jar` |
-| `odm` | `odm/etc/init/coloros_wallet_props.rc`、`odm/etc/init/coloros_wallet_nfc_settings.{rc,sh}` | `prebuilt/odm_init/...` |
+| `odm` | `odm/etc/init/coloros_wallet_props.rc`（由机型 `.props` 生成）、`odm/etc/init/coloros_wallet_nfc_settings.{rc,sh}` | 身份 rc 来自 `WALLET_IDENTITY_PROPERTIES_FILE`；nfc_settings 来自 `prebuilt/odm_init/` |
 | 以上各分区 | 新增路径的 contexts/fsconfig 逐文件条目 | 模块内 `merge_*_file` 补丁 |
-| `system`、`odm`（改既有） | `init.zygote64.rc` BOOTCLASSPATH 注入、`build.prop` 身份键 | 模块内 awk / `ensure_prop` |
+| `system`、`odm`（改既有） | `init.zygote64.rc` BOOTCLASSPATH 注入、`build.prop` 身份键 | 身份真值来自 `WALLET_IDENTITY_PROPERTIES_FILE`；模块内 awk / `ensure_prop` |
 
 ## 使用方法
 
@@ -46,20 +46,27 @@ README 为准）。
 
 ## 运行时依赖固化（无 LSP 路线，2026-09-13/14 真机诊断后新增）
 
+- **机型身份输入（必填）**：本模块不在特性代码里写死任何机型身份；整份真值由组合入口经
+  `WALLET_IDENTITY_PROPERTIES_FILE` 指向的 `.props` 提供（必填 `brand/manufacturer/device/model/
+  name/marketname/cuptsm/oplusrom/oplusrom_display`，`regionmark`/`region` 可选默认 CN），
+  缺失即失败。`cuptsm`（SE 厂商专有）、`oplusrom`（底包 ColorOS 版本）都是机型/ROM 专有，
+  标准 `PORT_BASE_DEVICE_*` 不含，故不从中推断。下文 `OnePlus`/`OP6117L1`/`PLR110` 仅为
+  Ace 6T 示例，各机型取值见 `devices/<机型>/config/wallet_identity.props`。
 - **身份键修正（build.prop 加载期）**：第一版 `post-fs-data` rc `setprop` 实测无效——
   init 的 PropertySet 拒绝覆盖**已存在**的 ro. 属性（build.prop 加载早已写入
   Xiaomi 值）。改为直接修正加载期值：`odm/etc/build.prop` 分区键
-  `ro.product.odm.brand/manufacturer=OnePlus`（Android 12+ 分区键回填优先于普通键，
+  `ro.product.odm.brand/manufacturer=<brand>`（示例 OnePlus；Android 12+ 分区键回填优先于普通键，
   是 Build.BRAND 的最终决定者）+ `system/system/build.prop` 普通键兜底 +
-  `ro.product.cuptsm=ONEPLUS|ESE|01|02`、`ro.build.version.oplusrom=V16.1.0`。
+  `ro.product.cuptsm=<cuptsm>`、`ro.build.version.oplusrom=<oplusrom>`（示例 ONEPLUS|ESE|01|02 / V16.1.0）。
   **必须在 `common/fix_device_identity` 之后执行**（其 mi_odm 快照会写 Xiaomi 值）。
-  机型真值同样写 odm 分区键（`odm.device=OP6117L1`、`odm.model/name=PLR110`，
-  2026-09-16 主系统实测）：钱包 fdid 设备指纹按 (model, device) 校验，残留
+  机型真值同样写 odm 分区键（`odm.device=<device>`、`odm.model/name=<model>`，示例
+  OP6117L1/PLR110 为 2026-09-16 Ace 6T 主系统实测）：钱包 fdid 设备指纹按 (model, device) 校验，残留
   `model=2512BPNDAC/device=nezha` 会报“机型不匹配”导致乘车卡列表空与门禁
   复制 291005。运行时代号由组合入口 `RUNTIME_DEVICE_CODE` 声明，联动机型 XML
   改名与小爱 VoiceAssist 白名单（`XIAOAI_VOICEASSIST_DEVICE_CODE`）；
   `odm.cert.*` 等其余分区键保留 nezha。
-- **钱包身份键 rc**：`odm/etc/init/coloros_wallet_props.rc` 保留作为 rc 路径
+- **钱包身份键 rc**：`odm/etc/init/coloros_wallet_props.rc` 由机型 `.props` 生成（不再复制
+  写死某机型的静态 prebuilt rc），保留作为 rc 路径
   兜底（对属性表中不存在的键首次 setprop 有效；cuptsm 实测被 init 加载路径
   丢弃、属性表不存在，机制待查，双写互为保险）。
 - **OSense stub jar**：FinShell 解冻 SDK `LongTimeUnfreezeManager extends

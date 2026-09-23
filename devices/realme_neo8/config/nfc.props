@@ -1,0 +1,18 @@
+# 真我 Neo8 组合流程为目标 NXP NFC 栈选择的 Xiaomi 上层兼容开关。
+# features/fix_nci_nfc 不从小米原包复制这些目标硬件属性。
+# 组合入口显式让 Neo8 与一加 Ace 6T 采用同一 NXP 修复方案（用户裁定：TMS 桥仅
+# Ace 6 独享，其余机型统一走原版 fix_nci_nfc）。
+#
+# 实测冲突（2026-09 DNA_neo8 底包取证）：Neo8 硬件控制器实为青藤 THN31（TMS 栈），
+# odm/etc/nfc/nfc_fw_ref 中 project 25602 落在 thn31_fw_* 行，且 odm 缺失
+# fix_nci_nfc 依赖的 NXP HAL 三项硬契约（android.hardware.nfc-service.nxp 二进制、
+# nfc-service-nxp.rc、manifest 里的 vendor.nxp.nxpnfc_aidl），只具备 TMS 桥五件套
+# （nfc-service-tms.rc / init.thn31.nfc.rc）。因此冷包下 fix_nci_nfc 大概率无法点亮
+# NFC；这里保留上层兼容属性，作为“暂时与 Ace 6T 一致”的过渡方案。
+# 解除路径二选一：① 补全 odm 解包并提供真 NXP 契约后重跑；② 真机 getprop/dumpsys
+# 定案后改回设备专属 TMS 桥方案。在此之前不得把 Neo8 的 NFC 记为已验证生效。
+ro.vendor.nfc.repair=1
+ro.vendor.nfc.wallet_fusion=1
+ro.vendor.nfc.secure_display_optim=1
+ro.vendor.nfc.mitouch=1
+ro.vendor.nfc.phonecase=1

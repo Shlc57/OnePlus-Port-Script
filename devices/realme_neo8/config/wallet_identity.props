@@ -1,0 +1,19 @@
+# ColorOS 钱包机型身份真值（features/fix_coloros_wallet 经 WALLET_IDENTITY_PROPERTIES_FILE 消费）。
+# 真我 Neo8 底包实测：brand/manufacturer=realme、cuptsm=REALME|ESE|01|27（odm/build.prop）；
+# model/product=RMX8899、device=RE6402L1（odm/etc/fingerprint.json）；marketname=真我Neo8
+# （ro.vendor.oplus.market.name，与入口 DEVICE_DISPLAY_NAME 的英文名 realme Neo8 有意不同，
+# 与 Ace 6T 同规律：钱包写中文名并在 fix_device_identity 之后覆盖）；oplusrom V16.1.0/16.1。
+# device/model 决定钱包 fdid 校验，且 odm.device 会改变运行时 Build.DEVICE，必须与组合入口的
+# RUNTIME_DEVICE_CODE、XIAOAI_VOICEASSIST_DEVICE_CODE 保持一致；机型 XML 由 fix_device_identity 改名。
+# 注意：钱包五件套 prebuilt APK 目前仍是 Ace 6T 底包提取产物，启用前应改从 Neo8 底包 system 重新提取。
+brand=realme
+manufacturer=realme
+device=RE6402L1
+model=RMX8899
+name=RMX8899
+marketname=真我Neo8
+cuptsm=REALME|ESE|01|27
+oplusrom=V16.1.0
+oplusrom_display=16.1
+regionmark=CN
+region=CN

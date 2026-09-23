@@ -40,6 +40,9 @@ export XIAOAI_VOICETRIGGER_PATCH=true
 # 变更），小爱 cloudControl.device 白名单必须与其保持一致。
 export XIAOAI_VOICEASSIST_DEVICE_CODE=OP6117L1
 export NFC_PROPERTIES_FILE="$ace6t_config_dir/nfc.props"
+# ColorOS 钱包机型身份真值（features/fix_coloros_wallet 消费）；device=OP6117L1 与
+# 上方 RUNTIME_DEVICE_CODE、XIAOAI_VOICEASSIST_DEVICE_CODE 必须一致。
+export WALLET_IDENTITY_PROPERTIES_FILE="$ace6t_config_dir/wallet_identity.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6t_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # Ace 6T 底包 rc 走 mtp.gs0 纯触发器，与模块内置的一加 15 rc（use_ffs_mtp 形态）不同，

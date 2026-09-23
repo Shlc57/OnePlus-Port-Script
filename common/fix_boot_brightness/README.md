@@ -17,6 +17,7 @@
 | `oneplus15` | 入口显式指定 | `OnePlus15BootBrightnessOverlay.apk`（0.390222547） |
 | `ace6` | Target `sun`、市场名 `OnePlus Ace 6`（设备代号待实测） | `Ace6BootBrightnessOverlay.apk`（0.394047439） |
 | `ace6t` | 代号 `nezha`、Target `canoe`、市场名 `OnePlus Ace 6T` | `Ace6TBootBrightnessOverlay.apk`（0.394047439） |
+| `neo8` | 入口显式指定（Target `canoe` 与 ace6t 相同，自动匹配会先命中 ace6t，故必须显式指定）；代号 `RE6402L1`、市场名 `realme Neo8` | `Neo8BootBrightnessOverlay.apk`（沿用 ace6t 0.394047439，待实机核对） |
 
 Profile 识别顺序：显式 `BOOT_BRIGHTNESS_PROFILE` 优先；否则按底包设备代号、市场名
 或显示 Target 自动匹配 `profiles/*/profile.props`；无法匹配时报错并列出可用 Profile。

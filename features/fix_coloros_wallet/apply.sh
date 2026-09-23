@@ -99,6 +99,36 @@ if [[ ! -d "$prebuilt_root" || ${#missing_apps[@]} -gt 0 ]]; then
 	exit 0
 fi
 
+# ── 机型身份真值（由组合入口 WALLET_IDENTITY_PROPERTIES_FILE 提供，特性模块不写死）──
+# 品牌/机型/cuptsm（SE 厂商专有）/oplusrom（底包 ColorOS 版本）均为机型/ROM 专有，
+# 标准 PORT_BASE_DEVICE_* 不含 brand/cuptsm/oplusrom，故整份身份真值由机型入口 .props 提供。
+wallet_identity_file="${WALLET_IDENTITY_PROPERTIES_FILE:-}"
+if [[ -z "$wallet_identity_file" ]]; then
+	err_print "未提供 WALLET_IDENTITY_PROPERTIES_FILE：钱包身份键须来自机型 .props，不在特性模块写死某机型"
+	exit 1
+fi
+if [[ -L "$wallet_identity_file" || ! -f "$wallet_identity_file" ]]; then
+	err_print "WALLET_IDENTITY_PROPERTIES_FILE 不是普通文件：$wallet_identity_file"
+	exit 1
+fi
+wallet_identity_prop() {
+	local key="$1"
+	awk -F'=' -v k="$key" '$0 ~ "^[[:space:]]*"k"[[:space:]]*="{v=substr($0,index($0,"=")+1);gsub(/^[ \t]+|[ \t]+$/,"",v);print v;exit}' "$wallet_identity_file"
+}
+declare -A WALLET_ID=()
+declare -a wallet_identity_required=(brand manufacturer device model name marketname cuptsm oplusrom oplusrom_display)
+wallet_identity_key=''
+for wallet_identity_key in "${wallet_identity_required[@]}"; do
+	WALLET_ID["$wallet_identity_key"]="$(wallet_identity_prop "$wallet_identity_key")"
+	if [[ -z "${WALLET_ID[$wallet_identity_key]}" ]]; then
+		err_print "机型身份 .props 缺少必填键：$wallet_identity_key（$wallet_identity_file）"
+		exit 1
+	fi
+done
+# region/regionmark 可选，默认 CN（中国区 SKU）。
+WALLET_ID[regionmark]="$(wallet_identity_prop regionmark)"; [[ -n "${WALLET_ID[regionmark]}" ]] || WALLET_ID[regionmark]='CN'
+WALLET_ID[region]="$(wallet_identity_prop region)"; [[ -n "${WALLET_ID[region]}" ]] || WALLET_ID[region]='CN'
+
 # 校验全部通过后才动工作树。copy_tree_missing_only 只补缺失文件，已存在且内容
 # 相同则幂等跳过；目标冲突（内容不同/类型不符）视为错误。
 for app_entry in "${wallet_apps[@]}"; do
@@ -197,22 +227,40 @@ append_wallet_metadata_patch() {
 }
 
 install_wallet_props_rc() {
+	local generated_rc
 	if [[ -L "$wallet_props_rc_target" ]]; then
 		err_print "钱包身份键 rc 目标不能是符号链接：$wallet_props_rc_target"
 		return 1
 	fi
+	# rc 内容由机型身份 .props 生成，不再复制写死某机型的静态 prebuilt rc。
+	generated_rc="$(mktemp "$(get_config_path '.wallet_props_rc.XXXXXX')")"
+	temporary_files+=("$generated_rc")
+	{
+		printf '# ColorOS 钱包运行时身份键（features/fix_coloros_wallet，由机型 .props 生成）。\n'
+		printf '# 品牌/机型/cuptsm/oplusrom 由组合入口 WALLET_IDENTITY_PROPERTIES_FILE 提供，避免写死某机型。\n'
+		printf 'on post-fs-data\n'
+		printf '    setprop ro.product.brand %s\n' "${WALLET_ID[brand]}"
+		printf '    setprop ro.product.manufacturer %s\n' "${WALLET_ID[manufacturer]}"
+		printf '    setprop ro.build.version.oplusrom %s\n' "${WALLET_ID[oplusrom]}"
+		printf '    setprop ro.build.version.oplusrom.display %s\n' "${WALLET_ID[oplusrom_display]}"
+		printf '    setprop ro.product.cuptsm "%s"\n' "${WALLET_ID[cuptsm]}"
+		printf '    setprop ro.vendor.oplus.regionmark %s\n' "${WALLET_ID[regionmark]}"
+		printf '    setprop persist.sys.oplus.region %s\n' "${WALLET_ID[region]}"
+		printf '    setprop persist.sys.oppo.region %s\n' "${WALLET_ID[region]}"
+	} > "$generated_rc"
 	if [[ -f "$wallet_props_rc_target" ]]; then
 		if ! grep -q 'ColorOS 钱包运行时身份键' "$wallet_props_rc_target"; then
 			err_print "钱包身份键 rc 目标已被无关内容占用：${wallet_props_rc_target#"$project_dir"/}"
 			return 1
 		fi
-		skip_print "钱包身份键 rc 已存在，同步 metadata"
+		# replace_file_if_different 保留目标原模式（0644），内容相同则幂等跳过。
+		replace_file_if_different "$generated_rc" "$wallet_props_rc_target"
+		skip_print "钱包身份键 rc 已按机型 .props 同步"
 	else
-		check_file_exists "$patcher_dir/prebuilt/odm_init/coloros_wallet_props.rc" || return 1
 		mkdir -p -- "$project_dir/odm/etc/init"
-		copy_file_missing_only "$patcher_dir/prebuilt/odm_init/coloros_wallet_props.rc" \
-			"$wallet_props_rc_target"
-		std_print "✅ 钱包身份键 rc 已写入 odm"
+		mv -f -- "$generated_rc" "$wallet_props_rc_target"
+		chmod 0644 -- "$wallet_props_rc_target"
+		std_print "✅ 钱包身份键 rc 已按机型 .props 生成到 odm"
 	fi
 	append_wallet_metadata_patch fsconfig 'odm/etc/init/coloros_wallet_props.rc 0 0 0644'
 	append_wallet_metadata_patch contexts '/odm/etc/init/coloros_wallet_props\.rc u:object_r:vendor_configs_file:s0'
@@ -344,34 +392,24 @@ install_nfc_multise_settings
 install_osense_stub
 inject_zygote_bootclasspath
 
-# ── 身份键 build.prop 修正 ─────────────────────────────────────────
-# init 的 PropertySet 拒绝覆盖已存在的 ro. 属性（post-fs-data rc setprop 对
-# brand/manufacturer 无效，仅对属性表中不存在的 cuptsm/oplusrom 等首次设置
-# 有效），因此品牌键必须在加载期就是正确值：
-#   - odm/etc/build.prop 的分区键 odm.brand/manufacturer=OnePlus：Android 12+
-#     分区键回填优先于普通键，是 Build.BRAND 的最终决定者；
-#   - system/system/build.prop 普通键：原包污染源，双重兜底；
-#   - 本模块必须在组合流程中位于 common/fix_device_identity 之后，否则会被其
-#     mi_odm 快照（Xiaomi）覆盖。
-# cuptsm 实测被 init 加载路径丢弃（属性表不存在，机制待查），rc setprop 与
-# build.prop 双写互为保险。
+# ── 机型身份 build.prop 修正（真值来自组合入口 .props，见 WALLET_IDENTITY_PROPERTIES_FILE）
+# init 的 PropertySet 拒绝覆盖已存在的 ro. 属性（post-fs-data rc setprop 仅对属性表中
+# 不存在的 cuptsm/oplusrom 首次设置有效），因此品牌/机型键必须在加载期就是正确值：
+#   - odm/etc/build.prop 的分区键 ro.product.odm.* 回填优先，是 Build.BRAND/MODEL/DEVICE
+#     的最终决定者；system/system/build.prop 普通键为 native 兜底；
+#   - 本模块必须在组合流程中位于 common/fix_device_identity 之后，否则会被其原包快照覆盖；
+#   - device/model 真值决定钱包 fdid 校验，且会改变运行时 Build.DEVICE；组合入口须用
+#     RUNTIME_DEVICE_CODE 同步机型 XML 改名，并用 XIAOAI_VOICEASSIST_DEVICE_CODE 同步白名单。
 fix_identity_build_props() {
 	local odm_etc_build_prop="$project_dir/odm/etc/build.prop"
 	local odm_build_prop="$project_dir/odm/build.prop"
 	local system_build_prop="$project_dir/system/system/build.prop"
 	local -a identity_targets=(
-		"odm.brand=OnePlus"
-		"odm.manufacturer=OnePlus"
-		# 机型身份真值（2026-09-16 主系统 OP6117L1 实测）：Build.MODEL/DEVICE 由
-		# odm 分区键回填决定，必须写 odm 分区键（system 普通键仅作 native 兜底）。
-		# odm.device 由 nezha 改 OP6117L1 后：小爱 fix_xiaoai_wakeup 的
-		# XIAOAI_VOICEASSIST_DEVICE_CODE 已同步改 OP6117L1（OPAce6T_port.sh）；
-		# miui FeatureParser 按 Build.DEVICE 查找机型 XML，由组合入口
-		# RUNTIME_DEVICE_CODE 声明同值并经 common/fix_device_identity 把
-		# device_features/nezha.xml 改名为 OP6117L1.xml。
-		"odm.device=OP6117L1"
-		"odm.model=PLR110"
-		"odm.name=PLR110"
+		"odm.brand=${WALLET_ID[brand]}"
+		"odm.manufacturer=${WALLET_ID[manufacturer]}"
+		"odm.device=${WALLET_ID[device]}"
+		"odm.model=${WALLET_ID[model]}"
+		"odm.name=${WALLET_ID[name]}"
 	)
 	local entry key value
 
@@ -385,27 +423,19 @@ fix_identity_build_props() {
 		ensure_prop "$odm_etc_build_prop" "ro.product.$key" "$value"
 		ensure_prop "$odm_build_prop" "ro.product.$key" "$value"
 	done
-	ensure_prop "$system_build_prop" "ro.product.brand" "OnePlus"
-	ensure_prop "$system_build_prop" "ro.product.manufacturer" "OnePlus"
-	# 机型身份真值（2026-09-16 主系统 OP6117L1 / ColorOS V16.1.0 实测）：
-	# 钱包 fdid 设备指纹服务按 (model, device) 校验，移植系统残留
-	# model=2512BPNDAC/device=nezha 时报"机型不匹配"→ 乘车卡列表空 +
-	# 门禁复制 291005"获取机型及芯片类型异常"（VendorService CPLC 已非空，
-	# 唯一缺口是机型身份）。真值：model/name=PLR110、device=OP6117L1。
-	# 注意：Build.DEVICE 随 odm 分区键变为 OP6117L1，小爱白名单已由
-	# OPAce6T_port.sh 的 XIAOAI_VOICEASSIST_DEVICE_CODE 同步；此处的
-	# system 普通键为 native 路径兜底。
-	ensure_prop "$system_build_prop" "ro.product.device" "OP6117L1"
-	ensure_prop "$system_build_prop" "ro.product.model" "PLR110"
-	ensure_prop "$system_build_prop" "ro.product.name" "PLR110"
-	ensure_prop "$system_build_prop" "ro.product.marketname" "一加 Ace 6T"
-	# cuptsm 值含竖线，确保 prop 文件校验通过（read_prop_value/validate 已支持）。
-	ensure_prop "$odm_build_prop" "ro.product.cuptsm" "ONEPLUS|ESE|01|02"
-	ensure_prop "$odm_etc_build_prop" "ro.product.cuptsm" "ONEPLUS|ESE|01|02"
-	ensure_prop "$system_build_prop" "ro.product.cuptsm" "ONEPLUS|ESE|01|02"
-	ensure_prop "$system_build_prop" "ro.build.version.oplusrom" "V16.1.0"
-	ensure_prop "$system_build_prop" "ro.build.version.oplusrom.display" "16.1"
-	std_print "✅ 钱包身份键已修正到 odm/system build.prop（加载期生效）"
+	ensure_prop "$system_build_prop" "ro.product.brand" "${WALLET_ID[brand]}"
+	ensure_prop "$system_build_prop" "ro.product.manufacturer" "${WALLET_ID[manufacturer]}"
+	ensure_prop "$system_build_prop" "ro.product.device" "${WALLET_ID[device]}"
+	ensure_prop "$system_build_prop" "ro.product.model" "${WALLET_ID[model]}"
+	ensure_prop "$system_build_prop" "ro.product.name" "${WALLET_ID[name]}"
+	ensure_prop "$system_build_prop" "ro.product.marketname" "${WALLET_ID[marketname]}"
+	# cuptsm 值含竖线但无空格，ensure_prop 原样写入；rc setprop 与 build.prop 双写互为保险。
+	ensure_prop "$odm_build_prop" "ro.product.cuptsm" "${WALLET_ID[cuptsm]}"
+	ensure_prop "$odm_etc_build_prop" "ro.product.cuptsm" "${WALLET_ID[cuptsm]}"
+	ensure_prop "$system_build_prop" "ro.product.cuptsm" "${WALLET_ID[cuptsm]}"
+	ensure_prop "$system_build_prop" "ro.build.version.oplusrom" "${WALLET_ID[oplusrom]}"
+	ensure_prop "$system_build_prop" "ro.build.version.oplusrom.display" "${WALLET_ID[oplusrom_display]}"
+	std_print "✅ 钱包身份键已修正到 odm/system build.prop（机型 ${WALLET_ID[model]}/${WALLET_ID[device]}，加载期生效）"
 }
 
 fix_identity_build_props

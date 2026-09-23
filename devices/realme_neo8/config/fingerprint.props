@@ -1,0 +1,20 @@
+# 真我 Neo8 超声波指纹目标设备硬件参数。
+# features/fix_ultrasonic_fingerprint 只读取此显式配置，不从小米原包推断。
+# 参考宽高暂按同 SoC（canoe/SM8845）的一加 Ace 6T 面板 1272x2800 填写，属未实测
+# 估算值；Neo8 为 realme 面板，实际物理分辨率与传感器位置必须刷机前用
+# `adb shell wm size` / 实测传感器中心核对后修改本文件重跑。
+# 传感器中心按相对位置 (50%, 74.6%) 换算，同为一加 15/Ace 6T 估算口径。
+ultrasonic.fp.reference.width=1272
+ultrasonic.fp.reference.height=2800
+ultrasonic.fp.sensor.center.x=636
+ultrasonic.fp.sensor.center.y=2089
+ultrasonic.fp.icon.width=195
+ultrasonic.fp.icon.height=195
+ultrasonic.fp.sensor.area.width=220
+ultrasonic.fp.sensor.area.height=244
+ultrasonic.fp.vendor=oplus
+ultrasonic.fp.fingerdown.delay.ms=20
+# 底包 sdm_display_resolution_extn.xml 中本机 SoC 对应的 Target 条目。
+# Neo8（SM8845，第五代骁龙 8）对应 Target "canoe"；设置后只收集该 Target 下的
+# PanelResolution，避免混入底包中其他平台（sun/anorak）的面板分辨率。
+ultrasonic.fp.target=canoe

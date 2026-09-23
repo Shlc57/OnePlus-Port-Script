@@ -1,0 +1,5 @@
+# 操作	相对 my_product 根目录的路径
+# Neo8 my_product 同时提供 Main_0_3 与 Main_2_3 两份 FusionLight 标定文件，
+# 二者 metadata 均在 my_product 中，一并迁移到 system_ext/etc 保留标定。
+replace	etc/fusionlight_profile/fusionlight_Main_0_3.json
+replace	etc/fusionlight_profile/fusionlight_Main_2_3.json

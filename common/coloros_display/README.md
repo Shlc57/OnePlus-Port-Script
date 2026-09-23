@@ -13,9 +13,11 @@
   运行时分区保留。
 - 删除原包 `product/etc/displayconfig` 中旧的 Xiaomi 配置再复制底包 vendor 目录，
   避免两套 DisplayDeviceConfig 同时被扫描。
-- 用 Profile 指定的 `my_product/vendor/etc` 面板表（OP15 为 P_3，Ace 6/6T 为 P_7）
-  和 expressiveness lux 表生成包含完整物理亮度表、`autoBrightness` lux map 与 HBM
-  门限的 DisplayDeviceConfig，写入最终 `vendor`/`product`。
+- 用 Profile 指定的 `my_product/vendor/etc` 面板表（OP15 为 P_3，Ace 6/6T 为 P_7，
+  Neo8 为 P_1）和 expressiveness lux 表生成包含完整物理亮度表、`autoBrightness` lux map
+  与 HBM 门限的 DisplayDeviceConfig，写入最终 `vendor`/`product`。两表缺一（如 Neo8 底包
+  缺 `multimedia_display_brightness_config.xml`）时只 `warn` 并保留底包 displayconfig，
+  不生成 `autoBrightness`。
 - 生成时按 Profile 执行可选的暗端锚点重映射（profile.props 的 `dark_anchor_value`，
   传入生成器 `--min-visible-value`；未设置的 Profile 传 `--no-dark-anchor` 保留
   上游曲线）：ColorOS 面板表的暗端 nit 标定与真实面板节点不符（Ace 6T 实测
@@ -65,6 +67,7 @@
 | `oneplus15` | 入口显式指定 | `display_brightness_config_P_3.xml` | 24831 android+oplus；Main_1_A、Main_2_A | 保留 |
 | `ace6t` | 入口显式指定；兜底 Target `canoe`、市场名 `OnePlus Ace 6T`（真机实测底包代号 `nezha`） | `display_brightness_config_P_7.xml` | 24851 android；Main_2_3（取自实包） | 禁用 |
 | `ace6` | Target `sun`、市场名 `OnePlus Ace 6`（代号待实测） | `display_brightness_config_P_7.xml` | 暂按 ace6t 模板，待实机 `my_product` 核实 | 禁用 |
+| `neo8` | 入口显式指定；兜底 Target `canoe`（与 ace6t 相同，自动匹配会先命中 ace6t，故必须显式指定）、代号 `RE6402L1`、市场名 `realme Neo8` | `display_brightness_config_P_1.xml` | 25602 android+oplus；Main_0_3、Main_2_3（取自实包）；底包缺 lux 表，暂不生成 autoBrightness | 禁用 |
 
 Profile 识别顺序：显式 `COLOROS_DISPLAY_PROFILE` 优先；否则按底包设备代号、市场名
 或显示 Target 自动匹配；无法匹配时报错并列出可用 Profile。

@@ -1,0 +1,4 @@
+# 真我 Neo8 组合流程选择的目标 vendor 显示策略（沿用同 SoC 的 Ace 6T 值，待实机核对）。
+vendor.display.disable_3d_adaptive_tm=1
+vendor.display.disable_stc_dimming=1
+vendor.display.disable_sdr_dimming=0

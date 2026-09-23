@@ -1,0 +1,18 @@
+# ColorOS 钱包机型身份真值（features/fix_coloros_wallet 经 WALLET_IDENTITY_PROPERTIES_FILE 消费）。
+# 一加 Ace 6T：底包/主系统实测（2026-09-16）。device/model 决定钱包 fdid 校验，
+# 且 odm.device 会改变运行时 Build.DEVICE，必须与组合入口的 RUNTIME_DEVICE_CODE、
+# XIAOAI_VOICEASSIST_DEVICE_CODE 保持一致；机型 XML 由 common/fix_device_identity 改名。
+brand=OnePlus
+manufacturer=OnePlus
+device=OP6117L1
+model=PLR110
+name=PLR110
+marketname=一加 Ace 6T
+# cuptsm（ChinaUMT 安全元件标识，SE 厂商专有）；含竖线但无空格，原样写入。
+cuptsm=ONEPLUS|ESE|01|02
+# 底包 ColorOS 版本标签（加载期 build.prop + 运行时 rc setprop 双写）。
+oplusrom=V16.1.0
+oplusrom_display=16.1
+# 区域标记，可选，缺省 CN。
+regionmark=CN
+region=CN

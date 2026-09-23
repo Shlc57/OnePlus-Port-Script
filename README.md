@@ -81,6 +81,9 @@ bash OP15_port.sh
 # 一加 Ace 6 / Ace 6T 整套流程（说明见 README_ACE6.md）
 bash OPAce6_port.sh
 bash OPAce6T_port.sh
+
+# 真我 Neo8 整套流程（与 Ace 6T 同 SoC/原包，NFC 暂用同一方案；说明见 devices/realme_neo8/README.md）
+bash RealmeNeo8_port.sh
 ```
 
 `apply.sh` 是由 `port_main.sh` 管理的补丁模块，不应直接执行。`port_main.sh` 只导入一次 `tools/tools.sh`，再在彼此隔离的子 Shell 中加载各补丁，因此补丁内不再重复导入公共接口，同时不同补丁的严格模式、变量、trap 和 `exit` 不会互相污染。
@@ -121,9 +124,9 @@ bash OPAce6T_port.sh
 | [`common/fake_device_params`](common/fake_device_params/README.md) | `system`、可选 `system_ext` | 生成 Settings 设备参数缓存与专用 SELinux 域。 |
 | [`common/fuck_oplus_hybridzram`](common/fuck_oplus_hybridzram/README.md) | `vendor` | 屏蔽 vendor_dlkm 的 zram/zsmalloc，回退到 system_dlkm 已有版本，并屏蔽底包 Oplus zram/swap 优化模块。 |
 | [`common/fix_boot_refresh_rate`](common/fix_boot_refresh_rate/README.md) | `odm`、`product`、`system_ext` | 自动读取底包显示能力，生成刷新率属性、机型刷新率/分辨率列表并修补 Settings 高度计算；多平台底包可通过 `PORT_DISPLAY_TARGET` 按 SoC Target 过滤。 |
-| [`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) | `product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：安装启动默认亮度 Overlay 并移除旧自动亮度曲线 Overlay `MiuiFrameworkResOverlay.apk`。Profile 可按底包识别值自动匹配或用 `BOOT_BRIGHTNESS_PROFILE` 显式指定。 |
+| [`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) | `product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`/`neo8`）分发：安装启动默认亮度 Overlay 并移除旧自动亮度曲线 Overlay `MiuiFrameworkResOverlay.apk`。Profile 可按底包识别值自动匹配或用 `BOOT_BRIGHTNESS_PROFILE` 显式指定。 |
 | [`common/fix_camera_mr`](common/fix_camera_mr/README.md) | `product` | 禁用不兼容的 CameraMR 特殊输入能力。 |
-| [`common/coloros_display`](common/coloros_display/README.md) | `system`、`system_ext`、`odm`、`product`、`vendor`；另需解包 `my_product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`）分发：将底包 `my_product/vendor/etc` 覆盖合并至最终 vendor，从官方面板表生成含 `autoBrightness` 的 Display ID 配置；迁移 FusionLight profile 和显示 RRO，保留底包 CWB 原生服务链，并按 Profile 禁用 `high_pwm_rgb`。可用 `COLOROS_DISPLAY_PROFILE` 显式指定。 |
+| [`common/coloros_display`](common/coloros_display/README.md) | `system`、`system_ext`、`odm`、`product`、`vendor`；另需解包 `my_product` | 按机型 Profile（`oneplus15`/`ace6`/`ace6t`/`neo8`）分发：将底包 `my_product/vendor/etc` 覆盖合并至最终 vendor，从官方面板表生成含 `autoBrightness` 的 Display ID 配置；迁移 FusionLight profile 和显示 RRO，保留底包 CWB 原生服务链，并按 Profile 禁用 `high_pwm_rgb`。可用 `COLOROS_DISPLAY_PROFILE` 显式指定。 |
 | [`common/fix_device_identity`](common/fix_device_identity/README.md) | `odm`、`system`、`product`（可选改名） | 写入原包设备身份、可选 SKU 属性和可选显示名覆盖；设置 `RUNTIME_DEVICE_CODE` 时把机型 XML 改名为运行时代号。 |
 | [`common/fix_face_unlock`](common/fix_face_unlock/README.md) | `product`、`system_ext`、`vendor` | 接入标准 Face HAL 并修复录入进度与完成流程。 |
 | [`common/fix_launcher`](common/fix_launcher/README.md) | `odm` | 写入中国区、系统桌面与 APEX 更新属性。 |
@@ -178,6 +181,17 @@ bash OPAce6T_port.sh
 | [`devices/oneplus_ace6t/fix_refresh_rate_switch`](devices/oneplus_ace6t/fix_refresh_rate_switch/README.md) | 仅 Ace 6T | `product`、`system_ext` | 保留完整刷新率列表；DC/PWM 策略与 Ace 6 相同。 |
 
 Ace 6/6T 与一加 15 的显示接入方案已统一：[`common/coloros_display`](common/coloros_display/README.md) 按机型 Profile 用底包 `my_product` 官方面板表生成原生 `autoBrightness` 配置，[`common/fix_boot_brightness`](common/fix_boot_brightness/README.md) 按机型 Profile 安装启动默认亮度 Overlay。两个模块都按底包设备代号/市场名/显示 Target 自动匹配机型 Profile，也可用 `COLOROS_DISPLAY_PROFILE` / `BOOT_BRIGHTNESS_PROFILE` 显式指定。Ace 6/6T 的亮度跟随表现需刷机验证。
+
+### 真我 Neo8 专属模块（`devices/realme_neo8`）
+
+真我 Neo8（RMX8899 / RE6402L1，第五代骁龙 8 SM8845，显示 Target `canoe`，与 Ace 6T 同 SoC、同小米 17 澎湃 OS 4 原包）的专属模块和传给共享模块的硬件参数见 [`devices/realme_neo8/README.md`](devices/realme_neo8/README.md)。组合流程为 `RealmeNeo8_port.sh`。
+
+| 模块 | 适用机型 | 改动分区 | 用途 |
+| --- | --- | --- | --- |
+| [`devices/realme_neo8/fix_refresh_rate_switch`](devices/realme_neo8/fix_refresh_rate_switch/README.md) | 仅 Neo8 | `product`、`system_ext` | DC/PWM 与刷新率切换修补，沿用一加 15/Ace 6T 的 165Hz 五档假设，待实机重审。 |
+| [`devices/realme_neo8/fix_mtp_qti`](devices/realme_neo8/fix_mtp_qti/README.md) | 仅 Neo8 | `vendor` | Qti MTP 适配：`common/fix_mtp`（换 system rc）在 Neo8 上是 no-op（realme 原厂 system rc 与小米原包逐字一致），真因是 vendor 走 ffs.mtp 而 HyperOS 框架走 kernel mtp.gs0；本模块置 `vendor.usb.use_ffs_mtp=0` 统一到 kernel `mtp.gs0`。静态分区取证确定，未真机验证。 |
+
+Neo8 的 `common/coloros_display`、`common/fix_boot_brightness` 使用 `neo8` Profile（P_1 面板表、25602 RRO）；Target `canoe` 与 Ace 6T 相同，自动匹配会先命中 ace6t，因此入口必须显式指定 Profile。NFC 按用户裁定暂时与 Ace 6T 一致采用 `features/fix_nci_nfc`，但底包实测为青藤 THN31（TMS）且缺 NXP HAL 契约，冷包下可能无法点亮，详见机型 README。钱包与 Millet 核心桥均已启用：钱包身份键不再写死 OnePlus，改由入口 `devices/realme_neo8/config/wallet_identity.props`（经 `WALLET_IDENTITY_PROPERTIES_FILE`）提供 realme 真值（brand=realme、cuptsm=REALME|ESE|01|27、device=RE6402L1），并同步 `RUNTIME_DEVICE_CODE`/小爱白名单；Millet 因 KMI 实测 `android16-6.12` 与仓库 KO 匹配而接回。MTP 不走 `common/fix_mtp`（对 Neo8 为 no-op），改用 `devices/realme_neo8/fix_mtp_qti` 的 `vendor.usb.use_ffs_mtp=0` 方案。钱包五件套 prebuilt 仍为 Ace 6T 提取产物、Neo8 需重新提取，详见机型 README。
 
 ## 鸣谢
 

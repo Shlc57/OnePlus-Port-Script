@@ -1,0 +1,10 @@
+# 真我 Neo8 机型 Profile：识别值来自底包实测（odm fingerprint.json / build.prop）。
+# 仅安装启动默认亮度 Overlay；自动亮度改由 common/coloros_display 生成，因此移除
+# 小米曲线 Overlay。注意 Target `canoe` 与 Ace 6T 相同，自动匹配会先命中 ace6t，
+# 因此 Neo8 入口必须显式锁定本 Profile（BOOT_BRIGHTNESS_PROFILE=neo8）。
+display_name=Neo8
+device_codes=RE6402L1
+market_names=realme Neo8,真我Neo8
+display_targets=canoe
+boot_overlay_name=Neo8BootBrightnessOverlay.apk
+remove_legacy_overlay=MiuiFrameworkResOverlay.apk

@@ -9,11 +9,14 @@ neo8_config_dir="$script_dir/devices/realme_neo8/config"
 # export DEVICE_IDENTITY_PROP=nezha_5.9.9.prop
 # 真我 Neo8 组合流程固定覆盖原包机型显示名（底包 ro.vendor.oplus.market.enname）。
 export DEVICE_DISPLAY_NAME='realme Neo8'
-# 物理 Display ID（common/coloros_display 的 neo8 Profile 消费）。Neo8 底包
-# vendor/etc/displayconfig 有 5 个同模板的候选 display_id_*.xml，静态无法确定主屏；
-# 这里默认取首个候选，必须由真机 `dumpsys display | grep -m1 uniqueId` 核对后覆盖
-# （与一加 15 入口一致的“可被环境覆盖的具体值”约定）。未核对前不要当作已确认生效。
-export PORT_TARGET_DISPLAY_ID="${PORT_TARGET_DISPLAY_ID:-4630946850534658451}"
+# 物理 Display ID（common/coloros_display 的 neo8 Profile 消费）。4630947144591310483 是 Neo8
+# 原系统（ColorOS 16）`dumpsys display` 实测的内置屏 uniqueId，口径与已验证的 OPAce6T_port.sh
+# 一致（其值 4630946700822127507 就是 Ace 6T 原系统实测值）。
+# 注意：底包 vendor/etc/displayconfig 的 5 个候选（...6850534658451、...6916234099603、
+# ...7039571902850/851、...7075271898515）都**不含**该真机值；coloros_display 在目标文件不存在时
+# 会回退用首个候选作来源模板，产物仍按本 ID 命名写入 vendor/product displayconfig 及其 contexts/fsconfig。
+# DSU 下 SurfaceFlinger 计算的 ID 才是最终权威，如与本机不符用环境变量覆盖后重跑。
+export PORT_TARGET_DISPLAY_ID="${PORT_TARGET_DISPLAY_ID:-4630947144591310483}"
 # 底包显示 Target（Neo8 = canoe，SM8845 第五代骁龙 8，与 Ace 6T 同 SoC）：
 # fix_boot_refresh_rate 只收集该 Target 的 PanelResolution，避免混入其他平台面板分辨率。
 export PORT_DISPLAY_TARGET=canoe
@@ -60,15 +63,26 @@ export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # 与 boot/kernel vermagic 均为 android16-6.12（与 Ace 6T/一加 15 同 KMI），仓库有对应
 # prebuilt/android16-6.12/millet_core.ko，故启用 millet（仍需刷机验证）。
 export KMI='android16-6.12'
-# Neo8 超声波指纹目标设备硬件快照。通用模块不从小米原包推断这些参数；参考分辨率
-# 与传感器中心暂沿用同 SoC 的 Ace 6T，属估算值，刷机前用实机量取后修改 fingerprint.props 重跑。
+# Neo8 超声波指纹目标设备硬件快照。通用模块不从小米原包推断这些参数；参考分辨率、
+# 传感器中心与图标尺寸已改由 Neo8 原系统真机采集回填（见 config/fingerprint.props 注释），
+# 仅 sensor.area.* 仍无真机判据、沿用同 SoC 估算值，需在 DSU 实机上校准后重跑。
 export ULTRASONIC_FP_PROPERTIES_FILE="$neo8_config_dir/fingerprint.props"
 # Neo8 Oplus HBP 双击亮屏参数；初始值沿用同 SoC 触控栈，实机需校准。
 export OPLUS_DOUBLE_TAP_PROPERTIES_FILE="$neo8_config_dir/double_tap_wake.props"
+# 人脸解锁：Neo8 底包 face HAL（vendor.oplus.hardware.biometrics.face@1.0-service_uff）
+# 只提到 getAuthenticatorId，没有实现 AIDL face 的 setAuthenticator/resetAuthentication
+# 安全通路（算法库 libstfaceunlockocl_uff.so 在本地，但依赖 Oplus osense/uah 与 system 侧
+# com.oplus.facerecognition、oiface/oplusoiface 服务，这些随 ColorOS system 一起不存在）。
+# 沿用原包（nezha）XML 的 support_tee_face_unlock=true 会让 HyperOS 强制走 TEE 人脸，
+# 真机表现就是“能录入、解锁恒失败”（dumpsys face：sensorId=4 全部 wasSuccessful=false，
+# 而指纹 sensorId=1 全 true）。这里显式声明为 false，让框架走非 TEE 人脸通路。
+export FACE_UNLOCK_SUPPORT_TEE=false
 
 # 真我 Neo8 目标设备参数展示（Settings 设备参数缓存）。
-# 处理器为底包实测（第五代骁龙 8 / SM8845）；电池、摄像头、尺寸、分辨率暂沿用同 SoC
-# 的 Ace 6T 数值，属待核对项，正式宣传参数需按 realme Neo8 官方规格回填。
+# 以下均已由 Neo8 原系统真机采集核对：ro.soc.model=SM8845（第五代骁龙 8）、
+# charge_full_design=8000000µAh≈8000mAh、ro.vendor.oplus.camera.backCamSize=50MP+8MP+50MP、
+# frontCamSize=16MP、面板原生 mode 1272x2772；尺寸 6.78″ 由 dumpsys display 的物理 dpi
+# （386.36618 x 380.8382）与原生分辨率算得，若 realme 官方页写其他口径以官方为准。
 export DEVICE_PARAMS_SPOOF_JSON='{
   "language": "zhCN",
   "basic": {
@@ -80,10 +94,10 @@ export DEVICE_PARAMS_SPOOF_JSON='{
     "BasicInfoToggle": 1,
     "BasicItems": [
       {"Title": "处理器", "Summary": "第五代骁龙®8移动平台", "Index": 0},
-      {"Title": "电池容量", "Summary": "8300mAh(典型)", "Index": 1},
-      {"Title": "后置摄像头", "Summary": "50MP+8MP", "Index": 2},
-      {"Title": "屏幕尺寸", "Summary": "6.83″", "Index": 3},
-      {"Title": "分辨率", "Summary": "2800 x 1272", "Index": 4}
+      {"Title": "电池容量", "Summary": "8000mAh(典型)", "Index": 1},
+      {"Title": "后置摄像头", "Summary": "50MP+8MP+50MP", "Index": 2},
+      {"Title": "屏幕尺寸", "Summary": "6.78″", "Index": 3},
+      {"Title": "分辨率", "Summary": "2772 x 1272", "Index": 4}
     ]
   },
   "camera": {
@@ -92,7 +106,7 @@ export DEVICE_PARAMS_SPOOF_JSON='{
       "BasicInfoToggle": 1,
       "camera": {
         "front_camera": "16MP",
-        "rear_camera": "50MP+8MP"
+        "rear_camera": "50MP+8MP+50MP"
       }
     }
   }
@@ -108,10 +122,10 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
     "BasicInfoToggle": 1,
     "BasicItems": [
       {"Title": "CPU", "Summary": "Snapdragon® 8 Gen 5 Mobile Platform", "Index": 0},
-      {"Title": "Battery capacity", "Summary": "8300mAh (typ)", "Index": 1},
-      {"Title": "Rear camera", "Summary": "50MP+8MP", "Index": 2},
-      {"Title": "Screen size", "Summary": "6.83″", "Index": 3},
-      {"Title": "Resolution", "Summary": "2800 x 1272", "Index": 4}
+      {"Title": "Battery capacity", "Summary": "8000mAh (typ)", "Index": 1},
+      {"Title": "Rear camera", "Summary": "50MP+8MP+50MP", "Index": 2},
+      {"Title": "Screen size", "Summary": "6.78″", "Index": 3},
+      {"Title": "Resolution", "Summary": "2772 x 1272", "Index": 4}
     ]
   },
   "camera": {
@@ -120,7 +134,7 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
       "BasicInfoToggle": 1,
       "camera": {
         "front_camera": "16MP",
-        "rear_camera": "50MP+8MP"
+        "rear_camera": "50MP+8MP+50MP"
       }
     }
   }

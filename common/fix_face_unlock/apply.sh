@@ -5,7 +5,7 @@ patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
 std_print "修复人脸解锁功能与录入进度、完成收尾"
-std_print "开放国内版人脸解锁区域、启用 TEE，并兼容标准 FaceManager 回调"
+std_print "开放国内版人脸解锁区域、按组合入口声明设置 TEE，并兼容标准 FaceManager 回调"
 std_print
 
 for part_name in mi_vendor product system_ext vendor; do
@@ -28,6 +28,16 @@ source_contexts="$(get_part_contexts_path mi_vendor)"
 source_fsconfig="$(get_part_fsconfig_path mi_vendor)"
 vendor_contexts="$(get_part_contexts_path vendor)"
 vendor_fsconfig="$(get_part_fsconfig_path vendor)"
+
+# 机型 XML 里的 support_tee_face_unlock 是 HyperOS 框架侧的策略声明，不能直接沿用原包（小米）
+# 的真值：底包 face HAL 如果不实现 AIDL face 的 setAuthenticator/resetAuthentication 安全通路，
+# 保留 true 会让框架强制走 TEE 人脸，表现为“能录入但解锁每次失败”。该能力属于目标底包硬件，
+# 只能由机型入口显式声明；默认 true 保持现有机型行为不变。
+face_tee_target="${FACE_UNLOCK_SUPPORT_TEE:-true}"
+if [[ "$face_tee_target" != "true" && "$face_tee_target" != "false" ]]; then
+	err_print "FACE_UNLOCK_SUPPORT_TEE 只能是 true 或 false：$face_tee_target"
+	exit 1
+fi
 
 face_file_patch_ready=1
 if [[ -z "$PORT_SOURCE_DEVICE_CODE" || -z "$device_features" ]]; then
@@ -147,18 +157,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-face_unlock_status="$(python3 - "$device_features" "$temporary_device_features" <<'PY'
+face_unlock_status="$(python3 - "$device_features" "$temporary_device_features" "$face_tee_target" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-if len(sys.argv) != 3:
+if len(sys.argv) != 4:
     raise SystemExit("人脸解锁特性补丁参数数量无效")
 
 source_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])
+tee_expected = sys.argv[3].strip()
+if tee_expected not in ("true", "false"):
+    raise SystemExit(f"TEE 人脸解锁目标值无效：{tee_expected}")
 region_name = "support_face_unlock_region_dom"
 tee_name = "support_tee_face_unlock"
 whitespace = " \t\r\n"
@@ -227,7 +240,7 @@ region_changed = "ALL" not in region_values
 
 tee_node = find_unique_node(original_root, "bool", tee_name)
 tee_value = (tee_node.text or "").strip()
-tee_changed = tee_value != "true"
+tee_changed = tee_value != tee_expected
 
 updated_text = original_text
 if region_changed:
@@ -260,7 +273,7 @@ if region_changed:
 
 if tee_changed:
     tee_match = find_unique_text_element(updated_text, "bool", tee_name, "[^<]*")
-    updated_tee = replace_text_value(tee_match, "true")
+    updated_tee = replace_text_value(tee_match, tee_expected)
     updated_text = (
         updated_text[: tee_match.start()]
         + updated_tee
@@ -285,8 +298,8 @@ elif "ALL" not in updated_region_values:
     raise SystemExit(f"特性 {region_name} 未保留 ALL")
 
 updated_tee = find_unique_node(updated_root, "bool", tee_name)
-if (updated_tee.text or "").strip() != "true":
-    raise SystemExit(f"特性 {tee_name} 未设置为 true")
+if (updated_tee.text or "").strip() != tee_expected:
+    raise SystemExit(f"特性 {tee_name} 未设置为 {tee_expected}")
 
 try:
     with output_path.open("w", encoding="utf-8", newline="") as output:
@@ -310,13 +323,16 @@ fi
 
 _install_generated_file "$temporary_device_features" "$device_features"
 
-python3 - "$device_features" <<'PY'
+python3 - "$device_features" "$face_tee_target" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
 config_path = Path(sys.argv[1])
+tee_expected = sys.argv[2].strip()
+if tee_expected not in ("true", "false"):
+    raise SystemExit(f"TEE 人脸解锁目标值无效：{tee_expected}")
 try:
     root = ET.parse(config_path).getroot()
 except (OSError, ET.ParseError) as error:
@@ -336,8 +352,8 @@ if "ALL" not in region_values:
     raise SystemExit("最终人脸解锁区域配置不包含 ALL")
 
 tee = unique_feature("bool", "support_tee_face_unlock")
-if (tee.text or "").strip() != "true":
-    raise SystemExit("最终 TEE 人脸解锁配置不为 true")
+if (tee.text or "").strip() != tee_expected:
+    raise SystemExit(f"最终 TEE 人脸解锁配置不为 {tee_expected}")
 PY
 fi
 
@@ -384,9 +400,9 @@ if (( face_file_patch_ready == 1 )); then
 		skip_print "support_face_unlock_region_dom 已包含 ALL"
 	fi
 	if [[ "$tee_changed" == true ]]; then
-		std_print "✅ support_tee_face_unlock 已设为 true"
+		std_print "✅ support_tee_face_unlock 已设为 $face_tee_target"
 	else
-		skip_print "support_tee_face_unlock 已为 true"
+		skip_print "support_tee_face_unlock 已为 $face_tee_target"
 	fi
 	std_print "✅ Settings 已同步标准 FaceManager 的录入启动、实时进度与 remaining=0 完成回调"
 fi

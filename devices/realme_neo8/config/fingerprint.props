@@ -1,13 +1,20 @@
 # 真我 Neo8 超声波指纹目标设备硬件参数。
 # features/fix_ultrasonic_fingerprint 只读取此显式配置，不从小米原包推断。
-# 参考宽高暂按同 SoC（canoe/SM8845）的一加 Ace 6T 面板 1272x2800 填写，属未实测
-# 估算值；Neo8 为 realme 面板，实际物理分辨率与传感器位置必须刷机前用
-# `adb shell wm size` / 实测传感器中心核对后修改本文件重跑。
-# 传感器中心按相对位置 (50%, 74.6%) 换算，同为一加 15/Ace 6T 估算口径。
+# 下列参考分辨率、传感器中心与图标尺寸已由 Neo8 原系统（ColorOS 16，RMX8899/RE6402L1）
+# 真机采集回填，不再沿用 Ace 6T 估算值：
+#   persist.vendor.fingerprint.sensor_type                = ultrasonic
+#   persist.vendor.fingerprint.optical.sensorlocation     = 636::2058 → sensor.center.*
+#   persist.vendor.fingerprint.optical.iconsize           = 195       → icon.width/height
+#   dumpsys display supportedModes 原生档 = 1272x2772（另有 1080x2354 降档）→ reference.*
+# 同次采集的相关事实（通用模块暂无对应键，仅留档）：settings fingerprint_pressed_icon_size=165、
+# fingerprint_icon_info={"fpIconSize":165,"fpDownMarginBottomStatic":523}、fingerprint_icon_margin_bottom=606、
+# optical.iconlocation=714、optical.circlenumber=10、optical.iconnumber=21、optical.sensorrotation=77.5、
+# persist.vendor.fingerprint.fp_id=G_DOLPHIN_GUM_uff（Goodix 超声波方案）、vendor.fingerprint.aidl.support=1。
+# sensor.area.* 仍无真机判据（原厂不暴露感应区尺寸），沿用同 SoC 估算值；DSU 上按压偏移时先校这两项。
 ultrasonic.fp.reference.width=1272
-ultrasonic.fp.reference.height=2800
+ultrasonic.fp.reference.height=2772
 ultrasonic.fp.sensor.center.x=636
-ultrasonic.fp.sensor.center.y=2089
+ultrasonic.fp.sensor.center.y=2058
 ultrasonic.fp.icon.width=195
 ultrasonic.fp.icon.height=195
 ultrasonic.fp.sensor.area.width=220

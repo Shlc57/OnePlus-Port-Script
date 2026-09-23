@@ -201,12 +201,16 @@ verify_context_fragment_applied() {
 		context_match="${context_match%$'\r'}"
 		extra_field="${extra_field%$'\r'}"
 		[[ -z "$context_key" || "$context_key" == \#* ]] && continue
-		if ! awk \
-			-v expected_key="$context_key" \
-			-v expected_context="$context_value" \
-			-v expected_match="$context_match" \
-			'
+		# 经 ENVIRON 传值而不是 awk -v：contexts 路径带 \. 转义，mawk 会在 -v 赋值里
+		# 解析转义序列并逐条报 warning；ENVIRON 不做转义处理，下面仍由 gsub 归一化。
+		if ! expected_key="$context_key" \
+			expected_context="$context_value" \
+			expected_match="$context_match" \
+			awk '
 				BEGIN {
+					expected_key = ENVIRON["expected_key"]
+					expected_context = ENVIRON["expected_context"]
+					expected_match = ENVIRON["expected_match"]
 					gsub(/\\/, "", expected_key)
 				}
 				/^[[:space:]]*($|#)/ {

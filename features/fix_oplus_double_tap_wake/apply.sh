@@ -33,9 +33,8 @@ vendor_policy="$project_dir/vendor/etc/selinux/vendor_sepolicy.cil"
 vendor_plat_policy="$project_dir/vendor/etc/selinux/plat_pub_versioned.cil"
 vendor_service_contexts="$project_dir/vendor/etc/selinux/vendor_service_contexts"
 precompiled_file_contexts="$project_dir/odm/etc/selinux/precompiled_file_contexts"
-oplus_touch_rc="$project_dir/odm/etc/init/vendor-oplus-hardware-touch-V2-hbp5-service.rc"
+# oplus_touch_rc 与 oplus_touch_service 的路径随底包触控服务变体而定，见下方探测。
 oplus_touch_manifest="$project_dir/odm/etc/vintf/manifest/manifest_touch_aidl.xml"
-oplus_touch_service="$project_dir/odm/bin/hw/vendor-oplus-hardware-touch-V2-hbp5-service"
 oplus_touch_ndk="$project_dir/odm/lib64/vendor.oplus.hardware.touch-V2-ndk.so"
 system_binder_ndk="$project_dir/system/system/lib64/libbinder_ndk.so"
 miui_framework="$project_dir/system_ext/framework/miui-framework.jar"
@@ -154,6 +153,27 @@ for command_name in sha256sum file readelf; do
 	fi
 done
 
+# 底包 Oplus Touch V2 AIDL 服务在不同触控 HAL 封装下文件名不同（如 hbp5 与普通 V2），
+# 不能为某台机型写死单一名称；按候选探测实际暴露 IOplusTouch 契约的变体并确定其路径。
+oplus_touch_interface_line='    interface aidl vendor.oplus.hardware.touch.IOplusTouch/default'
+oplus_touch_service_base=""
+for touch_service_candidate in \
+	"vendor-oplus-hardware-touch-V2-hbp5-service" \
+	"vendor-oplus-hardware-touch-V2-service"; do
+	touch_service_rc="$project_dir/odm/etc/init/${touch_service_candidate}.rc"
+	if [[ -f "$touch_service_rc" ]] && \
+		grep -Fqx "$oplus_touch_interface_line" "$touch_service_rc"; then
+		oplus_touch_service_base="$touch_service_candidate"
+		break
+	fi
+done
+if [[ -z "$oplus_touch_service_base" ]]; then
+	err_print "底包没有暴露 IOplusTouch AIDL 契约的 Oplus Touch V2 服务（已尝试 hbp5 与普通 V2 变体）"
+	exit 1
+fi
+oplus_touch_rc="$project_dir/odm/etc/init/${oplus_touch_service_base}.rc"
+oplus_touch_service="$project_dir/odm/bin/hw/${oplus_touch_service_base}"
+
 for required_file in \
 	"$bridge_source" \
 	"$bridge_header" \
@@ -257,12 +277,9 @@ if readelf -lW "$bridge_prebuilt" | awk '$1 == "LOAD" && $NF != "0x4000" { inval
 	exit 1
 fi
 
-if ! grep -Fqx \
-	'    interface aidl vendor.oplus.hardware.touch.IOplusTouch/default' \
-	"$oplus_touch_rc" || \
-	! grep -Fq '<name>vendor.oplus.hardware.touch</name>' "$oplus_touch_manifest" || \
+if ! grep -Fq '<name>vendor.oplus.hardware.touch</name>' "$oplus_touch_manifest" || \
 	! grep -Fq '<fqname>IOplusTouch/default</fqname>' "$oplus_touch_manifest"; then
-	err_print "底包没有已支持的 Oplus Touch AIDL V2 HBP 服务契约"
+	err_print "底包 VINTF manifest 缺少 Oplus Touch AIDL 服务契约"
 	exit 1
 fi
 if ! awk '

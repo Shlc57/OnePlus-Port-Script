@@ -38,7 +38,7 @@ oplus.double_tap.scan_code=
 oplus.double_tap.touchfeature_type=
 ```
 
-模块校验数值范围、节点不重复、安全的 keylayout 文件名以及 `touchfeature.type` 的双击能力位。它还会验证底包 Oplus Touch AIDL V2 HBP 服务、精确 service context、客户端策略、所需 NDK 库，以及预编译 bridge 的输入哈希、arm64 PIE、16K 对齐和动态依赖。
+模块校验数值范围、节点不重复、安全的 keylayout 文件名以及 `touchfeature.type` 的双击能力位。它还会按候选探测底包 Oplus Touch AIDL V2 服务（自动适配 `hbp5` 与普通 `V2` 变体的文件名，不再写死单一机型名称），并验证其 `IOplusTouch/default` 契约、精确 service context、客户端策略、所需 NDK 库，以及预编译 bridge 的输入哈希、arm64 PIE、16K 对齐和动态依赖。
 
 一加 15 的硬件快照位于 `devices/oneplus15/config/double_tap_wake.props`，由 `OP15_port.sh` 显式传入；参数不会从小米原包推断。
 

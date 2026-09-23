@@ -13,7 +13,7 @@
 
 与一加 15 流程的差异：
 
-- **NFC 方案不同**：Ace 6 的 NFC 芯片是青藤 THN31（TMS 栈），NXP 专用的 `features/fix_nci_nfc` 对其会失败，组合改用 [`devices/oneplus_ace6/fix_nfc_tms_bridge`](devices/oneplus_ace6/fix_nfc_tms_bridge/README.md)；Ace 6T 仍使用 `features/fix_nci_nfc`，依赖底包提供 NXP 服务契约。
+- **NFC 方案不同**：Ace 6 的 NFC 芯片是青藤 THN31（TMS 栈），NXP 专用的 `features/fix_nci_nfc` 对其会失败，组合改用 [`features/fix_nfc_tms_bridge`](features/fix_nfc_tms_bridge/README.md)（与真我 Neo8 共用）；Ace 6T 仍使用 `features/fix_nci_nfc`，依赖底包提供 NXP 服务契约。
 - **SELinux 基建**：Ace 6 底包 vendor 缺 `plat_sepolicy_vers.txt` / `genfs_labels_version.txt`，组合在 `common/fix_vendor_avc` 之前加入 [`devices/oneplus_ace6/fix_vendor_selinux_files`](devices/oneplus_ace6/fix_vendor_selinux_files/README.md) 补齐（实测固化 `202504`）；Ace 6T 底包不缺，无需该模块。
 - **Millet 核心桥**：Ace 6T 内核与一加 15 相同（`android16-6.12`），直接使用仓库预编译 KO；Ace 6 内核为 6.6，仓库暂无对应预编译 KO，待用 `features/oplus_millet_core_bridge/build.sh` 构建后再加入组合。
 - **多平台 Target 过滤**：两款机型的底包 `sdm_display_resolution_extn.xml` 含多个平台 Target（Ace 6 还包含 `anorak 7104x3840`），组合入口通过 `PORT_DISPLAY_TARGET`（`sun`/`canoe`）让 `common/fix_boot_refresh_rate` 只收集本机 Target 的 PanelResolution，`fingerprint.props` 中的 `ultrasonic.fp.target` 对指纹模块起同样作用。

@@ -1,8 +1,12 @@
-# Ace 6 TMS NFC 桥接（devices/oneplus_ace6/fix_nfc_tms_bridge）
+# THN31/TMS NFC 桥接（features/fix_nfc_tms_bridge）
+
+供底包自带青藤 THN31（TMS）NFC 栈的机型共用；当前使用机型：一加 Ace 6（`OPAce6_port.sh`）、真我 Neo8（`RealmeNeo8_port.sh`）。适用条件：底包 odm 自带 `android.hardware.nfc-service-tms` + `manifest_nfc_thn31.xml` + `/dev/tms_nfc`（apply.sh 前置校验，不满足即失败）。
 
 ## 背景
 
-Ace 6 的 NFC 芯片是**青藤微系统（Tsingteng）THN31**，与一加 15（NXP SN220T）、Ace 6T（ST21NFC）都不同。`features/fix_nci_nfc` 是 NXP 专用适配（要求底包提供 `/dev/nq-nci` + `vendor.nxp.nxpnfc_aidl` 服务契约，缺失即失败），**对 Ace 6 不适用**。本补丁因此**替代** `fix_nci_nfc` 出现在 Ace 6 组合（`OPAce6_port.sh`）中。
+THN31（青藤微系统）与一加 15（NXP SN220T）、Ace 6T（ST21NFC）都不同。`features/fix_nci_nfc` 是 NXP 专用适配（要求底包提供 `/dev/nq-nci` + `vendor.nxp.nxpnfc_aidl` 服务契约，缺失即失败），**对 TMS 机型不适用**。本补丁因此**替代** `fix_nci_nfc` 出现在 TMS 机型组合中。
+
+为什么不能直接换通用 NfcNci（如 Transsion/OplusNFC）：移植侧 system 是小米 HyperOS，其 `com.android.nfc`（Nfc_st）为 **MIUI 签名**且 `sharedUserId=android.uid.nfc`，NCI 栈（`libnfc_xm_nci_jni.so`）打包在 APK 内部；外部签名的通用 NfcNci 会因 sharedUserId 签名不匹配被 PackageManager 拒装，也无法在不破签的前提下注入外部 NCI 库。所以唯一签名安全的路径是保留小米 Nfc_st，仅做节点别名 + SELinux 桥接。
 
 ## 逆向结论
 
@@ -18,7 +22,7 @@ Ace 6 的 NFC 芯片是**青藤微系统（Tsingteng）THN31**，与一加 15（
 
 ## 方案
 
-1. **保留底包 odm 的 TMS 栈**：TMS 服务/rc/manifest/NCI 库/配置/固件全在 Ace 6 底包 odm 分区，随 odm 刷入即保留。apply.sh 前置校验五件套，底包解包不完整时直接失败。
+1. **保留底包 odm 的 TMS 栈**：TMS 服务/rc/manifest/NCI 库/配置/固件全在底包 odm 分区，随 odm 刷入即保留。apply.sh 前置校验五件套，底包解包不完整时直接失败。
 2. **设备节点别名兜底**：
    - 注入 `odm/etc/ueventd.rc`：`/dev/tms_nfc` 同时建立 `/dev/st21nfc`（小米 NfcNci 期望的 ST 节点）与 `/dev/nq-nci`（小米 NXP 路径）symlink 别名。
    - 新增 `odm/etc/init/nfc_tms_symlink.rc`：`on boot` 阶段二次兜底 symlink，并同步补齐 odm 分区 contexts/fsconfig metadata。
@@ -27,7 +31,7 @@ Ace 6 的 NFC 芯片是**青藤微系统（Tsingteng）THN31**，与一加 15（
    - `contexts vendor/precompiled_file_contexts config/nfc_tms_file_contexts`：TMS 服务二进制 + `/odm/etc/nfc` + THN31 manifest 标签。
    - `contexts vendor/precompiled_service_contexts config/nfc_tms_service_contexts`：`nfc_hal_service.tms.aidl`、`secure_element_hal_service.aidl` 服务名标签。
 4. **mi_nfc 服务标签兜底**：`mi_nfc u:object_r:nfc_service:s0` 在 bundle 注册表中已由 `fix_nci_nfc` 静态持有（跨 bundle contexts 键唯一），而 `fix_nci_nfc` 在 Ace 6 组合不激活，因此由本补丁 apply.sh 在运行时按需合并到 `vendor_service_contexts` 与 odm `precompiled_service_contexts`；原包来源合并已提供时幂等跳过。
-5. **NFC 兼容属性**：组合入口通过 `NFC_PROPERTIES_FILE`（`devices/oneplus_ace6/config/nfc.props`）提供 `ro.vendor.nfc.*` 小米上层兼容开关，写入 `odm/build.prop`。
+5. **NFC 兼容属性**：组合入口通过 `NFC_PROPERTIES_FILE`（各机型 `devices/<机型>/config/nfc.props`）提供 `ro.vendor.nfc.*` 小米上层兼容开关，写入 `odm/build.prop`。
 
 ## 预期与限制
 

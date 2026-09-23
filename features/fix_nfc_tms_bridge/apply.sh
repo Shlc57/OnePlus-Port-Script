@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# devices/oneplus_ace6/fix_nfc_tms_bridge/apply.sh
-# Ace 6（青藤微系统 THN31 NFC 芯片）专属 NFC 桥接补丁，替代 NXP 专用 features/fix_nci_nfc。
-# 背景：Ace 6 底包 odm 自带完整 TMS NFC HAL 栈（服务/rc/VINTF manifest/NCI 库/配置/固件），
-#       而 features/fix_nci_nfc 要求底包提供 /dev/nq-nci + vendor.nxp.nxpnfc_aidl 服务契约，
-#       对 Ace 6 不适用；本补丁因此替代 fix_nci_nfc 出现在 Ace 6 组合里。
+# features/fix_nfc_tms_bridge/apply.sh
+# 青藤微系统 THN31（TMS 栈）NFC 桥接补丁，供底包自带 TMS NFC 栈的机型共用（当前：一加 Ace 6、真我 Neo8）。
+# 适用条件：底包 odm 自带 android.hardware.nfc-service-tms + manifest_nfc_thn31.xml + /dev/tms_nfc。
+# 背景：这些机型的小米 HyperOS 移植侧 NFC 是 MIUI 签名的 com.android.nfc（Nfc_st，自带 NCI 栈），
+#       而 features/fix_nci_nfc 要求底包提供 /dev/nq-nci + vendor.nxp.nxpnfc_aidl NXP 服务契约，
+#       对 TMS 机型不适用；本补丁因此替代 fix_nci_nfc 出现在 TMS 机型组合里。
 # 方案：
 #   1. 保留底包 odm 的 TMS 栈（随 odm 分区刷入，通过标准 android.hardware.nfc AIDL v1 提供）
 #   2. 注入 ueventd 规则与 init rc 兜底：/dev/st21nfc、/dev/nq-nci → /dev/tms_nfc 符号链接
@@ -16,8 +17,8 @@ set -euo pipefail
 patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
-std_print "Ace 6 TMS NFC 桥接：保留底包 TMS 栈 + /dev/st21nfc 符号链接 + 最小 SELinux bundle"
-std_print "来源：Ace 6 底包 odm 自带 TMS（THN31）HAL 栈；目标：原包 system + 底包 odm"
+std_print "THN31/TMS NFC 桥接：保留底包 TMS 栈 + /dev/st21nfc 符号链接 + 最小 SELinux bundle"
+std_print "来源：底包 odm 自带 TMS（THN31）HAL 栈；目标：原包 system + 底包 odm"
 std_print
 
 for part_name in odm vendor product system; do
@@ -25,6 +26,8 @@ for part_name in odm vendor product system; do
 done
 check_partition_metadata_tool >/dev/null
 
+# project_dir 由 tools.sh 的 init_port_env 注入。
+# shellcheck disable=SC2154
 tms_bin="$project_dir/odm/bin/hw/android.hardware.nfc-service-tms"
 tms_ese_bin="$project_dir/odm/bin/hw/android.hardware.secure_element-service-tms"
 tms_rc="$project_dir/odm/etc/init/nfc-service-tms.rc"
@@ -290,7 +293,7 @@ fi
 # =====================================================================
 cat > "$temporary_nfc_rc" <<'EOF'
 on boot
-    # Ace 6 TMS NFC 桥接兜底：确保 /dev/st21nfc 指向 /dev/tms_nfc
+    # TMS NFC 桥接兜底：确保 /dev/st21nfc 指向 /dev/tms_nfc
     symlink /dev/tms_nfc /dev/st21nfc
     symlink /dev/tms_nfc /dev/nq-nci
 EOF
@@ -335,7 +338,7 @@ elif grep -Fq 'symlink /dev/st21nfc' "$ueventd_target"; then
 else
 	{
 		cat "$ueventd_target"
-		printf '\n# Ace 6 TMS NFC bridge: /dev/st21nfc -> /dev/tms_nfc\n%s\n' "$ueventd_line"
+		printf '\n# TMS NFC bridge: /dev/st21nfc -> /dev/tms_nfc\n%s\n' "$ueventd_line"
 	} > "$temporary_ueventd"
 	_install_generated_file "$temporary_ueventd" "$ueventd_target"
 	if ! grep -Fqx "$ueventd_line" "$ueventd_target"; then

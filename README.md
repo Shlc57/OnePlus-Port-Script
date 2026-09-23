@@ -148,7 +148,8 @@ bash RealmeNeo8_port.sh
 | --- | --- | --- |
 | [`features/fuck_audio_appname`](features/fuck_audio_appname/README.md) | `system_ext` | 定点阻断 HyperOS 私有 `appname` 音频参数，避免 Oplus HAL 拒绝参数后触发输出流 standby。 |
 | [`features/fix_linear_haptic`](features/fix_linear_haptic/README.md) | `odm` | 合并目标设备触感属性并设置开机马达类型。 |
-| [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle；要求底包提供 NXP 服务契约，不适用于 TMS 栈机型（如一加 Ace 6）。 |
+| [`features/fix_nci_nfc`](features/fix_nci_nfc/README.md) | `system`、`odm`、`vendor` | 替换 NXP/Xiaomi NFC 应用、写入上层兼容属性并登记最小 SELinux bundle；要求底包提供 NXP 服务契约，不适用于 TMS 栈机型（如一加 Ace 6、真我 Neo8）。 |
+| [`features/fix_nfc_tms_bridge`](features/fix_nfc_tms_bridge/README.md) | `odm`、`system`、`vendor` | 青藤 THN31（TMS 栈）NFC 桥接（一加 Ace 6、真我 Neo8 共用）：保留小米 MIUI 签名的 Nfc_st（含其自带 NCI 栈），注入 `/dev/st21nfc`/`/dev/nq-nci`→`/dev/tms_nfc` 节点别名 + TMS HAL 最小 SELinux bundle + `ro.vendor.nfc.*` 兼容属性；替代 NXP 专用的 `fix_nci_nfc`。 |
 | [`features/fix_coloros_wallet`](features/fix_coloros_wallet/README.md) | `system`、`system_ext`、`odm` | 原签名安装 ColorOS 钱包五件套（FinShell/TAS/银联 TSM/HTMS/eID 桥）并补齐 contexts/fsconfig；APK 由目标机型底包 system 提取后放入模块 `prebuilt/`，缺失时整体跳过；修正 odm/system build.prop 身份键、注入 zygote BOOTCLASSPATH 的 OSense stub，并以 `odm/etc/init` 的 rc 开机自动补写钱包 NFC 运行时开关；进程内兼容走无 LSP 路线（底包真值 + 系统 APK 固化），LSPosed 非必需。 |
 | [`features/oplus_displayfeature_bridge`](features/oplus_displayfeature_bridge/README.md) | `odm`、`vendor` | 将 Xiaomi DisplayFeature 映射到底包 QDCM，并把 mode 20 DC/PWM 转发到 Oplus Panel Feature；同时修复 RGB/色温属性 contexts。 |
 | [`features/fix_oplus_lhdc`](features/fix_oplus_lhdc/README.md) | `system` | 向当前 Bluetooth APEX 注入 LHDC V5 编码后端并重建 payload AVB；外层旧签名条目与 APK v2/v3 Signing Block 均保留原始字节，并设置 `log.tag.BTAudioSessionAidl=S`。 |
@@ -175,7 +176,6 @@ bash RealmeNeo8_port.sh
 
 | 模块 | 适用机型 | 改动分区 | 用途 |
 | --- | --- | --- | --- |
-| [`devices/oneplus_ace6/fix_nfc_tms_bridge`](devices/oneplus_ace6/fix_nfc_tms_bridge/README.md) | 仅 Ace 6 | `odm`、`system`、`vendor` | 青藤 THN31（TMS 栈）NFC 桥接：保留底包栈、注入 `/dev/st21nfc` 别名、登记最小 SELinux bundle 并写兼容属性。 |
 | [`devices/oneplus_ace6/fix_vendor_selinux_files`](devices/oneplus_ace6/fix_vendor_selinux_files/README.md) | 仅 Ace 6 | `vendor` | 补齐底包缺失的 `plat_sepolicy_vers.txt` 与 `genfs_labels_version.txt`（实测固化为 `202504`）。 |
 | [`devices/oneplus_ace6/fix_refresh_rate_switch`](devices/oneplus_ace6/fix_refresh_rate_switch/README.md) | 仅 Ace 6 | `product`、`system_ext` | 保留完整刷新率列表；关闭 Pro 时沿用面板的 60–120Hz DC、144/165Hz PWM，开启 Pro 时请求全局 PWM。 |
 | [`devices/oneplus_ace6t/fix_refresh_rate_switch`](devices/oneplus_ace6t/fix_refresh_rate_switch/README.md) | 仅 Ace 6T | `product`、`system_ext` | 保留完整刷新率列表；DC/PWM 策略与 Ace 6 相同。 |
@@ -191,7 +191,7 @@ Ace 6/6T 与一加 15 的显示接入方案已统一：[`common/coloros_display`
 | [`devices/realme_neo8/fix_refresh_rate_switch`](devices/realme_neo8/fix_refresh_rate_switch/README.md) | 仅 Neo8 | `product`、`system_ext` | DC/PWM 与刷新率切换修补，沿用一加 15/Ace 6T 的 165Hz 五档假设，待实机重审。 |
 | [`devices/realme_neo8/fix_mtp_qti`](devices/realme_neo8/fix_mtp_qti/README.md) | 仅 Neo8 | `vendor` | Qti MTP 适配：`common/fix_mtp`（换 system rc）在 Neo8 上是 no-op（realme 原厂 system rc 与小米原包逐字一致），真因是 vendor 走 ffs.mtp 而 HyperOS 框架走 kernel mtp.gs0；本模块置 `vendor.usb.use_ffs_mtp=0` 统一到 kernel `mtp.gs0`。静态分区取证确定，未真机验证。 |
 
-Neo8 的 `common/coloros_display`、`common/fix_boot_brightness` 使用 `neo8` Profile（P_1 面板表、25602 RRO）；Target `canoe` 与 Ace 6T 相同，自动匹配会先命中 ace6t，因此入口必须显式指定 Profile。NFC 按用户裁定暂时与 Ace 6T 一致采用 `features/fix_nci_nfc`，但底包实测为青藤 THN31（TMS）且缺 NXP HAL 契约，冷包下可能无法点亮，详见机型 README。钱包与 Millet 核心桥均已启用：钱包身份键不再写死 OnePlus，改由入口 `devices/realme_neo8/config/wallet_identity.props`（经 `WALLET_IDENTITY_PROPERTIES_FILE`）提供 realme 真值（brand=realme、cuptsm=REALME|ESE|01|27、device=RE6402L1），并同步 `RUNTIME_DEVICE_CODE`/小爱白名单；Millet 因 KMI 实测 `android16-6.12` 与仓库 KO 匹配而接回。MTP 不走 `common/fix_mtp`（对 Neo8 为 no-op），改用 `devices/realme_neo8/fix_mtp_qti` 的 `vendor.usb.use_ffs_mtp=0` 方案。钱包五件套 prebuilt 仍为 Ace 6T 提取产物、Neo8 需重新提取，详见机型 README。
+Neo8 的 `common/coloros_display`、`common/fix_boot_brightness` 使用 `neo8` Profile（P_1 面板表、25602 RRO）；Target `canoe` 与 Ace 6T 相同，自动匹配会先命中 ace6t，因此入口必须显式指定 Profile。NFC：Neo8 底包为青藤 THN31（TMS），与 Ace 6 共用 [`features/fix_nfc_tms_bridge`](features/fix_nfc_tms_bridge/README.md)（保留小米 Nfc_st + 节点别名 + TMS SELinux），不再用 NXP 专用 `fix_nci_nfc`；通用 Transsion NfcNci 因 android.uid.nfc 绑 MIUI 密钥、外部签名+v3 验签失败，无法在 HyperOS 装用，详见机型 README。钱包与 Millet 核心桥均已启用：钱包身份键不再写死 OnePlus，改由入口 `devices/realme_neo8/config/wallet_identity.props`（经 `WALLET_IDENTITY_PROPERTIES_FILE`）提供 realme 真值（brand=realme、cuptsm=REALME|ESE|01|27、device=RE6402L1），并同步 `RUNTIME_DEVICE_CODE`/小爱白名单；Millet 因 KMI 实测 `android16-6.12` 与仓库 KO 匹配而接回。MTP 不走 `common/fix_mtp`（对 Neo8 为 no-op），改用 `devices/realme_neo8/fix_mtp_qti` 的 `vendor.usb.use_ffs_mtp=0` 方案。钱包五件套 prebuilt 仍为 Ace 6T 提取产物、Neo8 需重新提取，详见机型 README。
 
 ## 鸣谢
 

@@ -40,9 +40,11 @@ export RUNTIME_DEVICE_CODE=RE6402L1
 export XIAOAI_VOICETRIGGER_PATCH=true
 # 小爱 cloudControl.device 白名单必须等于运行时 Build.DEVICE（启用钱包后=RE6402L1）。
 export XIAOAI_VOICEASSIST_DEVICE_CODE=RE6402L1
-# NFC：按用户裁定，Neo8 与 Ace 6T 采用同一 NXP 方案（features/fix_nci_nfc）。
-# 注意：Neo8 底包实测为青藤 THN31（TMS 栈），缺 NXP HAL 三项硬契约，冷包下该模块
-# 可能无法点亮 NFC；详见 devices/realme_neo8/config/nfc.props 顶部冲突说明。
+# NFC：Neo8 底包为青藤 THN31（TMS 栈），改用 features/fix_nfc_tms_bridge（与 Ace 6 共用）：
+# 保留小米 MIUI 签名的 Nfc_st（含其自带 NCI 栈）+ /dev/tms_nfc→st21nfc/nq-nci 节点别名 +
+# TMS HAL 最小 SELinux。不再用 NXP 专用 features/fix_nci_nfc（底包缺 NXP HAL 契约）；
+# 通用 Transsion NfcNci 因 android.uid.nfc 绑 MIUI 密钥、外部签名且 v3 验签失败，无法在
+# HyperOS 移植上装用（详见机型 README）。ro.vendor.nfc.* 兼容属性由桥消费。
 export NFC_PROPERTIES_FILE="$neo8_config_dir/nfc.props"
 # ColorOS 钱包机型身份真值（features/fix_coloros_wallet 消费）；device=RE6402L1 必须与
 # 上方 RUNTIME_DEVICE_CODE、XIAOAI_VOICEASSIST_DEVICE_CODE 一致。
@@ -142,7 +144,7 @@ declare -a neo8_modules=(
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr
-	features/fix_nci_nfc
+	features/fix_nfc_tms_bridge
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
 	features/fix_ultrasonic_fingerprint

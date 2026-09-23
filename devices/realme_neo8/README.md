@@ -33,7 +33,7 @@
 | 配置 | 消费模块 | 用途 | 状态 |
 | --- | --- | --- | --- |
 | `config/display_odm.props`、`display_vendor.props` | `common/fix_boot_refresh_rate` | 其余显示与触控策略；刷新率数值属性由底包按 `PORT_DISPLAY_TARGET=canoe` 自动生成。 | 沿用同 SoC Ace 6T，待实机核对 |
-| `config/nfc.props` | `features/fix_nci_nfc` | Xiaomi NFC 上层兼容属性。 | 见下方“NFC 方案归属与实测冲突” |
+| `config/nfc.props` | `features/fix_nfc_tms_bridge` | Xiaomi NFC 上层兼容属性（`ro.vendor.nfc.*`）。 | 与 Ace 6 共用 TMS 桥，待实机核对 |
 | `config/linear_haptic.props` + `LINEAR_HAPTIC_MOTOR_TYPE=linear` | `features/fix_linear_haptic` | `sys.haptic.*` 映射与开机马达类型。 | 沿用 Ace 6T，待实机核对 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟；`ultrasonic.fp.target=canoe` 过滤底包多平台分辨率。 | 分辨率/传感器中心为估算值，实机核对后重跑 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位与 WAKE keylayout 参数。 | 沿用同 SoC 触控栈，实机需校准 |
@@ -43,16 +43,21 @@
 | `XIAOAI_VOICEASSIST_DEVICE_CODE=RE6402L1` | `features/fix_xiaoai_wakeup` | 等于运行时 `Build.DEVICE`；启用钱包后 `odm.device` 由 nezha 改 RE6402L1，须与 `RUNTIME_DEVICE_CODE`/钱包身份一致。 | 与底包真值一致 |
 | `WALLET_IDENTITY_PROPERTIES_FILE=config/wallet_identity.props` | `features/fix_coloros_wallet` | 钱包机型身份真值（`brand=realme`、`cuptsm=REALME\|ESE\|01\|27`、`device=RE6402L1`、`model/name=RMX8899`、`marketname=真我Neo8`）；钱包不再写死 OnePlus。 | 底包实测 |
 
-## NFC 方案归属与实测冲突
+## NFC 方案：THN31/TMS 桥（与 Ace 6 共用）
 
-用户裁定：Neo8 与 Ace 6T 采用同一 NXP 方案（`features/fix_nci_nfc`），TMS 桥仅 Ace 6
-独享。但 Neo8 底包取证（`DNA_neo8`）显示控制器实为青藤 **THN31（TMS 栈）**：
-`odm/etc/nfc/nfc_fw_ref` 中 project 25602 落在 `thn31_fw_*` 行，且 odm 缺失
-`fix_nci_nfc` 依赖的 NXP HAL 三项硬契约（`android.hardware.nfc-service.nxp` 二进制、
-`nfc-service-nxp.rc`、manifest 里的 `vendor.nxp.nxpnfc_aidl`），只具备 TMS 桥五件套。
-因此冷包下 `fix_nci_nfc` 大概率无法点亮 NFC，这是“暂时与 Ace 6T 一致”的过渡取舍。
-解除路径二选一：① 补全 odm 解包并提供真 NXP 契约后重跑；② 真机 `getprop`/`dumpsys`
-定案后改回设备专属 TMS 桥方案。在此之前不得把 Neo8 的 NFC 记为已验证生效。
+Neo8 底包取证（`DNA_neo8`）确认控制器为青藤 **THN31（TMS 栈）**：`odm/etc/nfc/nfc_fw_ref`
+中 project 25602 落在 `thn31_fw_*` 行；odm 自带 `android.hardware.nfc-service-tms`（标准
+`android.hardware.nfc.INfc` AIDL）+ `manifest_nfc_thn31.xml` + `nfc_nci.thn31nfc.tms.so` +
+`/dev/tms_nfc`，但缺 NXP HAL 三项契约。因此 NFC 与 Ace 6 共用
+[`features/fix_nfc_tms_bridge`](../../features/fix_nfc_tms_bridge/README.md)：保留小米 MIUI
+签名的 Nfc_st（含其自带 NCI 栈），注入 `/dev/st21nfc`/`/dev/nq-nci`→`/dev/tms_nfc` 节点别名
+ + TMS HAL 最小 SELinux bundle。
+
+不用 `features/fix_nci_nfc`（NXP 专用，底包缺 NXP 契约）；也不用通用 Transsion NfcNci
+（OplusNFC 那类）：移植侧 `com.android.nfc` 为 MIUI 签名且 `sharedUserId=android.uid.nfc`、
+NCI 栈（`libnfc_xm_nci_jni.so`）打包在 APK 内部，外部签名且 v3 验签失败的通用 APK 会被
+PackageManager 拒装、也无法在不破签的前提下注入外部 NCI 库。故 TMS 桥是 HyperOS 上唯一
+签名安全路径。NFC 是否真正点亮仍需真机验证（基础读卡中概率、钱包/SE 低概率）。
 
 ## 组合中暂停用的模块
 

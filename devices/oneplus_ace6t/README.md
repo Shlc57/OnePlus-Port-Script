@@ -36,7 +36,7 @@
 | by-name symlink | oplusreserve1/3/5 = `oppo_block_device`（oplusreserve2 = tmpfs，仅 symlink 瑕疵，目标 sdf3 节点标签正确） |
 | AVC | `dmesg` 无 sdf2/oppo_block/reserve 相关 denied |
 
-若后续 6T 冷启动出现 `oppo_reserve` 相关新拒绝，再按最小 allow 原则补 SELinux bundle（参考 `devices/oneplus_ace6/fix_nfc_tms_bridge` 模式）。
+若后续 6T 冷启动出现 `oppo_reserve` 相关新拒绝，再按最小 allow 原则补 SELinux bundle（参考 `features/fix_nfc_tms_bridge` 模式）。
 
 ## 共享模块参数
 

@@ -23,7 +23,7 @@ export BOOT_BRIGHTNESS_PROFILE=ace6
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6_config_dir/display_vendor.props"
 export XIAOAI_VOICETRIGGER_PATCH=false
-# Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 devices/oneplus_ace6/fix_nfc_tms_bridge
+# Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 features/fix_nfc_tms_bridge
 # 消费本文件；NXP 专用适配 features/fix_nci_nfc 对 Ace 6 不适用。
 export NFC_PROPERTIES_FILE="$ace6_config_dir/nfc.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6_config_dir/linear_haptic.props"
@@ -114,7 +114,7 @@ declare -a ace6_modules=(
 	common/enable_hyperos_features
 	common/fix_camera_mr
 	common/fix_face_unlock
-	devices/oneplus_ace6/fix_nfc_tms_bridge
+	features/fix_nfc_tms_bridge
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
 	features/fix_ultrasonic_fingerprint

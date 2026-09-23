@@ -90,7 +90,7 @@ def test_registry() -> None:
         ),
         (
             "fix_nfc_tms_bridge",
-            "devices/oneplus_ace6/fix_nfc_tms_bridge",
+            "features/fix_nfc_tms_bridge",
             "config/selinux_bundle.tsv",
         ),
         (

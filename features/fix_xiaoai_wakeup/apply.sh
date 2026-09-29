@@ -4,9 +4,9 @@ set -euo pipefail
 patcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 init_port_env "${1:-}"
 
-std_print "修复 HyperOS 小爱同学唤醒（声学迁移 + APK 静态植入）"
-std_print "迁移原包 Qualcomm 声学唤醒模型到底包 odm 并对齐声学属性与 PAL 并发采集；"
-std_print "随后按开关静态修复 VoiceAssist 设备准入与 VoiceTrigger 唤醒逻辑"
+std_print "修复 HyperOS 小爱同学唤醒（声学属性迁移 + APK 静态植入 + CPU FlexKws 前端）"
+std_print "把原包声学属性写入底包 odm/vendor 并开启 PAL 并发采集；随后静态修复"
+std_print "VoiceAssist 设备准入与 VoiceTrigger 唤醒逻辑，并可把免手唤醒改走 CPU FlexKws"
 std_print
 
 xiaoai_voicetrigger_patch="${XIAOAI_VOICETRIGGER_PATCH:-false}"
@@ -18,23 +18,21 @@ elif [[ "$xiaoai_voicetrigger_patch" == false ]]; then
 	exit 0
 fi
 
-voiceassist_device_code="${XIAOAI_VOICEASSIST_DEVICE_CODE:-}"
+voiceassist_device_code="${XIAOAI_VOICEASSIST_DEVICE_CODE:-${RUNTIME_DEVICE_CODE:-${PORT_SOURCE_DEVICE_CODE:-}}}"
 # Oplus 真机代号为全大写（如 OP6117L1），与 Build.DEVICE 精确匹配，不能转小写。
+# 白名单必须等于运行时 Build.DEVICE：组合入口声明了 RUNTIME_DEVICE_CODE 时以它为准
+# （如启用钱包把 odm.device 改为底包真值）；否则 common/fix_device_identity 会把 odm
+# 身份键写成原包代号，因此回退到 init_port_env 的原包身份快照，不在补丁内硬编码。
 if [[ ! "$voiceassist_device_code" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
-	err_print "XIAOAI_VOICEASSIST_DEVICE_CODE 必须是安全的 Android device token：$voiceassist_device_code"
+	err_print "XIAOAI_VOICEASSIST_DEVICE_CODE/RUNTIME_DEVICE_CODE/原包身份快照均无法解析出安全的 device token：$voiceassist_device_code"
 	exit 1
 fi
 
 std_print "修复小爱 VoiceAssist 设备准入并静态植入 VoiceTrigger 唤醒修复"
 std_print
 
-hook_props_config="$patcher_dir/config/hook.props"
-hook_apk_prebuilt="$patcher_dir/prebuilt/XiaoAiRecognitionHook.apk"
-# project_dir 由 tools.sh 的 init_port_env 设置。
-# shellcheck disable=SC2154 # init_port_env 在执行模块前导出 project_dir。
-hook_apk_target_dir="$project_dir/system_ext/app/XiaoAiRecognitionHook"
-hook_apk_target="$hook_apk_target_dir/XiaoAiRecognitionHook.apk"
-
+# project_dir 由 tools.sh 的 init_port_env 在执行模块前导出。
+# shellcheck disable=SC2154
 mi_odm_etc_dir="$project_dir/mi_odm/etc"
 mi_odm_build_prop="$mi_odm_etc_dir/build.prop"
 odm_etc_dir="$project_dir/odm/etc"
@@ -43,21 +41,10 @@ vendor_build_prop="$project_dir/vendor/build.prop"
 odm_pal_config="$odm_etc_dir/resourcemanager.xml"
 odm_contexts="$(get_part_contexts_path odm)"
 odm_fsconfig="$(get_part_fsconfig_path odm)"
-system_ext_contexts="$(get_part_contexts_path system_ext)"
-system_ext_fsconfig="$(get_part_fsconfig_path system_ext)"
 odm_property_contexts="$project_dir/odm/etc/selinux/odm_property_contexts"
 selinux_bundle_manifest="$patcher_dir/config/selinux_bundle.tsv"
 selinux_policy_fragment="$patcher_dir/config/selinux_policy.cil.in"
 xiaoai_property_contexts="$patcher_dir/config/xiaoai_property_contexts"
-mi_vendor_acdb_manifest="$patcher_dir/config/mi_vendor_acdb_sources.tsv"
-# PAL 来源只接受相对于 project_dir 的安全路径，避免共享模块绑定机型绝对路径。
-xiaoai_pal_source_relative="${XIAOAI_PAL_CONFIG_FILE:-}"
-xiaoai_pal_source=""
-mi_vendor_acdb_enabled=false
-mi_vendor_contexts=""
-mi_vendor_fsconfig=""
-vendor_contexts=""
-vendor_fsconfig=""
 
 xiaoai_property_keys=(
 	ro.vendor.audio.soundtrigger.xiaomievent
@@ -72,27 +59,24 @@ xiaoai_property_keys=(
 parameter_file="${XIAOAI_WAKEUP_PROPERTIES_FILE:-}"
 odm_prjname=""
 pal_concurrent_capture=false
-# hook 默认关闭：其模型注入目标是 SM8750 的 /odm/etc/XiaoAiTongXue.uim，
-# SM8845/SM8850 原包 VoiceTrigger 原生直读 /odm/etc/XiaoAiTongXueMi.udm，
-# 启用 hook 反而会替换掉正确的模型数据。仅供 SM8750 代组合（一加 13、
-# Ace 6）验证后显式开启。
-recognition_hook=false
+# CPU FlexKws 前端默认关闭：只有底包 ADSP 确认不吃小米 CUSTOM1 模型的组合才开启。
+xiaoai_cpu_kws=false
+# 三个节奏常量的默认值就是 Ace 6T 刷机验证过的取值：让麦 5s、无检出后 1.5s 重开、
+# 检出窗口 6s（按单声道 int16/16kHz 即 32000 B/s 换算成字节）。
+xiaoai_cpu_kws_hold_ms=5000
+xiaoai_cpu_kws_gap_ms=1500
+xiaoai_cpu_kws_window_sec=6
 declare -a parameter_prop_overrides=()
 
-# 原包 odm 不存在，或未提供 Qualcomm 声学唤醒模型时，本特性不适用，安全跳过。
-if [[ ! -d "$mi_odm_etc_dir" ]]; then
-	warn_print "原包未解包 mi_odm/etc，跳过小爱唤醒修复"
-	exit 0
-fi
-
+# 原包声学模型只是 DSP 路线的输入，不再是整个模块的前提：CPU FlexKws 的词模型在
+# VoiceTrigger.apk 的 assets 里。缺 mi_odm/etc 或没有 *.udm/*.uim 时只跳过模型迁移。
 declare -a model_source_files=()
-while IFS= read -r model_file; do
-	model_source_files+=("$model_file")
-done < <(find "$mi_odm_etc_dir" -maxdepth 1 -type f \( -name '*.udm' -o -name '*.uim' \) | LC_ALL=C sort)
-
-if (( ${#model_source_files[@]} == 0 )); then
-	warn_print "原包 mi_odm/etc 未提供 Qualcomm 声学唤醒模型（*.udm/*.uim），跳过小爱唤醒修复"
-	exit 0
+if [[ ! -d "$mi_odm_etc_dir" ]]; then
+	warn_print "原包未解包 mi_odm/etc，跳过声学唤醒模型迁移"
+else
+	while IFS= read -r model_file; do
+		model_source_files+=("$model_file")
+	done < <(find "$mi_odm_etc_dir" -maxdepth 1 -type f \( -name '*.udm' -o -name '*.uim' \) | LC_ALL=C sort)
 fi
 
 xiaoai_model_found=0
@@ -103,9 +87,9 @@ for model_file in "${model_source_files[@]}"; do
 		break
 	fi
 done
-if (( xiaoai_model_found == 0 )); then
-	warn_print "原包声学唤醒模型缺少 XiaoAiTongXue 主模型，VoiceTrigger 无法加载，跳过小爱唤醒修复"
-	exit 0
+if (( ${#model_source_files[@]} > 0 && xiaoai_model_found == 0 )); then
+	warn_print "原包声学唤醒模型缺少 XiaoAiTongXue 主模型，跳过声学唤醒模型迁移"
+	model_source_files=()
 fi
 
 if [[ -n "$parameter_file" ]]; then
@@ -130,7 +114,7 @@ if [[ -n "$parameter_file" ]]; then
 		parameter_value="${parameter_line#*=}"
 		parameter_value="${parameter_value%"${parameter_value##*[![:space:]]}"}"
 		case "$parameter_name" in
-			pal_concurrent_capture|recognition_hook)
+			pal_concurrent_capture|xiaoai_cpu_kws)
 				if [[ "$parameter_value" != true && "$parameter_value" != false ]]; then
 					err_print "小爱唤醒参数 $parameter_name 只接受 true/false：$parameter_value"
 					exit 1
@@ -143,6 +127,23 @@ if [[ -n "$parameter_file" ]]; then
 					exit 1
 				fi
 				odm_prjname="$parameter_value"
+				;;
+			xiaoai_cpu_kws_hold_ms|xiaoai_cpu_kws_gap_ms|xiaoai_cpu_kws_window_sec)
+				# 不接受前导 0：Shell 算术会把 0 开头当八进制，与 Python 的十进制解读不一致。
+				if [[ ! "$parameter_value" =~ ^(0|[1-9][0-9]*)$ ]]; then
+					err_print "小爱唤醒参数 $parameter_name 必须是十进制非负整数（不带前导 0）：$parameter_value"
+					exit 1
+				fi
+				case "$parameter_name" in
+					xiaoai_cpu_kws_hold_ms) cadence_low=100; cadence_high=60000 ;;
+					xiaoai_cpu_kws_gap_ms) cadence_low=0; cadence_high=60000 ;;
+					*) cadence_low=1; cadence_high=600 ;;
+				esac
+				if (( parameter_value < cadence_low || parameter_value > cadence_high )); then
+					err_print "小爱唤醒参数 $parameter_name 必须在 ${cadence_low}~${cadence_high} 之间：$parameter_value"
+					exit 1
+				fi
+				printf -v "$parameter_name" '%s' "$parameter_value"
 				;;
 			persist.sys.xiaoai.*|\
 			ro.vendor.audio.soundtrigger.xiaomievent|\
@@ -162,39 +163,16 @@ if [[ -n "$parameter_file" ]]; then
 	done < "$parameter_file"
 fi
 
+# 节奏参数只对 CPU 前端有意义；其它路线下不生效，只警告不失败。
+if [[ "$xiaoai_cpu_kws" != true ]] &&
+	(( xiaoai_cpu_kws_hold_ms != 5000 || xiaoai_cpu_kws_gap_ms != 1500 || xiaoai_cpu_kws_window_sec != 6 )); then
+	warn_print "CPU FlexKws 节奏参数仅在 xiaoai_cpu_kws=true 时生效，本次忽略"
+fi
+
 check_part_exists odm
 check_part_exists vendor
 # VoiceAssist/VoiceTrigger APK 补丁目标在 product 分区；先校验再动工作树。
 check_part_exists product
-mi_vendor_acdb_source_dir="$project_dir/mi_vendor"
-if [[ -f "$mi_vendor_acdb_manifest" && ! -L "$mi_vendor_acdb_manifest" &&
-	-d "$mi_vendor_acdb_source_dir" && ! -L "$mi_vendor_acdb_source_dir" ]]; then
-	mi_vendor_acdb_enabled=true
-	while IFS=$'\t' read -r acdb_operation acdb_relative_path acdb_extra_field || [[ -n "$acdb_operation" || -n "$acdb_relative_path" ]]; do
-		acdb_operation="${acdb_operation%$'\r'}"
-		acdb_relative_path="${acdb_relative_path%$'\r'}"
-		[[ -z "$acdb_operation" || "$acdb_operation" == \#* ]] && continue
-		if [[ ! -f "$mi_vendor_acdb_source_dir/$acdb_relative_path" || -L "$mi_vendor_acdb_source_dir/$acdb_relative_path" ]]; then
-			mi_vendor_acdb_enabled=false
-			break
-		fi
-	done < "$mi_vendor_acdb_manifest"
-fi
-if [[ "$mi_vendor_acdb_enabled" == true ]]; then
-	mi_vendor_contexts="$(get_part_contexts_path mi_vendor)"
-	mi_vendor_fsconfig="$(get_part_fsconfig_path mi_vendor)"
-	vendor_contexts="$(get_part_contexts_path vendor)"
-	vendor_fsconfig="$(get_part_fsconfig_path vendor)"
-	for acdb_metadata_file in "$mi_vendor_contexts" "$mi_vendor_fsconfig" "$vendor_contexts" "$vendor_fsconfig"; do
-		check_file_exists "$acdb_metadata_file"
-	done
-	validate_source_file_manifest "$mi_vendor_acdb_source_dir" "$project_dir/vendor" "$mi_vendor_acdb_manifest"
-	validate_translated_contexts "$mi_vendor_contexts" "$mi_vendor_acdb_manifest" /mi_vendor /vendor
-	validate_translated_fsconfig "$mi_vendor_fsconfig" "$mi_vendor_acdb_manifest" mi_vendor vendor
-	std_print "已启用 Ace 6T alor ACDB 精确补丁"
-else
-	std_print "未发现完整 mi_vendor alor ACDB 来源，跳过 ACDB 补丁"
-fi
 for required_file in \
 	"$odm_build_prop" \
 	"$vendor_build_prop" \
@@ -267,36 +245,14 @@ if [[ -e "$odm_property_contexts" || -L "$odm_property_contexts" ]]; then
 	prepare_odm_property_contexts=true
 fi
 
-pal_uuid_updated=0
-if [[ -n "$xiaoai_pal_source_relative" ]]; then
-	case "$xiaoai_pal_source_relative" in
-		/*|../*|*/../*|*/..)
-			err_print "XIAOAI_PAL_CONFIG_FILE 必须是 project_dir 下的安全相对路径：$xiaoai_pal_source_relative"
-			exit 1
-			;;
-	esac
-	xiaoai_pal_source="$project_dir/$xiaoai_pal_source_relative"
-	if [[ -L "$xiaoai_pal_source" ]]; then
-		err_print "小爱 PAL 来源不能是符号链接：$xiaoai_pal_source"
-		exit 1
-	elif [[ ! -e "$xiaoai_pal_source" ]]; then
-		warn_print "小爱 PAL 来源不存在，跳过 PAL UUID 配置：$xiaoai_pal_source"
-		xiaoai_pal_source=""
-	elif [[ ! -f "$xiaoai_pal_source" ]]; then
-		err_print "小爱 PAL 来源不是普通文件：$xiaoai_pal_source"
-		exit 1
-	fi
-else
-	warn_print "未提供 XIAOAI_PAL_CONFIG_FILE，跳过 PAL UUID 配置"
-fi
-
-if [[ "$pal_concurrent_capture" == true || -n "$xiaoai_pal_source" ]]; then
+# PAL 只保留机型显式开启的 concurrent_capture 调整：CPU 前端是常驻普通录音，
+# 需要与其他 App 的录音并发；底包缺文件或形态不受支持时只跳过该子步骤。
+if [[ "$pal_concurrent_capture" == true ]]; then
 	if [[ -L "$odm_pal_config" ]]; then
 		err_print "底包 PAL 声学配置不能是符号链接：odm/etc/resourcemanager.xml"
 		exit 1
 	elif [[ ! -e "$odm_pal_config" ]]; then
-		warn_print "底包缺少 PAL 声学配置，跳过 PAL 调整：odm/etc/resourcemanager.xml"
-		xiaoai_pal_source=""
+		warn_print "底包缺少 PAL 声学配置，跳过 concurrent_capture 调整：odm/etc/resourcemanager.xml"
 		pal_concurrent_capture=false
 	elif [[ ! -f "$odm_pal_config" ]]; then
 		err_print "底包 PAL 声学配置不是普通文件：odm/etc/resourcemanager.xml"
@@ -339,21 +295,6 @@ for target_file in "${odm_new_target_files[@]}"; do
 		exit 1
 	fi
 done
-
-if [[ "$recognition_hook" == true ]]; then
-	check_part_exists system_ext
-	for hook_input in \
-		"$hook_props_config" \
-		"$hook_apk_prebuilt" \
-		"$system_ext_contexts" \
-		"$system_ext_fsconfig"; do
-		check_file_exists "$hook_input"
-		if [[ -L "$hook_input" ]]; then
-			err_print "小爱唤醒 hook 输入不能是符号链接：$hook_input"
-			exit 1
-		fi
-	done
-fi
 
 temporary_files=()
 cleanup() {
@@ -432,11 +373,6 @@ if (( prop_source_ready == 1 )); then
 	' "$mi_odm_build_prop" >>"$generated_prop"
 fi
 
-if [[ "$recognition_hook" == true ]]; then
-	validate_prop_file "$hook_props_config"
-	cat "$hook_props_config" >>"$generated_prop"
-fi
-
 if (( ${#parameter_prop_overrides[@]} > 0 )); then
 	override_prop="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_override.XXXXXX')")"
 	temporary_files+=("$override_prop")
@@ -445,7 +381,7 @@ if (( ${#parameter_prop_overrides[@]} > 0 )); then
 fi
 
 # PAL concurrent_capture 仅由机型组合显式开启：避免把其他设备的调优值
-# 隐式应用到未验证平台。开启后可避免 DSP 会话与普通录音并发时反复重启。
+# 隐式应用到未验证平台。CPU 前端常驻采集与其它 App 录音并发时需要它。
 pal_updated=0
 if [[ "$pal_concurrent_capture" == true ]]; then
 	concurrent_occurrences="$(grep -c '<param concurrent_capture="' "$odm_pal_config" || true)"
@@ -472,23 +408,7 @@ if [[ "$pal_concurrent_capture" == true ]]; then
 	fi
 fi
 
-# 先在临时文件中完成小爱 PAL UUID/profile 的结构校验，最终与其他产物统一安装。
-generated_pal_uuid=""
-if [[ -n "$xiaoai_pal_source" ]]; then
-	generated_pal_uuid="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_pal_uuid.XXXXXX')")"
-	temporary_files+=("$generated_pal_uuid")
-	pal_uuid_target="$odm_pal_config"
-	if (( pal_updated == 1 )); then
-		pal_uuid_target="$generated_pal"
-	fi
-	if ! PYTHONDONTWRITEBYTECODE=1 python3 "$patcher_dir/xiaoai_pal_config.py" \
-		--source "$xiaoai_pal_source" --target "$pal_uuid_target" --output "$generated_pal_uuid"; then
-		err_print "小爱 PAL UUID 配置生成失败"
-		exit 1
-	fi
-	pal_uuid_updated=1
-fi
-
+# 先在临时文件中完成所有派生产物，最后与其他产物统一安装。
 generated_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_contexts.XXXXXX')")"
 generated_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_fsconfig.XXXXXX')")"
 temporary_files+=("$generated_odm_contexts" "$generated_odm_fsconfig")
@@ -601,22 +521,6 @@ if grep -qE '^[[:space:]]*[^#[:space:]]' "$generated_prop"; then
 	fi
 fi
 
-generated_system_ext_contexts=""
-generated_system_ext_fsconfig=""
-if [[ "$recognition_hook" == true ]]; then
-	generated_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_contexts.XXXXXX')")"
-	generated_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_fsconfig.XXXXXX')")"
-	temporary_files+=("$generated_system_ext_contexts" "$generated_system_ext_fsconfig")
-	cat >"$generated_system_ext_contexts" <<'EOF'
-/system_ext/app/XiaoAiRecognitionHook u:object_r:system_file:s0
-/system_ext/app/XiaoAiRecognitionHook/XiaoAiRecognitionHook\.apk u:object_r:system_file:s0
-EOF
-	cat >"$generated_system_ext_fsconfig" <<'EOF'
-system_ext/app/XiaoAiRecognitionHook 0 0 0755
-system_ext/app/XiaoAiRecognitionHook/XiaoAiRecognitionHook.apk 0 0 0644
-EOF
-fi
-
 temporary_odm_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_ctx.XXXXXX')")"
 temporary_odm_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_odm_fsc.XXXXXX')")"
 temporary_files+=("$temporary_odm_contexts" "$temporary_odm_fsconfig")
@@ -625,33 +529,7 @@ cp -p -- "$odm_fsconfig" "$temporary_odm_fsconfig"
 merge_contexts_file "$generated_odm_contexts" "$temporary_odm_contexts"
 merge_fsconfig_file "$generated_odm_fsconfig" "$temporary_odm_fsconfig"
 
-temporary_vendor_contexts=""
-temporary_vendor_fsconfig=""
-if [[ "$mi_vendor_acdb_enabled" == true ]]; then
-	temporary_vendor_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_vendor_ctx.XXXXXX')")"
-	temporary_vendor_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_vendor_fsc.XXXXXX')")"
-	temporary_files+=("$temporary_vendor_contexts" "$temporary_vendor_fsconfig")
-	cp -p -- "$vendor_contexts" "$temporary_vendor_contexts"
-	cp -p -- "$vendor_fsconfig" "$temporary_vendor_fsconfig"
-fi
-
-if [[ "$recognition_hook" == true ]]; then
-	temporary_system_ext_contexts="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_ctx.XXXXXX')")"
-	temporary_system_ext_fsconfig="$(mktemp "$(get_config_path '.fix_xiaoai_wakeup_sext_fsc.XXXXXX')")"
-	temporary_files+=("$temporary_system_ext_contexts" "$temporary_system_ext_fsconfig")
-	cp -p -- "$system_ext_contexts" "$temporary_system_ext_contexts"
-	cp -p -- "$system_ext_fsconfig" "$temporary_system_ext_fsconfig"
-	merge_contexts_file "$generated_system_ext_contexts" "$temporary_system_ext_contexts"
-	merge_fsconfig_file "$generated_system_ext_fsconfig" "$temporary_system_ext_fsconfig"
-fi
-
 # 所有派生输出均已生成并校验，从这里开始才修改工作树。
-if [[ "$mi_vendor_acdb_enabled" == true ]]; then
-	apply_source_file_manifest "$mi_vendor_acdb_source_dir" "$project_dir/vendor" "$mi_vendor_acdb_manifest"
-	merge_translated_contexts "$mi_vendor_contexts" "$temporary_vendor_contexts" /mi_vendor /vendor "$mi_vendor_acdb_manifest"
-	merge_translated_fsconfig "$mi_vendor_fsconfig" "$temporary_vendor_fsconfig" mi_vendor vendor "$mi_vendor_acdb_manifest"
-	std_print "✅ 已从 mi_vendor 精确补齐两个 alor ACDB 文件到 vendor"
-fi
 for model_file in "${model_source_files[@]}"; do
 	model_name="$(basename -- "$model_file")"
 	replace_file_if_different "$model_file" "$odm_etc_dir/$model_name"
@@ -661,19 +539,7 @@ done
 
 if (( pal_updated == 1 )); then
 	_install_generated_file "$generated_pal" "$odm_pal_config"
-	std_print "✅ 已开启底包 PAL concurrent_capture（DSP 与普通录音并发）"
-fi
-if (( pal_uuid_updated == 1 )); then
-	_install_generated_file "$generated_pal_uuid" "$odm_pal_config"
-	std_print "✅ 已补齐小爱 PAL 唤醒 stream_config 与四个 capture_profile"
-fi
-
-if [[ "$recognition_hook" == true ]]; then
-	mkdir -p -- "$hook_apk_target_dir"
-	replace_file_if_different "$hook_apk_prebuilt" "$hook_apk_target"
-	chmod 0644 -- "$hook_apk_target"
-	std_print "✅ 已预装 LSPosed 识别修复 hook：system_ext/app/XiaoAiRecognitionHook"
-	std_print "ℹ️ hook 需在设备 LSPosed 中启用并勾选 com.miui.voicetrigger 作用域"
+	std_print "✅ 已开启底包 PAL concurrent_capture（保障常驻采集与其他录音并发）"
 fi
 
 if (( has_generated_props == 1 )); then
@@ -696,17 +562,9 @@ fi
 
 _install_generated_file "$temporary_odm_contexts" "$odm_contexts"
 _install_generated_file "$temporary_odm_fsconfig" "$odm_fsconfig"
-if [[ "$mi_vendor_acdb_enabled" == true ]]; then
-	_install_generated_file "$temporary_vendor_contexts" "$vendor_contexts"
-	_install_generated_file "$temporary_vendor_fsconfig" "$vendor_fsconfig"
-fi
 if [[ "$prepare_odm_property_contexts" == true ]]; then
 	_install_generated_file "$temporary_odm_property_contexts" "$odm_property_contexts"
 	std_print "✅ 已清理 ODM 中七个小爱属性的历史 vendor_default_prop exact 标签"
-fi
-if [[ "$recognition_hook" == true ]]; then
-	_install_generated_file "$temporary_system_ext_contexts" "$system_ext_contexts"
-	_install_generated_file "$temporary_system_ext_fsconfig" "$system_ext_fsconfig"
 fi
 
 # project_dir 由 tools.sh 的 init_port_env 设置。
@@ -715,7 +573,6 @@ voiceassist_apk="$project_dir/product/priv-app/VoiceAssistAndroidT/VoiceAssistAn
 voice_trigger_apk="$project_dir/product/app/VoiceTrigger/VoiceTrigger.apk"
 
 check_file_exists "$patcher_dir/patch_voiceassist_config.sh"
-check_file_exists "$patcher_dir/config/PortWakeupHooks.smali"
 check_file_exists "$patcher_dir/patch_voicetrigger.sh"
 
 # 两个 APK 都是替换既有文件的独立子步骤；任一目标缺失只警告并跳过该子步骤。
@@ -741,6 +598,15 @@ elif [[ ! -f "$voice_trigger_apk" ]]; then
 	err_print "VoiceTrigger.apk 不是普通文件：$voice_trigger_apk"
 	exit 1
 else
+	# CPU FlexKws 前端与上面互联兜底共用同一次 VoiceTrigger 解包会话，由机型参数显式开启。
+	export XIAOAI_CPU_KWS="$xiaoai_cpu_kws"
+	export XIAOAI_CPU_KWS_HOLD_MS="$xiaoai_cpu_kws_hold_ms"
+	export XIAOAI_CPU_KWS_GAP_MS="$xiaoai_cpu_kws_gap_ms"
+	export XIAOAI_CPU_KWS_WINDOW_SEC="$xiaoai_cpu_kws_window_sec"
+	if [[ "$xiaoai_cpu_kws" == true ]]; then
+		std_print "启用 CPU FlexKws 前端（绕开底包 ADSP 热唤醒链路）"
+		std_print "节奏：让麦 ${xiaoai_cpu_kws_hold_ms}ms、无检出重开 ${xiaoai_cpu_kws_gap_ms}ms、检出窗口 ${xiaoai_cpu_kws_window_sec}s"
+	fi
 	bash "$patcher_dir/patch_voicetrigger.sh" "$voice_trigger_apk"
 	std_print "VoiceTrigger.apk 已静态植入小爱唤醒修复"
 fi

@@ -38,6 +38,7 @@
 | `config/linear_haptic.props` + `LINEAR_HAPTIC_MOTOR_TYPE=linear` | `features/fix_linear_haptic` | `sys.haptic.*` 映射与开机马达类型。 | 档位沿用一加 15，待实机核对 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟；`ultrasonic.fp.target=sun` 过滤底包多平台分辨率。 | 传感器中心为换算估算值，实机可校准后重跑 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位与 WAKE keylayout 参数。 | 沿用一加 15 触控栈值，实机需校准 |
+| `config/xiaoai_wakeup.props`（经 `XIAOAI_WAKEUP_PROPERTIES_FILE`） | `features/fix_xiaoai_wakeup` | `odm.prjname=24851`（底包 `ro.separate.soft` / `odm/etc/fingerprint.json`）；不写 `xiaoai_cpu_kws`，即 SM8750（Target sun）保留 ADSP 热唤醒路线；不覆盖 `support_record_type`、不改写 PAL `concurrent_capture`。入口已置 `XIAOAI_VOICETRIGGER_PATCH=true`，互联兜底与声学迁移仍执行。 | **未在本仓库真机验证**：ADSP 可用只依据一加 13 同平台的历史实测。真机拍到 `-22` / `set_custom_config failed 10` / 零检出时，在本文件放开 `xiaoai_cpu_kws=true` + `pal_concurrent_capture=true` 即整组切到 CPU 前端 |
 | `config/init.usb.configfs.rc` | `common/fix_mtp` | Ace 6 底包 USB configfs rc（`mtp.gs0` 纯触发器形态），替换被小米原包覆盖的目标。 | 已从底包提取，与 Ace 6T 版本逐字节一致 |
 | `PORT_TARGET_DISPLAY_ID` | `common/coloros_display`、`common/fix_boot_refresh_rate` | Android framework 主屏物理 Display ID。 | 实测 |
 | `COLOROS_DISPLAY_PROFILE=ace6` | `common/coloros_display` | 显式锁定显示接入 Profile；未注入时按底包识别值自动匹配。 | 实测 |

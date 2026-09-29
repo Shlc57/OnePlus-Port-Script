@@ -5,6 +5,19 @@
 # 之后的属性段会被 HyperOS init 跳过（真机实测），D.N.A3 打包还会把
 # 尾部属性重排回 import 之后；多载体当前仍需 root 真机复核属性可见性。
 odm.prjname=25602
-# Neo8 与 Ace 6T 同为 canoe（SM8845）声学栈，沿用其验证方案显式测试 DSP 与普通
-# 录音并发；真机唤醒异常时回到默认不修改 PAL。
+# Neo8 与 Ace 6T 同为 canoe（SM8845）声学栈。CPU 前端是常驻普通录音，
+# 需要与其他 App 的录音并发；真机发现并发异常时回到默认不修改 PAL。
 pal_concurrent_capture=true
+# 预留给 CPU FlexKws 前端的采集格式开关：-1 使 VoiceTrigger 落到单声道 int16
+# （与资源内 1ch_flexkws.json5 对齐），其他非 -1 值会切到 2 通道并使检出归零。
+ro.vendor.audio.soundtrigger.support_record_type=-1
+# 免手唤醒走 CPU FlexKws 前端（与 Ace 6T 同方案）：Neo8 与 Ace 6T 同为 canoe/SM8845
+# 声学栈，底包 ADSP 固件同样不接受小米 CUSTOM1 模型（标准图 -22、BREENO 图
+# set_custom_config failed 10），DSP 路线已定层为不可达。
+# 未在 Neo8 真机验证。误唤醒偏多或二次唤醒偏慢时，直接改下面三个节奏键（默认值等于
+# Ace 6T 刷机验证值）：让麦 xiaoai_cpu_kws_hold_ms、无检出重开间隔 xiaoai_cpu_kws_gap_ms、
+# 检出窗口 xiaoai_cpu_kws_window_sec。改窗口值要求 VoiceTrigger.apk 是未植入过的母本。
+#   xiaoai_cpu_kws_hold_ms=5000
+#   xiaoai_cpu_kws_gap_ms=1500
+#   xiaoai_cpu_kws_window_sec=6
+xiaoai_cpu_kws=true

@@ -32,7 +32,6 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$neo8_config_dir/display_vendor.pr
 # 小爱唤醒机型参数：odm.prjname=25602（底包 fingerprint.json / ro.separate.soft 实测），
 # 声学属性经 /odm/etc/<prjname>/build.gsi.prop 走 import 链生效。
 export XIAOAI_WAKEUP_PROPERTIES_FILE="$neo8_config_dir/xiaoai_wakeup.props"
-export XIAOAI_PAL_CONFIG_FILE="mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml"
 # 运行时设备代号：启用 fix_coloros_wallet 后，钱包把 odm.device 改为 Neo8 底包真值
 # RE6402L1（Build.DEVICE 随之变化）。miui FeatureParser 按 Build.DEVICE 查找
 # product/etc/device_features/<代号>.xml，由 common/fix_device_identity 据

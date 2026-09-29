@@ -21,6 +21,7 @@
 | `config/linear_haptic.props` | `features/fix_linear_haptic` | `sys.haptic.*` 映射。 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟。 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位和设备专属 WAKE keylayout 参数。 |
+| `config/xiaoai_wakeup.props`（经 `XIAOAI_WAKEUP_PROPERTIES_FILE`） | `features/fix_xiaoai_wakeup` | SM8750（Target sun）保留 ADSP 热唤醒路线：不写 `xiaoai_cpu_kws`、不覆盖 `support_record_type`、不改写 PAL `concurrent_capture`；入口已置 `XIAOAI_VOICETRIGGER_PATCH=true`。`odm.prjname` 待真机 `getprop ro.boot.prjname` 回填（本仓库无一加 15 底包解包树），未回填时声学属性只走 odm/vendor build.prop 与 `odm/etc/init/xiaoai_wakeup_props.rc`。 |
 | `PORT_TARGET_DISPLAY_ID` | `common/coloros_display` | Android framework 主屏物理 Display ID；组合入口提供默认值并允许调用方覆盖。 |
 
 这些参数依赖实际运行设备，不能从小米原包推断。更换底包、面板、指纹模组、触控驱动或 SKU 后必须重新核对，不能直接照搬。

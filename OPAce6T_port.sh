@@ -25,7 +25,6 @@ export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6t_config_dir/display_vendor.p
 # 小爱唤醒机型参数：odm.prjname=24855（真机 ro.boot.prjname 实测），
 # 声学属性经 /odm/etc/<prjname>/build.gsi.prop 走 import 链生效。
 export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6t_config_dir/xiaoai_wakeup.props"
-export XIAOAI_PAL_CONFIG_FILE="mi_odm/etc/audio/sku_canoe/resourcemanager_canoe_mtp.xml"
 # 运行时设备代号：钱包 fix_coloros_wallet 将 odm.device 改为真值 OP6117L1
 # （2026-09-16 主系统实测）后 Build.DEVICE 随之变化，miui FeatureParser 按
 # Build.DEVICE 查找 product/etc/device_features/<代号>.xml（分辨率/刷新率/DC

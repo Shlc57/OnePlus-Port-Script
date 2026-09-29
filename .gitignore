@@ -5,3 +5,10 @@ local.properties
 docs/
 debug-*.md
 local.properties
+
+# KWS 前端实验工作区（apktool 解码会话 + 实验 APK，不入库）
+.kws_lab/
+.laboff/
+.fixb/
+.loglvl/
+.run/

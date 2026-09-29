@@ -47,6 +47,7 @@
 | `config/linear_haptic.props` + `LINEAR_HAPTIC_MOTOR_TYPE=linear` | `features/fix_linear_haptic` | `sys.haptic.*` 映射与开机马达类型。 | 档位沿用一加 15，待实机核对 |
 | `config/fingerprint.props` | `features/fix_ultrasonic_fingerprint` | 超声波指纹参考坐标、区域、协议与延迟；`ultrasonic.fp.target=canoe` 过滤底包多平台分辨率。 | 传感器中心为换算估算值，实机可校准后重跑 |
 | `config/double_tap_wake.props` | `features/fix_oplus_double_tap_wake` | Oplus HBP 节点、TouchFeature 能力位与 WAKE keylayout 参数。 | 沿用一加 15 触控栈值，实机需校准 |
+| `config/xiaoai_wakeup.props`（经 `XIAOAI_WAKEUP_PROPERTIES_FILE`） | `features/fix_xiaoai_wakeup` | `odm.prjname=24855`（真机 `ro.boot.prjname`）、`pal_concurrent_capture=true`（CPU 前端常驻采集需与其它 App 录音并发），以及 `ro.vendor.audio.soundtrigger.support_record_type=-1`——它不是硬件实测值，而是 VoiceTrigger 静态初始化用来推导采集格式的开关：只有 `-1` 会同时给出单声道与 int16，与 APK 内 `1ch_flexkws.json5` 对齐；给其他非 `-1` 值会切到 2 通道 `qcom_1mic1ref` 配置，底包该输入布局不是模型期待的 mic+ref，实测检出归零。`xiaoai_cpu_kws=true` 把免手唤醒改走原包自带的 CPU FlexKws 前端（不经 ADSP L1，常驻 `AudioRecord`+`libflexkws`+声纹判定，检出后走原生唤醒入口投递；代价约 12% 单核、监听占空比 ~80%）。 | 刷机后开机实测：亮屏/熄屏均可唤醒、指令能识别并正常结束会话、可连续重复唤醒、无误唤醒、无 `-22`；ADSP 路线已定层为不可达，其配套产物（非 RAW PAL 片段、`CUSTOM1` 图键改指、小米版 `customva_plugin.so`、L1 置信度与回调保活两项 DEX）已于 2026-09-29 移除 |
 | `PORT_TARGET_DISPLAY_ID` | `common/coloros_display`、`common/fix_boot_refresh_rate` | Android framework 主屏物理 Display ID。 | 实测 |
 | `COLOROS_DISPLAY_PROFILE=ace6t` | `common/coloros_display` | 显式锁定显示接入 Profile；未注入时按底包识别值自动匹配。 | 实测 |
 | `BOOT_BRIGHTNESS_PROFILE=ace6t` | `common/fix_boot_brightness` | 显式锁定机型 Profile；未注入时按底包识别值自动匹配。Overlay、校验文件都在模块 `profiles/ace6t/` 内。 | 实测 |

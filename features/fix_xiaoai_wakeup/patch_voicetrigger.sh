@@ -31,6 +31,34 @@ source "$APK_PATCHER"
 APK_PATH=$1
 [[ -f "$APK_PATH" && ! -L "$APK_PATH" ]] || fail "找不到 VoiceTrigger.apk：$APK_PATH"
 APK_PATH=$(cd -- "$(dirname -- "$APK_PATH")" && pwd -P)/$(basename -- "$APK_PATH")
+
+# CPU FlexKws 前端（XIAOAI_CPU_KWS）：ADSP 不接受小米 CUSTOM1 模型的组合上，
+# 改用原包自带的 CPU 唤醒栈。它和互联兜底共用同一次解包会话与 classes2.dex。
+# 三个节奏常量由机型参数经 apply.sh 注入，默认值等于 Ace 6T 刷机验证过的取值。
+cpu_kws="${XIAOAI_CPU_KWS:-false}"
+if [[ "$cpu_kws" != true && "$cpu_kws" != false ]]; then
+    fail "XIAOAI_CPU_KWS 只接受 true/false：$cpu_kws"
+fi
+cpu_kws_hold_ms="${XIAOAI_CPU_KWS_HOLD_MS:-5000}"
+cpu_kws_gap_ms="${XIAOAI_CPU_KWS_GAP_MS:-1500}"
+cpu_kws_window_sec="${XIAOAI_CPU_KWS_WINDOW_SEC:-6}"
+for cadence_name in cpu_kws_hold_ms cpu_kws_gap_ms cpu_kws_window_sec; do
+    cadence_value="${!cadence_name}"
+    [[ "$cadence_value" =~ ^(0|[1-9][0-9]*)$ ]] ||
+        fail "$cadence_name 必须是十进制非负整数（不带前导 0）：$cadence_value"
+done
+CPU_KWS_EDITS="$PATCHER_DIR/cpu_kws_edits.py"
+CPU_KWS_CLASS="$PATCHER_DIR/config/PortCpuKws.smali"
+if [[ "$cpu_kws" == true ]]; then
+    [[ -f "$CPU_KWS_EDITS" && ! -L "$CPU_KWS_EDITS" ]] ||
+        fail "缺少 CPU KWS 改法脚本：$CPU_KWS_EDITS"
+    [[ -f "$CPU_KWS_CLASS" && ! -L "$CPU_KWS_CLASS" ]] ||
+        fail "缺少 CPU KWS 前端资源：$CPU_KWS_CLASS"
+fi
+# PortCpuKws 资源由 cpu_kws_edits.py 从这份原文安装并写机型让麦时长，不在这里 cp。
+CPU_KWS_ARGS=(--hold-ms "$cpu_kws_hold_ms" --gap-ms "$cpu_kws_gap_ms"
+    --window-sec "$cpu_kws_window_sec" --class-source "$CPU_KWS_CLASS")
+
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/.voicetrigger-apk-patcher.XXXXXX")
 trap cleanup EXIT
 apk_patcher_open "$WORK_DIR" "$APK_PATH" apk || fail "无法打开 VoiceTrigger.apk 会话"
@@ -40,25 +68,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 DECODE_DIR=$SESSION_DECODE_DIR
-WAKEUP_DIR_REL='smali_classes2/com/miui/voicetrigger/wakeup'
-
-smali_dex_entry() {
-    local relative_path=${1#"$DECODE_DIR"/}
-    local smali_root=${relative_path%%/*}
-    case "$smali_root" in
-        smali) printf 'classes.dex' ;;
-        smali_classes[0-9]*)
-            local number=${smali_root#smali_classes}
-            [[ "$number" =~ ^[0-9]+$ ]] || fail "无法识别 DEX 目录：$smali_root"
-            printf 'classes%s.dex' "$number"
-            ;;
-        *) fail "无法从目录识别目标 DEX：$smali_root" ;;
-    esac
-}
 
 voicetrigger_edits_state() {
     local mode=${1:-check}
-    python3 - "$DECODE_DIR" "$PATCHER_DIR/config/PortWakeupHooks.smali" "$mode" <<'PY'
+    python3 - "$DECODE_DIR" "$mode" <<'PY'
 import os
 import re
 import stat
@@ -68,30 +81,12 @@ from pathlib import Path
 
 
 decode_dir = Path(sys.argv[1])
-helper_source = Path(sys.argv[2]).read_text(encoding="utf-8")
-mode = sys.argv[3]
+mode = sys.argv[2]
 if mode not in {"check", "patch"}:
     raise SystemExit(f"不支持的操作模式：{mode}")
 
-wakeup_dir = decode_dir / "smali_classes2" / "com" / "miui" / "voicetrigger" / "wakeup"
-r_smali = wakeup_dir / "r.smali"
-s_smali = wakeup_dir / "s.smali"
-h_smali = decode_dir / "smali_classes2" / "v0" / "h.smali"
-helper_smali = wakeup_dir / "PortWakeupHooks.smali"
-
-for path in (r_smali, s_smali, h_smali):
-    if not path.is_file():
-        raise SystemExit(f"目标类缺失，VoiceTrigger 版本不受支持：{path}")
-
-
-def method_block(text, pattern, path, name):
-    matches = list(re.finditer(pattern, text, re.M | re.S))
-    if len(matches) != 1:
-        raise SystemExit(
-            f"{name} 方法块数量应为 1，实际 {len(matches)}，"
-            f"VoiceTrigger 版本不受支持：{path}"
-        )
-    return matches
+infra_smali = (decode_dir / "smali_classes2" / "com" / "xiaomi" / "continuity"
+              / "infra" / "ServiceConnector$Impl.smali")
 
 
 def read(path):
@@ -122,131 +117,49 @@ def write_file(path, updated, description):
         raise SystemExit(f"写入{description}失败：{path}：{error}")
 
 
-r_method = (
-    r"^\.method[^\n]*\bc\(\)\[Landroid/hardware/soundtrigger/SoundTrigger"
-    r"\$KeyphraseRecognitionExtra;[ \t]*\n.*?^\.end method[ \t]*$"
-)
-r_e_method = (
-    r"^\.method[^\n]*\be\(\)Landroid/hardware/soundtrigger/SoundTrigger"
-    r"\$RecognitionConfig;[ \t]*\n.*?^\.end method[ \t]*$"
-)
-s_e_method = (
-    r"^\.method public e\(Lcom/miui/voicetrigger/wakeup/w;\)V"
+# 修改：给 SDK>=29 的 Context.bindService 直调加 SecurityException 兜底。
+# 小米互联服务预置版缺 ContinuityServiceManagerService 组件时，这行直调抛未捕获
+# SecurityException，由 continuity-service-manager-connector 线程杀死 VoiceTrigger 进程。
+# 反射路径（SDK<29）自带 try，不需要兜底。
+infra_bind_method = (
+    r"^\.method public bindService\(Landroid/content/ServiceConnection;\)Z"
     r"[ \t]*\n.*?^\.end method[ \t]*$"
 )
-h_k_method = (
-    r"^\.method public static k\(Landroid/content/Context;\)V"
-    r"[ \t]*\n.*?^\.end method[ \t]*$"
+bind_call = re.compile(
+    r"(?P<indent>[ \t]*)(?P<call>invoke-virtual \{[^}]*\}, Landroid/content/Context;"
+    r"->bindService\(Landroid/content/Intent;ILjava/util/concurrent/Executor;"
+    r"Landroid/content/ServiceConnection;\)Z)\n\n"
+    r"(?P<moved>[ \t]*move-result (?P<res>[A-Za-z0-9_.$-]+)\n)\n"
+    r"(?P<ret>[ \t]*return (?P=res)\n)"
 )
-
-r_text = read(r_smali)
-s_text = read(s_smali)
-h_text = read(h_smali)
-
-# 修改 1：r.c() DSP L1 上报置信度 0x45(69) -> 0x23(35)
-r_c_match = method_block(r_text, r_method, r_smali, "r.c()")[0]
-r_c_block = r_c_match.group(0)
-r_c_original = r_c_block.count("const/16 v4, 0x45") == 1
-r_c_patched = r_c_block.count("const/16 v4, 0x23") == 1 and not r_c_original
-
-# 修改 2：r.e() 空 data -> LAB 前视缓冲 20 字节
-r_e_match = method_block(r_text, r_e_method, r_smali, "r.e()")[0]
-r_e_block = r_e_match.group(0)
-r_e_helper = "Lcom/miui/voicetrigger/wakeup/PortWakeupHooks;->buildLabData()[B"
-lab_anchor = re.compile(
-    r"const/4 v2, 0x0(\s+)const/4 v3, 0x1(\s+)const/4 v4, 0x0(\s+)"
-    r"invoke-direct \{v0, v3, v4, v1, v2\}, "
-    r"Landroid/hardware/soundtrigger/SoundTrigger\$RecognitionConfig;-><init>"
-    r"\(ZZ\[Landroid/hardware/soundtrigger/SoundTrigger"
-    r"\$KeyphraseRecognitionExtra;\[B\)V"
-)
-# DEX 校验禁止在 new-instance 与 invoke-direct <init> 之间执行 invoke
-# （未初始化引用存活期），buildLabData 调用必须位于 new-instance 之前。
-ni_line = "    new-instance v0, Landroid/hardware/soundtrigger/SoundTrigger$RecognitionConfig;\n\n"
-inv_block = (
-    f"    invoke-static {{}}, {r_e_helper}\n\n    move-result-object v2\n\n"
-)
-has_invoke = r_e_helper in r_e_block
-ni_idx = r_e_block.find(ni_line.strip())
-inv_idx = r_e_block.find("invoke-static {}, " + r_e_helper)
-if not has_invoke:
-    r_e_state = "original" if lab_anchor.search(r_e_block) else "unknown"
-elif 0 <= inv_idx < ni_idx:
-    r_e_state = "patched"
-elif inv_idx > ni_idx:
-    r_e_state = "v1"  # 历史坏版：invoke 位于 new-instance 之后，触发 VerifyError
+if not infra_smali.is_file():
+    bind_state = "absent"
 else:
-    r_e_state = "unknown"
-
-# 修改 3：s.e(w) XATX/UDK 命令下绕过声纹门（关键词门保留）
-s_e_match = method_block(s_text, s_e_method, s_smali, "s.e(w)")[0]
-s_e_block = s_e_match.group(0)
-# 状态标记不能依赖 baksmali 标签名（重新解码时标签会被重命名），
-# 只能依赖字符串常量、寄存器名与指令序列等跨解码稳定结构。
-vp_invoke = "invoke-virtual {p1}, Lcom/miui/voicetrigger/wakeup/w;->l()Z"
-vp_gate = re.compile(
-    re.escape(vp_invoke) + r"\n\n    move-result v0\n\n    if-eqz v0, :[A-Za-z0-9_.$-]+"
-)
-vp_bypass = (
-    vp_invoke + "\n\n"
-    "    move-result v0\n\n"
-    "    iget-object v1, p0, Lcom/miui/voicetrigger/wakeup/s;->b:Ljava/lang/String;\n\n"
-    "    if-eqz v1, :portai_vp_orig\n\n"
-    '    const-string v2, "XATX"\n\n'
-    "    invoke-virtual {v1, v2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n"
-    "    move-result v2\n\n"
-    "    if-nez v2, :portai_vp_pass\n\n"
-    '    const-string v2, "UDK"\n\n'
-    "    invoke-virtual {v1, v2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n"
-    "    move-result v2\n\n"
-    "    if-eqz v2, :portai_vp_orig\n\n"
-    "    :portai_vp_pass\n"
-    "    const/4 v0, 0x1\n\n"
-    "    :portai_vp_orig\n"
-)
-s_e_original = (
-    len(vp_gate.findall(s_e_block)) == 1
-    and 'const-string v2, "XATX"' not in s_e_block
-    and 'const-string v2, "UDK"' not in s_e_block
-)
-s_e_patched = (
-    s_e_block.count("Ljava/lang/String;->equals(Ljava/lang/Object;)Z") == 2
-    and s_e_block.count('const-string v2, "XATX"') == 1
-    and s_e_block.count('const-string v2, "UDK"') == 1
-    and s_e_block.count("if-nez v2,") == 1
-    and len(vp_gate.findall(s_e_block)) == 0
-)
-
-# 修改 4：v0/h.k() DSP 回调 wake lock 800ms -> 7000ms
-# 宽常量寄存器随编译版本漂移（v0/v1 或 v2/v3），状态判定与替换都按实际寄存器处理。
-h_k_match = method_block(h_text, h_k_method, h_smali, "h.k(Context)")[0]
-h_k_block = h_k_match.group(0)
-h_k_duration = re.compile(r"const-wide/16 (v\d+), 0x320\b")
-h_k_original = len(h_k_duration.findall(h_k_block)) == 1
-h_k_patched = (
-    len(re.findall(r"const-wide/16 v\d+, 0x1b58\b", h_k_block)) == 1
-    and not h_k_original
-)
-
-helper_present = helper_smali.is_file()
-helper_methods = ("buildLabData", "putIntLE", "getIntProp", "clampInt")
-helper_patched = helper_present and all(
-    re.search(rf"^\.method[^\n]*\b{name}\(", helper_smali.read_text(encoding="utf-8"), re.M)
-    for name in helper_methods
-)
-helper_unknown = helper_present and not helper_patched
+    infra_text = read(infra_smali)
+    infra_matches = list(re.finditer(infra_bind_method, infra_text, re.M | re.S))
+    if len(infra_matches) != 1:
+        raise SystemExit(
+            f"ServiceConnector$Impl.bindService 方法块数量应为 1，实际 {len(infra_matches)}，"
+            f"VoiceTrigger 版本不受支持：{infra_smali}"
+        )
+    bind_block = infra_matches[0].group(0)
+    if ".catch Ljava/lang/SecurityException;" in bind_block:
+        bind_state = "patched"
+    elif bind_call.search(bind_block):
+        bind_state = "original"
+    else:
+        bind_state = "absent"
 
 states = {
-    "r_c": "patched" if r_c_patched else ("original" if r_c_original else "unknown"),
-    "r_e": r_e_state,
-    "s_e": "patched" if s_e_patched else ("original" if s_e_original else "unknown"),
-    "h_k": "patched" if h_k_patched else ("original" if h_k_original else "unknown"),
-    "helper": "patched" if helper_patched else ("original" if not helper_present else "unknown"),
+    "bind_guard": bind_state,
 }
+# absent 表示该项在本版本不存在，等同已完成，不能归入 unknown 也不会阻碍幂等判定。
+satisfied = {"patched", "absent"}
+pending = {"original", "absent"}
 if mode == "check":
-    if all(state == "patched" for state in states.values()):
+    if all(state in satisfied for state in states.values()):
         print("patched")
-    elif all(state == "original" for state in states.values()):
+    elif all(state in pending for state in states.values()):
         print("original")
     elif any(state == "unknown" for state in states.values()):
         print("unknown")
@@ -260,69 +173,58 @@ if any(state == "unknown" for state in states.values()):
         + " ".join(f"{name}={state}" for name, state in states.items())
     )
 
-# 逐项幂等处理：original 植入，v1（历史坏版）升级，patched 跳过。
-r_new = r_text
-if states["r_c"] == "original":
-    r_new = r_new.replace(
-        r_c_block,
-        r_c_block.replace("const/16 v4, 0x45", "const/16 v4, 0x23", 1),
-        1,
-    )
+# 幂等处理：original 植入，patched/absent 跳过。
+if states["bind_guard"] == "original":
+    def wrap_bind(match):
+        indent = match.group("indent")
+        res = match.group("res")
+        return (
+            f"{indent}:try_start_portai\n"
+            f"{indent}{match.group('call')}\n\n"
+            f"{match.group('moved')}"
+            f"{indent}:try_end_portai\n"
+            f"{indent}.catch Ljava/lang/SecurityException; "
+            "{:try_start_portai .. :try_end_portai} :catch_portai\n\n"
+            f"{match.group('ret')}\n"
+            f"{indent}:catch_portai\n"
+            f"{indent}const/4 {res}, 0x0\n\n"
+            f"{indent}return {res}\n"
+        )
 
-if states["r_e"] == "original":
-    seg = r_e_block.replace("    const/4 v2, 0x0\n\n", "", 1)
-    seg = seg.replace(ni_line, inv_block + ni_line, 1)
-    r_new = r_new.replace(r_e_block, seg, 1)
-elif states["r_e"] == "v1":
-    seg = r_e_block.replace(inv_block, "", 1)
-    seg = seg.replace(ni_line, inv_block + ni_line, 1)
-    r_new = r_new.replace(r_e_block, seg, 1)
-
-write_file(r_smali, r_new, "DSP L1 置信度与 LAB 前视缓冲")
-
-if states["s_e"] == "original":
-    write_file(s_smali, vp_gate.sub(lambda _match: vp_bypass, s_text, count=1), "声纹门放行")
-
-if states["h_k"] == "original":
-    h_k_reg = h_k_duration.search(h_k_block).group(1)
-    write_file(
-        h_smali,
-        h_text.replace(
-            h_k_block,
-            h_k_block.replace(
-                f"const-wide/16 {h_k_reg}, 0x320",
-                f"const-wide/16 {h_k_reg}, 0x1b58",
-                1,
-            ),
-            1,
-        ),
-        "DSP 回调保活时长",
-    )
-
-if states["helper"] != "patched":
-    file_mode = stat.S_IMODE(wakeup_dir.stat().st_mode)
-    helper_tmp = helper_smali.with_name(f".{helper_smali.name}.tmp")
-    helper_tmp.write_text(helper_source, encoding="utf-8")
-    os.chmod(helper_tmp, file_mode)
-    os.replace(helper_tmp, helper_smali)
+    patched_block = bind_call.sub(wrap_bind, bind_block, count=1)
+    if patched_block == bind_block:
+        raise SystemExit("Context.bindService 直调结构不符合预期，无法植入 SecurityException 兜底")
+    write_file(infra_smali, infra_text.replace(bind_block, patched_block, 1), "continuity 绑定兜底")
 
 print("patched ok")
 PY
 }
 
 STATE=$(voicetrigger_edits_state check)
-case "$STATE" in
-    patched)
-        log "SKIP：VoiceTrigger 小爱唤醒修复已植入"
-        exit 0
+KWS_STATE=disabled
+if [[ "$cpu_kws" == true ]]; then
+    KWS_STATE=$(python3 "$CPU_KWS_EDITS" check "$DECODE_DIR" "${CPU_KWS_ARGS[@]}") ||
+        fail "CPU KWS 植入点状态检查失败"
+fi
+case "$KWS_STATE" in
+    disabled|original|partial|patched) ;;
+    *)
+        fail "CPU KWS 植入点指令结构与受支持版本不一致，拒绝盲目修改：state=$KWS_STATE"
         ;;
-    original|partial) ;;
+esac
+if [[ "$STATE" == patched && "$KWS_STATE" != original && "$KWS_STATE" != partial ]]; then
+    log "SKIP：VoiceTrigger 小爱唤醒修复已植入"
+    exit 0
+fi
+case "$STATE" in
+    patched|original|partial) ;;
     *)
         fail "VoiceTrigger 目标方法结构与当前支持版本不一致，拒绝盲目修改：state=$STATE"
         ;;
 esac
 
-DEX_ENTRY=$(smali_dex_entry "$DECODE_DIR/$WAKEUP_DIR_REL/r.smali")
+# 所有保留的植入点（互联兜底与 CPU FlexKws 前端）都在 classes2.dex。
+DEX_ENTRY='classes2.dex'
 [[ "$(apk_patcher_entry_count "$APK_PATH" "$DEX_ENTRY")" == 1 ]] ||
     fail "原 APK 中 $DEX_ENTRY 数量异常"
 
@@ -332,5 +234,19 @@ PATCH_RESULT=$(voicetrigger_edits_state patch) || fail "修改 VoiceTrigger Smal
 [[ "$(voicetrigger_edits_state check)" == 'patched' ]] || fail "修改后的 VoiceTrigger Smali 校验失败"
 
 apk_patcher_record_entry "$DEX_ENTRY" || fail "无法登记 VoiceTrigger.apk 目标 DEX"
+
+if [[ "$cpu_kws" == true && "$KWS_STATE" != patched ]]; then
+    log "植入 CPU FlexKws 前端（state=$KWS_STATE，让麦 ${cpu_kws_hold_ms}ms/间隔 ${cpu_kws_gap_ms}ms/窗口 ${cpu_kws_window_sec}s）"
+    KWS_RESULT=$(python3 "$CPU_KWS_EDITS" patch "$DECODE_DIR" "${CPU_KWS_ARGS[@]}") ||
+        fail "CPU KWS Smali 修改失败"
+    case "$KWS_RESULT" in
+        'patched ok'|'already patched') ;;
+        *) fail "CPU KWS Smali 未产生预期修改：$KWS_RESULT" ;;
+    esac
+    [[ "$(python3 "$CPU_KWS_EDITS" check "$DECODE_DIR" "${CPU_KWS_ARGS[@]}")" == patched ]] ||
+        fail "修改后的 CPU KWS Smali 校验失败"
+    apk_patcher_record_entry "$DEX_ENTRY" || fail "无法登记 CPU KWS 目标 DEX"
+fi
+
 apk_patcher_finalize || fail "VoiceTrigger.apk 最终回编译失败"
 log "APPLY：补丁完成：$APK_PATH"

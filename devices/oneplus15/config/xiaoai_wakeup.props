@@ -1,0 +1,22 @@
+# 小爱唤醒机型参数（一加 15，SM8750 / 显示 Target sun，与一加 Ace 6 同一 ADSP 路线）。
+# 本仓库当前没有一加 15 的底包解包树，odm.prjname（ro.boot.prjname）与底包身份无法静态取得，
+# 因此这里不写 odm.prjname：声学属性只落 odm/etc/build.prop、vendor/build.prop 与
+# odm/etc/init/xiaoai_wakeup_props.rc 三个载体。真机复核属性可见性后，请把
+# `odm.prjname=<纯数字>` 补进来，让模块额外写 /odm/etc/<prjname>/build.gsi.prop
+# （odm/etc/build.prop 头部 import 链之后的属性段会被 HyperOS init 跳过，SM8845 真机实测）。
+# 路线选择：保持 ADSP 热唤醒，不启用 CPU FlexKws 前端（xiaoai_cpu_kws 默认 false）。
+# 依据是一加 13（同 SM8750）移植模块的历史实测，本仓库尚未在一加 15 上真机验证。
+# 声学属性不覆盖 ro.vendor.audio.soundtrigger.support_record_type：ADSP 路线沿用原包
+# 0x0022 的语义选择采集条目；把它改成 -1 是 CPU 前端锁定单声道 int16 的专用开关。
+# PAL concurrent_capture 保持底包原值，这里显式写 false：未在本机型验证，不默认改写底包
+# PAL；同时本文件必须至少留一条真实属性（tools.sh 的 validate_prop_file 不接受全注释的
+# 属性覆盖文件）。
+pal_concurrent_capture=false
+# 真机若出现 gsl_graph_send_nonpersist_cal failed 2 / createMmapBuffer -22 /
+# gsl_set_custom_config failed 10 或始终零检出，放开下面一行即整组切到 CPU 前端，
+# 并按需补三个节奏键（默认 5000/1500/6，等于 Ace 6T 刷机验证值）：
+#   xiaoai_cpu_kws=true
+#   pal_concurrent_capture=true
+#   xiaoai_cpu_kws_hold_ms=5000
+#   xiaoai_cpu_kws_gap_ms=1500
+#   xiaoai_cpu_kws_window_sec=6

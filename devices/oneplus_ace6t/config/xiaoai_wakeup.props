@@ -4,5 +4,22 @@
 # 之后的属性段会被 HyperOS init 跳过（真机实测），D.N.A3 打包还会把
 # 尾部属性重排回 import 之后；多载体当前仍需 root 真机复核属性可见性。
 odm.prjname=24855
-# Ace 6T 当前验证方案显式测试 DSP 与普通录音并发；其他组合默认不修改 PAL。
+# Ace 6T 底包该参数为 false；CPU 前端是常驻普通录音，需要与其他 App 的录音并发。
 pal_concurrent_capture=true
+# CPU FlexKws 前端的必需项：VoiceTrigger 静态初始化读该值推导采集格式。
+# 只有 -1（属性缺失或取不到数值同效）会同时给出 K.f()=1 与 K.u()=false，
+# 即单声道 int16，与资源内 1ch_flexkws.json5 完全对齐；给其他非 -1 值会切到
+# 2 通道 qcom_1mic1ref 配置，底包该输入布局不是模型期待的 mic+ref，实测彻底零检出。
+ro.vendor.audio.soundtrigger.support_record_type=-1
+# CPU FlexKws 前端：把"小爱同学"免手唤醒从 ADSP 热唤醒改到原包自带的 CPU 链路。
+# 真机结论（2026-09-29 Ace 6T / SM8845 DSU）：底包 ADSP 固件里的 CUSTOM VA 模块不接受
+# 小米 CUSTOM1 模型 —— 标准 CUSTOM 图停在 gsl_graph_send_nonpersist_cal failed 2 →
+# createMmapBuffer -22（并把 audioserver 拖进崩溃环），改走 BREENO 图能开但
+# set_custom_config failed 10；配置类手段已全部否证。原包 VoiceTrigger.apk 自带完整
+# CPU 唤醒栈（wakeup/c 用 AudioRecord source=1999 + libflexkws + xatx 模型 + 声纹判定），
+# 只缺启动点，因此以 Smali 方式接上，见 features/fix_xiaoai_wakeup/cpu_kws_edits.py。
+# 代价与边界：常驻 CPU 检出约 12% 单核，监听占空比 ~80%，唤醒后 5 秒让麦给小爱。
+# 三个节奏键可在本机型调整：xiaoai_cpu_kws_hold_ms（默认 5000）、xiaoai_cpu_kws_gap_ms
+# （默认 1500）、xiaoai_cpu_kws_window_sec（默认 6）；不写就用默认值，也就是当前已刷机
+# 验证的取值。改窗口值要求 VoiceTrigger.apk 是未植入过的母本。
+xiaoai_cpu_kws=true

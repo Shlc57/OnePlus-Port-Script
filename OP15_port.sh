@@ -17,7 +17,16 @@ export BOOT_BRIGHTNESS_PROFILE=oneplus15
 export COLOROS_DISPLAY_PROFILE=oneplus15
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$oneplus15_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$oneplus15_config_dir/display_vendor.props"
-export XIAOAI_VOICETRIGGER_PATCH=false
+# 小爱唤醒机型参数：本仓库没有一加 15 的底包解包树，odm.prjname 待真机
+# getprop ro.boot.prjname 回填；未回填时声学属性只走 odm/vendor build.prop 与
+# odm/etc/init/xiaoai_wakeup_props.rc 三个载体。
+export XIAOAI_WAKEUP_PROPERTIES_FILE="$oneplus15_config_dir/xiaoai_wakeup.props"
+# 一加 15 是 SM8750（Target sun），保留 ADSP 热唤醒路线，不启用 CPU FlexKws 前端；
+# APK 静态植入仍需要（小米互联 bindService 的 SecurityException 兜底已真机确认必需）。
+export XIAOAI_VOICETRIGGER_PATCH=true
+# 不写 XIAOAI_VOICEASSIST_DEVICE_CODE：本组合未声明 RUNTIME_DEVICE_CODE，
+# 运行时 Build.DEVICE 等于原包代号（DEVICE_IDENTITY_PROP 只改型号类键），
+# 白名单由模块回退到 init_port_env 的原包身份快照。
 # OnePlus 15 AD296 原厂 ADFR RUS 输入。features/fix_oplus_ltpo 只消费这个显式
 # 配置，不从小米原包、DT 或其他机型猜测 1/55Hz 策略。
 export OPLUS_ADFR_RUS_XML_FILE="$oneplus15_config_dir/adfr2minfps.xml"

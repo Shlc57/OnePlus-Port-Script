@@ -158,7 +158,7 @@ bash RealmeNeo8_port.sh
 | [`features/fix_oplus_double_tap_wake`](features/fix_oplus_double_tap_wake/README.md) | `odm`、`vendor` | 通过独立 AIDL bridge 和设备 keylayout 接入 Oplus 双击亮屏；SELinux bundle 由统一入口写入 vendor/ODM 早期策略。 |
 | [`features/fix_oplus_fingerprint_protocol`](features/fix_oplus_fingerprint_protocol/README.md) | `system_ext` | 适配 Oplus HAL 与 Xiaomi 锁屏 FOD 触摸协议。 |
 | [`features/fix_ultrasonic_fingerprint`](features/fix_ultrasonic_fingerprint/README.md) | `odm`、`vendor` | 换算指纹参数，并登记 Enforcing 下所需的精确指纹 property contexts 与 SystemUI 读取权限；多平台底包可通过 `ultrasonic.fp.target` 按 SoC Target 过滤 PanelResolution。 |
-| [`features/fix_xiaoai_wakeup`](features/fix_xiaoai_wakeup/README.md) | `odm`、`vendor`、`system_ext`、`product` | 小爱同学唤醒一站式修复：迁移原包 Qualcomm 声学唤醒模型与声学属性、按机型来源补齐最小 PAL 唤醒配置并开启 PAL 并发采集（原包缺模型时安全跳过）；随后静态修复 VoiceAssist 设备准入与 VoiceTrigger.apk 唤醒逻辑（DSP L1 置信度、LAB 前视缓冲、XATX/UDK 声纹门、回调保活，等价 LSPosed hook），由 `XIAOAI_VOICETRIGGER_PATCH=true` 显式启用。 |
+| [`features/fix_xiaoai_wakeup`](features/fix_xiaoai_wakeup/README.md) | `odm`、`vendor`、`product` | 小爱同学唤醒一站式修复：迁移原包 Qualcomm 声学唤醒模型与声学属性（可选 `odm.prjname` 额外写 import 链目标）、按机型开启 PAL 并发采集（原包缺模型时安全跳过）；随后静态修复 VoiceAssist 设备准入（白名单等于运行时 `Build.DEVICE`，入口未声明时可回退到原包身份快照）与 VoiceTrigger.apk 的小米互联绑定 `SecurityException` 兜底，由 `XIAOAI_VOICETRIGGER_PATCH=true` 显式启用；并把免手唤醒词改走原包自带的 **CPU FlexKws 前端**（机型参数 `xiaoai_cpu_kws=true`：不经 ADSP L1 直接起 `AudioRecord`+`libflexkws`+声纹会话，检出后走原生唤醒入口投递；让麦/重开间隔/检出窗口由 `xiaoai_cpu_kws_hold_ms`、`xiaoai_cpu_kws_gap_ms`、`xiaoai_cpu_kws_window_sec` 三个机型键注入）。注意：**SM8845（Ace 6T、Neo8）底包的 ADSP 固件侧 CUSTOM VA 模块不接受小米 CUSTOM1 模型，DSP 热唤醒端到端不可达（已真机定层）；CPU 前端已在 Ace 6T 真机验证亮屏/熄屏可用。SM8750（一加 15、Ace 6）保留 ADSP 基线，尚未在本仓库真机确认。** 详见模块 README 顶部结论与《CPU FlexKws 前端子步骤》。 |
 
 ### 一加 15 专属模块（`devices/oneplus15`）
 

@@ -22,7 +22,16 @@ export COLOROS_DISPLAY_PROFILE=ace6
 export BOOT_BRIGHTNESS_PROFILE=ace6
 export DISPLAY_POLICY_ODM_PROPERTIES_FILE="$ace6_config_dir/display_odm.props"
 export DISPLAY_POLICY_VENDOR_PROPERTIES_FILE="$ace6_config_dir/display_vendor.props"
-export XIAOAI_VOICETRIGGER_PATCH=false
+# 小爱唤醒机型参数：odm.prjname=24851（底包 ro.separate.soft / odm/etc/fingerprint.json），
+# 声学属性额外经 /odm/etc/24851/build.gsi.prop 走 import 链生效。
+export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6_config_dir/xiaoai_wakeup.props"
+# Ace 6 是 SM8750（Target sun），保留 ADSP 热唤醒路线，不启用 CPU FlexKws 前端；
+# APK 静态植入仍需要（小米互联 bindService 的 SecurityException 兜底已真机确认必需）。
+# 锁定项与原包 VoiceTrigger.apk 的 versionCode 强绑定，版本漂移会硬失败而不是静默出坏包。
+export XIAOAI_VOICETRIGGER_PATCH=true
+# 不写 XIAOAI_VOICEASSIST_DEVICE_CODE：本组合未启用钱包等会改变 odm.device 的身份修正，
+# 运行时 Build.DEVICE 等于原包代号，小爱 cloudControl.device 白名单由模块回退到
+# init_port_env 的原包身份快照。若以后接入 RUNTIME_DEVICE_CODE，白名单会自动跟过去。
 # Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 features/fix_nfc_tms_bridge
 # 消费本文件；NXP 专用适配 features/fix_nci_nfc 对 Ace 6 不适用。
 export NFC_PROPERTIES_FILE="$ace6_config_dir/nfc.props"

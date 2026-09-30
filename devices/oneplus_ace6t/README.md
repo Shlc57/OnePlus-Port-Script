@@ -10,7 +10,7 @@
 | 设备代号 / OEM | PLR110 / OP6117 |
 | 处理器 | 第五代骁龙 8（SM8845），显示 Target `canoe` |
 | 内核 | `android16-6.12`（与一加 15 相同，Millet 核心桥直接使用仓库预编译 KO） |
-| 屏幕 | 6.83″ 1.5K LTPS **120Hz**，面板实测 **1272x2800**；全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM（档位待实机核对） |
+| 屏幕 | 6.83″ 1.5K **165Hz 五档屏**（60/90/120/144/165，LTPS），面板实测 **1272x2800**；全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM |
 | 物理 Display ID | `4630946700822127507`（dumpsys uniqueId 实测） |
 | 电池 | 8300mAh（典型值） |
 | 摄像头 | 后置 50MP+8MP，前置 16MP（按官方规格；参考流程中的三摄/32MP 数据为模板残留，未采纳） |
@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | 自动亮度接入（[`common/coloros_display`](../../common/coloros_display/README.md)，Profile `ace6t`） | `odm`、`product`、`system`、`system_ext`、`vendor`、`my_product` | OP15 同款方案：`my_product/vendor/etc` 覆盖合并入 vendor，用 P_7 官方表生成含 `autoBrightness` 的 Display ID 配置，迁移 FusionLight（Main_2_3）与 display RRO（24851），禁用 `high_pwm_rgb`。需解包 `my_product`。 |
 | 开机亮度（[`common/fix_boot_brightness`](../../common/fix_boot_brightness/README.md)，Profile `ace6t`） | `product` | 安装启动亮度 Overlay 并移除 `MiuiFrameworkResOverlay.apk`。 |
-| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。注意：其互斥策略沿用一加 15 的 165Hz 五档屏假设（60/90/120/144/165、144/165Hz PWM），与本机 120Hz LTPS 面板不符，需按实机档位重审。 |
+| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。本机实测为 165Hz 五档屏（60/90/120/144/165、144/165Hz PWM），与 Ace 6、一加 15 档位一致，互斥策略与 patcher 三处逐字节一致。 |
 
 ## 实测不适用：fix_oplusreserve_context
 

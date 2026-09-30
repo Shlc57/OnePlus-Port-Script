@@ -93,7 +93,7 @@ case " $* " in
 	;;
 esac
 
-TRACE_VERSION='2026.09.30-4'
+TRACE_VERSION='2026.09.30-5'
 
 # ---------------------------------------------------------------- 参数解析
 TAG='now'
@@ -1144,6 +1144,53 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 			[ -f "$f" ] && printf "%s : %s\n" "$f" "$(grep -o -E "concurrent_capture=\"[^\"]*\"" "$f" 2>/dev/null | head -n 2 | tr "\n" " ")"
 		done
 		printf "SENTINEL_LHDC=%s\n" "$(ls -1 /apex/com.android.bt/lib64 2>/dev/null | grep -i -E "lhdc|ldac" | tr "\n" " ")"
+		true
+	'
+
+	# ---- 52 硬件参数真机核对（把只能真机判定的项一次抓齐：运行时身份 / SELinux 版本标记 /
+	#      显示原生分辨率与刷新档 + Display ID / 超声波指纹落点 / 双击触控 / Millet vermagic）。
+	#      对应 Ace 6 交付时仍标「估算 / 沿用 / 待实机」的参数，回传后直接比对定值。
+	capn 52_hw_params.txt 500 sh -c '
+		echo "===== 运行时身份与 ColorOS/钱包关键 prop（核对 odm.device、cuptsm、oplusrom 是否按真值落地）====="
+		for p in ro.product.device ro.product.model ro.product.name ro.product.brand ro.product.manufacturer \
+			ro.product.marketname ro.vendor.oplus.market.name ro.vendor.oplus.market.enname \
+			ro.build.version.oplusrom ro.build.version.oplusrom.display ro.product.cuptsm \
+			ro.vendor.oplus.regionmark ro.boot.prjname ro.separate.soft; do
+			printf "%s = %s\n" "$p" "$(getprop $p 2>/dev/null)"
+		done
+		echo "===== SELinux 版本标记实值（genfs 必须与 plat 同值，否则 init 解析 policy 起不来）====="
+		for f in /vendor/etc/selinux/plat_sepolicy_vers.txt /vendor/etc/selinux/genfs_labels_version.txt \
+			/odm/etc/selinux/plat_sepolicy_vers.txt /odm/etc/selinux/genfs_labels_version.txt; do
+			if [ -r "$f" ]; then printf "%s = %s\n" "$f" "$(tr -d "\n\r\t " < "$f")"; else printf "%s = ABSENT\n" "$f"; fi
+		done
+		echo "===== 显示：原生分辨率与刷新档、物理 Display ID（核对 1270 还是 1272、是否 165Hz 五档、uniqueId）====="
+		dumpsys display 2>&1 | grep -a -E "uniqueId|Display Info|[0-9]{4}x[0-9]{4}|modeId|refreshRate|Physical|Controller" | head -n 50
+		echo "-- 底包 sdm 面板分辨率（本机 Target 的真实原生尺寸，指纹换算基线）--"
+		for x in /odm/etc/sdm_display_resolution_extn.xml /vendor/etc/sdm_display_resolution_extn.xml; do
+			[ -r "$x" ] || continue
+			printf "----- %s\n" "$x"
+			grep -a -o -E "Target name=\"[^\"]*\"|PanelResolution width=\"[0-9]+\" height=\"[0-9]+\"" "$x" 2>/dev/null | head -n 20
+		done
+		echo "===== 超声波指纹落点（读回补丁写入的 fod 坐标 + 框架可见位置）====="
+		getprop 2>/dev/null | grep -a -E "fp\.fod|persist\.vendor\.sys\.fp|ro\.hardware\.fp"
+		echo "-- dumpsys fingerprint 里的 fod/sensor/location/position --"
+		dumpsys fingerprint 2>&1 | grep -a -i -E "fod|sensor|location|ultrasonic|position|displayId|width|height" | head -n 40
+		echo "===== 双击亮屏 / 触控（touchfeature 运行时值、生成的 keylayout 是否含 WAKE 键）====="
+		printf "ro.vendor.touchfeature.type = %s\n" "$(getprop ro.vendor.touchfeature.type 2>/dev/null)"
+		for kl in /odm/usr/keylayout/touchpanel.kl /vendor/usr/keylayout/touchpanel.kl /odm/usr/keylayout/*.kl; do
+			[ -r "$kl" ] || continue
+			if grep -a -q "WAKE" "$kl" 2>/dev/null; then
+				printf "KL_WAKE[%s]=%s\n" "$kl" "$(grep -a -E "WAKE" "$kl" 2>/dev/null | tr "\n" ";" | cut -c1-200)"
+			fi
+		done
+		true
+	'
+	lsglob 52_hw_params.txt '/proc/touchpanel*' '/proc/touch*' '/sys/devices/platform/*touch*' '/sys/class/input/*' '/dev/input/*'
+	# getevent -pl 只读、打印各输入设备名与支持的能力位后即退出（核对 touchpanel 设备是否存在、scan code 是否可用）。
+	capn 52_hw_params.txt 240 getevent -pl
+	capn 52_hw_params.txt 8 sh -c '
+		echo "uname_r=$(uname -r 2>&1)"
+		echo "millet_core_module=$(grep -a "^millet_core" /proc/modules 2>/dev/null | head -n 1)"
 		true
 	'
 

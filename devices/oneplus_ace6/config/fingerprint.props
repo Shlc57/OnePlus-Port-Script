@@ -1,10 +1,11 @@
-# 一加 Ace 6 超声波指纹目标设备硬件参数（面板实测 1270x2800）。
+# 一加 Ace 6 超声波指纹目标设备硬件参数（面板原生分辨率取自 DNA_ace6 底包
+# sdm_display_resolution_extn.xml 的 sun 目标 = 1272x2800，与 Ace 6T/Neo8 同宽）。
 # features/fix_ultrasonic_fingerprint 只读取此显式配置，不从小米原包推断。
-# 传感器中心按 Ace 6T 实测相对位置 (50%, 74.6%) 换算（sensorlocation=636::2089），
-# 属估算值；刷机后如对不上可用实测值直接修改本文件后重跑补丁。
-ultrasonic.fp.reference.width=1270
+# 传感器中心按 Ace 6T 实测相对位置 (50%, 74.6%) 换算到 1272x2800（sensorlocation=636::2089），
+# 属换算估算值；刷机后如对不上可用实测值直接修改本文件后重跑补丁。
+ultrasonic.fp.reference.width=1272
 ultrasonic.fp.reference.height=2800
-ultrasonic.fp.sensor.center.x=635
+ultrasonic.fp.sensor.center.x=636
 ultrasonic.fp.sensor.center.y=2089
 ultrasonic.fp.icon.width=195
 ultrasonic.fp.icon.height=195

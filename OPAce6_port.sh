@@ -29,18 +29,31 @@ export XIAOAI_WAKEUP_PROPERTIES_FILE="$ace6_config_dir/xiaoai_wakeup.props"
 # APK 静态植入仍需要（小米互联 bindService 的 SecurityException 兜底已真机确认必需）。
 # 锁定项与原包 VoiceTrigger.apk 的 versionCode 强绑定，版本漂移会硬失败而不是静默出坏包。
 export XIAOAI_VOICETRIGGER_PATCH=true
-# 不写 XIAOAI_VOICEASSIST_DEVICE_CODE：本组合未启用钱包等会改变 odm.device 的身份修正，
-# 运行时 Build.DEVICE 等于原包代号，小爱 cloudControl.device 白名单由模块回退到
-# init_port_env 的原包身份快照。若以后接入 RUNTIME_DEVICE_CODE，白名单会自动跟过去。
+# 运行时设备代号：启用 ColorOS 钱包后，fix_coloros_wallet 把 odm.device 改为 Ace 6 底包真值
+# OP6113L1（DNA_ace6 底包 odm/etc/fingerprint.json device=OP6113L1、model=PLQ110），
+# Build.DEVICE 随之变化。miui FeatureParser 按 Build.DEVICE 查找
+# product/etc/device_features/<代号>.xml，common/fix_device_identity 据此把原包机型 XML 改名为
+# OP6113L1.xml；小爱 cloudControl.device 白名单与钱包 fdid 校验都必须与其保持一致。
+export RUNTIME_DEVICE_CODE=OP6113L1
+# 小爱 cloudControl.device 白名单必须等于运行时 Build.DEVICE（启用钱包后=OP6113L1）。
+export XIAOAI_VOICEASSIST_DEVICE_CODE=OP6113L1
 # Ace 6 的 NFC 芯片为青藤 THN31（TMS 栈），由 features/fix_nfc_tms_bridge
 # 消费本文件；NXP 专用适配 features/fix_nci_nfc 对 Ace 6 不适用。
 export NFC_PROPERTIES_FILE="$ace6_config_dir/nfc.props"
+# ColorOS 钱包机型身份真值（features/fix_coloros_wallet 消费）；device=OP6113L1 与
+# 上方 RUNTIME_DEVICE_CODE、XIAOAI_VOICEASSIST_DEVICE_CODE 必须一致。
+export WALLET_IDENTITY_PROPERTIES_FILE="$ace6_config_dir/wallet_identity.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$ace6_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # Ace 6 底包 rc 走 mtp.gs0 纯触发器，与模块内置的一加 15 rc（use_ffs_mtp 形态）不同，
 # 由 fix_mtp 自适应校验并以这份真底包 rc 替换被原包覆盖的目标。
 # 该文件与 Ace 6T 底包 rc 逐字节一致，但各机型入口仍分别指向自己的 config 目录。
 export FIX_MTP_SOURCE_RC="$ace6_config_dir/init.usb.configfs.rc"
+# Millet 核心桥按 KMI 选择仓库内预编译 KO；Ace 6 底包 vendor_dlkm .ko vermagic 实测为
+# 6.6.89-android15-8-o-…-4k，属 android15-6.6 族（与 6T 的 android16-6.12 不同）；入口以
+# KMI=android15-6.6 选择本仓库用 DDK 编译的 prebuilt/android15-6.6/millet_core.ko（vermagic 6.6）。
+# KO 只匹配内核 vermagic，与 Android 版本无关；底包 vermagic 变化时需用 KMI=android15-6.6 重建。
+export KMI='android15-6.6'
 # Ace 6 实机超声波指纹硬件快照。通用模块不从小米原包推断这些参数；
 # 传感器中心等坐标属换算估算值，刷机后如对不上可直接修改 fingerprint.props 重跑。
 export ULTRASONIC_FP_PROPERTIES_FILE="$ace6_config_dir/fingerprint.props"
@@ -62,7 +75,7 @@ export DEVICE_PARAMS_SPOOF_JSON='{
       {"Title": "电池容量", "Summary": "7800mAh(典型)", "Index": 1},
       {"Title": "后置摄像头", "Summary": "50MP+8MP", "Index": 2},
       {"Title": "屏幕尺寸", "Summary": "6.83″", "Index": 3},
-      {"Title": "分辨率", "Summary": "2800 x 1270", "Index": 4}
+      {"Title": "分辨率", "Summary": "2800 x 1272", "Index": 4}
     ]
   },
   "camera": {
@@ -90,7 +103,7 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
       {"Title": "Battery capacity", "Summary": "7800mAh (typ)", "Index": 1},
       {"Title": "Rear camera", "Summary": "50MP+8MP", "Index": 2},
       {"Title": "Screen size", "Summary": "6.83″", "Index": 3},
-      {"Title": "Resolution", "Summary": "2800 x 1270", "Index": 4}
+      {"Title": "Resolution", "Summary": "2800 x 1272", "Index": 4}
     ]
   },
   "camera": {
@@ -112,6 +125,9 @@ declare -a ace6_modules=(
 	common/disable_mi_vulkan
 	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。
 	common/disable_hyperos_preread
+	# 底包 qguard 缺 libbase.so、syshealthmon-service 触 seccomp 收 SIGSYS，两者每 5 秒被 init
+	# 重拉成崩溃环；只读预检后按需下发 disable，服务不存在则整体跳过（与真我 Neo8 同款处理）。
+	common/disable_oplus_crash_loop
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
 	common/disable_odm_imports
@@ -122,15 +138,24 @@ declare -a ace6_modules=(
 	common/fix_sn
 	common/enable_hyperos_features
 	common/fix_camera_mr
-	common/fix_face_unlock
 	features/fix_nfc_tms_bridge
 	features/oplus_displayfeature_bridge
 	features/fix_oplus_double_tap_wake
 	features/fix_ultrasonic_fingerprint
+	# Millet 核心桥：KMI=android15-6.6（Ace 6 内核 6.6），仓库已编译对应 KO。
+	features/oplus_millet_core_bridge
+	# Ace 6 底包 vendor 缺 plat_sepolicy_vers.txt/genfs_labels_version.txt，需在 fix_vendor_avc
+	# 之前补齐（6T/Neo8 底包不缺，无此步）。
 	devices/oneplus_ace6/fix_vendor_selinux_files
 	common/fix_vendor_avc
 	common/fix_launcher
 	common/fix_device_identity
+	# 人脸特性 XML 补丁目标是运行时代号命名的机型 XML（启用钱包后由 RUNTIME_DEVICE_CODE
+	# 改名为 OP6113L1.xml，改名由 fix_device_identity 完成），因此必须位于 fix_device_identity 之后。
+	common/fix_face_unlock
+	# ColorOS 钱包五件套；身份键经 WALLET_IDENTITY_PROPERTIES_FILE 提供，在 fix_device_identity
+	# 之后把 odm 身份修正为 Ace 6 真值 OP6113L1。prebuilt 为共享产物（Ace 6T 提取），缺失则整体跳过。
+	features/fix_coloros_wallet
 	common/fix_oplus_avc
 	common/fix_wechat_safe_mode
 	common/fix_settings_haptic

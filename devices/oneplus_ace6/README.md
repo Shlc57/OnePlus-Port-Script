@@ -9,8 +9,8 @@
 | 市场名 | 一加 Ace 6（OnePlus Ace 6） |
 | 设备代号 / OEM | PLQ110 / OP6113 |
 | 处理器 | 骁龙 8 至尊版，显示 Target `sun`（与一加 15 同平台） |
-| 内核 | 6.6（Millet 核心桥暂不可用，仓库预编译 KO 仅 `android16-6.12`） |
-| 屏幕 | 6.83″ 1.5K LTPS **120Hz**，面板实测 **1270x2800**；全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM（档位待实机核对） |
+| 内核 | 6.6（SM8750）；Millet 核心桥用 DDK `android15-6.6` 编译的 `prebuilt/android15-6.6/millet_core.ko` 接入，本仓库已构建 |
+| 屏幕 | 6.83″ 1.5K **165Hz 五档屏**（60/90/120/144/165，LTPS），面板原生 **1272x2800**（底包 sdm sun）；全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM |
 | 物理 Display ID | `4630947185118785939`（dumpsys uniqueId 实测） |
 | 电池 | 7800mAh（典型值） |
 | 摄像头 | 后置 50MP+8MP，前置 16MP |
@@ -22,12 +22,14 @@
 
 | 模块 | 改动分区 | 说明 |
 | --- | --- | --- |
-| 自动亮度接入（[`common/coloros_display`](../../common/coloros_display/README.md)，Profile `ace6`） | `odm`、`product`、`system`、`system_ext`、`vendor`、`my_product` | OP15 同款方案：`my_product/vendor/etc` 覆盖合并入 vendor，用 P_7 官方表生成含 `autoBrightness` 的 Display ID 配置，迁移 FusionLight 与 display RRO，禁用 `high_pwm_rgb`。需解包 `my_product`；manifest 暂按 Ace 6T 模板，待实机核实。 |
+| 自动亮度接入（[`common/coloros_display`](../../common/coloros_display/README.md)，Profile `ace6`） | `odm`、`product`、`system`、`system_ext`、`vendor`、`my_product` | OP15 同款方案：`my_product/vendor/etc` 覆盖合并入 vendor，用 P_7 官方表生成含 `autoBrightness` 的 Display ID 配置，迁移 FusionLight 与 display RRO，禁用 `high_pwm_rgb`。需解包 `my_product`；manifest 已按 DNA_ace6 核实（FusionLight `fusionlight_Main_2_3.json`、display RRO `android_framework_res_overlay.display.product.24851.apk`，底包仅此两个文件；24851 为 Oplus display 工程 id，6T 底包同名，非机型 prjname）。 |
 | 开机亮度（[`common/fix_boot_brightness`](../../common/fix_boot_brightness/README.md)，Profile `ace6`） | `product` | 安装启动亮度 Overlay 并移除 `MiuiFrameworkResOverlay.apk`。 |
-| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。注意：其互斥策略沿用一加 15 的 165Hz 五档屏假设（60/90/120/144/165、144/165Hz PWM），与本机 120Hz LTPS 面板不符，需按实机档位重审。 |
-| [`fix_vendor_selinux_files`](fix_vendor_selinux_files/README.md) | `vendor` | 补齐底包缺失的 `plat_sepolicy_vers.txt` 与 `genfs_labels_version.txt`（实测 `202504`），否则 `common/fix_vendor_avc` 会失败。 |
+| [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补。本机实测为 165Hz 五档屏（60/90/120/144/165、144/165Hz PWM），与 Ace 6T、一加 15 档位一致，互斥策略与 patcher 三处逐字节一致。 |
+| [`fix_vendor_selinux_files`](fix_vendor_selinux_files/README.md) | `vendor` | 底包 vendor 缺 SELinux 版本标记时补齐（DNA_ace6 实测：`plat_sepolicy_vers.txt`=202404 **已存在**、`genfs_labels_version.txt` **缺失**；缺失方按已存在方同值补齐，两者皆无才用默认 202504），否则 `common/fix_vendor_avc` 会失败。 |
 
 > THN31 NFC 桥接已升为共享模块 [`features/fix_nfc_tms_bridge`](../../features/fix_nfc_tms_bridge/README.md)（与真我 Neo8 共用），不再列在本机专属表。
+
+> 本机流程已对齐「Ace 6T + 真我 Neo8 的超集」：新增 ColorOS 钱包、Millet 核心桥、`disable_oplus_crash_loop`，并把 `fix_face_unlock` 移到 `fix_device_identity` 之后；同时保留 Ace 6 特有修复——青藤 THN31 走 TMS NFC 桥（不用 NXP `fix_nci_nfc`）、`fix_vendor_selinux_files`（底包缺 SELinux 版本文件）、小爱走 SM8750 的 ADSP 路线。
 
 ## 共享模块参数
 
@@ -43,6 +45,10 @@
 | `PORT_TARGET_DISPLAY_ID` | `common/coloros_display`、`common/fix_boot_refresh_rate` | Android framework 主屏物理 Display ID。 | 实测 |
 | `COLOROS_DISPLAY_PROFILE=ace6` | `common/coloros_display` | 显式锁定显示接入 Profile；未注入时按底包识别值自动匹配。 | 实测 |
 | `BOOT_BRIGHTNESS_PROFILE=ace6` | `common/fix_boot_brightness` | 显式锁定机型 Profile；未注入时按底包识别值自动匹配。Overlay、校验文件都在模块 `profiles/ace6/` 内。 | 实测 |
+| `config/wallet_identity.props`（经 `WALLET_IDENTITY_PROPERTIES_FILE`） | `features/fix_coloros_wallet` | ColorOS 钱包身份真值：`device=OP6113L1`、`model=PLQ110`、`cuptsm=ONEPLUS\|ESE\|01\|27`、`oplusrom=V16.1.0`、`.display=16.1`，均取自 DNA_ace6 底包（cuptsm 尾号 01\|27 不同于 Ace 6T 的 01\|02）。prebuilt 五件套为共享产物，缺失则整体跳过。 | DNA_ace6 底包实测 |
+| `RUNTIME_DEVICE_CODE=OP6113L1` + `XIAOAI_VOICEASSIST_DEVICE_CODE=OP6113L1` | `common/fix_device_identity`、`common/fix_face_unlock`、`features/fix_xiaoai_wakeup` | 启用钱包后 odm.device→OP6113L1，`fix_device_identity` 把原包机型 XML 改名为 `OP6113L1.xml`；`fix_face_unlock` 与小爱白名单都跟这个运行时代号。 | 代号取自 DNA_ace6 底包 fingerprint.json；boot 后需复核运行时 Build.DEVICE |
+| `KMI=android15-6.6` | `features/oplus_millet_core_bridge` | 底包 vendor_dlkm `.ko` vermagic 实测 `6.6.89-android15-8-o-…-4k`（android15-6.6 族），选择本仓库已编译的 6.6 KO。KO 只匹配内核 vermagic，与 Android 版本无关。 | KMI 已底包实测；加载待刷机验证 |
+| （无参数文件） | `common/disable_oplus_crash_loop` | 停掉底包 qguard / syshealthmon-service 崩溃环；只读预检，服务不存在则整体跳过（与真我 Neo8 同款）。 | 与 Neo8 对齐引入 |
 
 这些参数依赖实际运行设备，不能从小米原包推断。更换底包、面板、指纹模组、触控驱动或 SKU 后必须重新核对，不能直接照搬一加 15、一加 Ace 6T 或其他机型。
 

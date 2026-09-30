@@ -10,13 +10,10 @@
 
 ## 模块说明
 
-> 注意（2026-08-31）：实机确认为 1.5K LTPS **120Hz** 面板（全亮度类 DC + 低亮度纯 DC，>1920Hz 高频 PWM），下文的 165Hz 五档与 144/165Hz PWM 策略沿用一加 15 假设，与本机面板不符；启用本模块前需按实机档位重审互斥策略与 `dc_backlight_fps_incompatible` 链路。
-
-本模块与 `devices/oneplus15/fix_refresh_rate_switch` 采用同一套互斥策略与 Smali 锚点：
-Ace 6T 与一加 15 同为 165Hz 五档屏（60/90/120/144/165），DC/PWM 档位策略一致；
+本模块与 `devices/oneplus_ace6/fix_refresh_rate_switch`、`devices/oneplus15/fix_refresh_rate_switch` 采用同一套互斥策略与 Smali 锚点，三处 patcher 副本逐字节一致：
+Ace 6T 实机为 1.5K **165Hz 五档屏**（60/90/120/144/165，60–120Hz DC、144/165Hz PWM），与 Ace 6、一加 15 档位一致；
 修补目标（原包机型 XML、MISettings、Settings）均在小米原包侧，与 OPPO 底包机型无关。
-patcher 使用本目录副本（`patch_misettings_dc_refresh.sh`、`patch_settings_dc_refresh.sh`），
-便于按 Ace 6T 原包版本微调锚点。
+patcher 使用本目录副本（`patch_misettings_dc_refresh.sh`、`patch_settings_dc_refresh.sh`），便于按 Ace 6T 原包版本微调锚点。
 
 ## 互斥策略
 

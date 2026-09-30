@@ -28,6 +28,14 @@
 | [`fix_vendor_selinux_files`](fix_vendor_selinux_files/README.md) | `vendor` | 底包 vendor 缺 SELinux 版本标记时补齐（DNA_ace6 实测：`plat_sepolicy_vers.txt`=202404 **已存在**、`genfs_labels_version.txt` **缺失**；缺失方按已存在方同值补齐，两者皆无才用默认 202504），否则 `common/fix_vendor_avc` 会失败。 |
 
 > THN31 NFC 桥接已升为共享模块 [`features/fix_nfc_tms_bridge`](../../features/fix_nfc_tms_bridge/README.md)（与真我 Neo8 共用），不再列在本机专属表。
+> **现状：本机 NFC 仍未点亮（不得记为已修）。** 与 Neo8 不同，Ace 6 底包只有 TMS 一份 NFC HAL（无 ST/NXP 竞争者，
+> 也无任何 init rc 声明 `INfc/default`，只有 odm VINTF 声明），所以 Neo8 那层“ST HAL 被节点别名救活后抢注”的问题
+> 在本机不存在；它仍不通 ⇒ 存 TMS 路线的共同阻塞点。**2026-09-30 全树排查已定位该共同根因**：HAL 只认固定文件名，
+> 读不到裸名 `libnfc-tms.conf`（底包只带 `_<project>` 后缀，本机 project id 为 **24851**；裸名原本由 realme 原厂
+> system 侧 Oplus `NfcNci.apk` 用 `copyFile` 铺）⇒ 设备节点回退到不存在的 `/dev/thn31`，TMS 专有配置全部丢失。
+> 现已由 [`features/fix_nfc_tms_bridge`](../../features/fix_nfc_tms_bridge/README.md) 第 8/9 步补上（`/dev/thn31` 别名 +
+> `odm/etc` 裸名 + `post-fs-data` 铺入 `/data/vendor/nfc/`），**两台共用同一修复、仍待真机确认**。本机无 ST 干扰，
+> 它是验证这一步最干净的样本：**下一步优先在 Ace 6 上采一份 `nfc` 场景回传**（带自动探针、贴卡一次）。
 
 > 本机流程已对齐「Ace 6T + 真我 Neo8 的超集」：新增 ColorOS 钱包、Millet 核心桥、`disable_oplus_crash_loop`，并把 `fix_face_unlock` 移到 `fix_device_identity` 之后；同时保留 Ace 6 特有修复——青藤 THN31 走 TMS NFC 桥（不用 NXP `fix_nci_nfc`）、`fix_vendor_selinux_files`（底包缺 SELinux 版本文件）、小爱走 SM8750 的 ADSP 路线。
 

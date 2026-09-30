@@ -93,7 +93,7 @@ case " $* " in
 	;;
 esac
 
-TRACE_VERSION='2026.09.30-5'
+TRACE_VERSION='2026.09.30-7'
 
 # ---------------------------------------------------------------- 参数解析
 TAG='now'
@@ -431,7 +431,7 @@ probe_snapshot() {
 		printf 'usb: state=%s config=%s mtp_proc=%s\n' \
 			"$(getprop sys.usb.state)" "$(getprop sys.usb.config)" "$(pidof com.android.mtp 2>/dev/null)"
 		printf 'audio_svc: audioserver=%s audio_hal=%s iorapd=%s qguard=%s\n' \
-			"$(pidof_one 'audioserver')" "$(pidof_one 'android.hardware.audio.service-aidl android.hardware.audio.service')" \
+			"$(pidof_one 'audioserver')" "$(pidof_one 'android.hardware.audio.service-aidl android.hardware.audio.service audiohalservice.qti')" \
 			"$(getprop init.svc.iorapd 2>/dev/null)" "$(getprop init.svc.qguard 2>/dev/null)"
 		printf 'vt: pid=%s dt2w=%s\n' "$(pidof_one 'com.miui.voicetrigger')" "$(qset get secure double_tap_to_wake)"
 		true
@@ -741,8 +741,8 @@ tick() {
 	which="$1"
 	ts=$(now_ts)
 	af=$(pidof_one 'audioserver')
-	hal=$(pidof_one 'android.hardware.audio.service-aidl android.hardware.audio.service audio-hal')
-	st=$(pidof_one 'android.hardware.soundtrigger@2.0-service android.hardware.soundtrigger@2.1_2.3-service vendor.qti.hardware.AGMIPC')
+	hal=$(pidof_one 'android.hardware.audio.service-aidl android.hardware.audio.service audiohalservice.qti audio-hal')
+	st=$(pidof_one 'android.hardware.soundtrigger@2.0-service android.hardware.soundtrigger@2.1_2.3-service vendor.qti.hardware.AGMIPC audiohalservice.qti')
 	vt=$(pidof_one 'com.miui.voicetrigger')
 	as=$(pidof_one 'com.miui.voiceassist')
 	ss=$(pidof_one 'system_server')
@@ -758,6 +758,10 @@ tick() {
 		printf 'TICK pid voicetrigger=%s voiceassist=%s\n' "${vt:-无}" "${as:-无}"
 		printf 'TICK cpu_jiffies voicetrigger=%s voiceassist=%s (100 jiffies≈1 秒 CPU)\n' \
 			"$(cpu_jiffies "$vt")" "$(cpu_jiffies "$as")"
+	# 取证干扰自测：load 高时先查这一行，别把脚本自己的 grep/dumpsys 当成系统负载。
+	printf 'TICK self trace_procs=%s top3=%s\n' \
+		"$(ps -A -o NAME 2>/dev/null | grep -a -c -E '^(grep|dumpsys|top|logcat|tombstoned)$')" \
+		"$(top -b -n 1 -m 6 2>/dev/null | awk 'NR>7 && $9+0>0 {printf "%s:%s ", $NF, $9}' | head -c 120)"
 		printf 'TICK rss_kb voicetrigger=%s audioserver=%s\n' \
 			"$(rss_kb "$vt")" "$(rss_kb "$af")"
 		# shellcheck disable=SC2009 # 这里要的是 pid 与进程名的对应关系（发现服务重启），pgrep 不一定可用。
@@ -1088,10 +1092,41 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 			[ -r "$f" ] || continue
 			printf "PROPCTX[%s]=%s\n" "$f" "$(grep -h -E "vendor_audio_prop|support_record_type|voiceassist" "$f" 2>/dev/null | tr "\n" ";" | cut -c1-220)"
 		done
-		echo "===== MTP 哨兵（fix_mtp_qti 的翻转项）====="
+		echo "===== MTP 哨兵（common/fix_mtp gate 模式的翻转项）====="
 		printf "SENTINEL_MTP=use_ffs_mtp=%s configfs=%s state=%s usbconfig=%s\n" \
 			"$(getprop vendor.usb.use_ffs_mtp)" "$(getprop sys.usb.configfs)" \
 			"$(getprop sys.usb.state)" "$(getprop sys.usb.config)"
+		# configfs 实读故意不带 2>/dev/null：被 SELinux 拒读时必须把失败暴露出来，
+		# 不能伪装成“节点不存在”（上一版就是这么误判过一次）。
+		echo "===== MTP 装配面实读（legacy mtp.gs0 是否可用 vs ffs.mtp）====="
+		for n in /config/usb_gadget/g1/functions/mtp.gs0 /config/usb_gadget/g1/functions/ffs.mtp \
+			/dev/usb-ffs/mtp /dev/mtp_usb /config/usb_gadget/g1/configs/b.1/f1; do
+			printf "MTPNODE %s -> " "$n"; ls -ld "$n" 2>&1 | tr "\n" " "; echo
+		done
+		printf "MTP_FFS_LS=%s\n" "$(ls -laZ /dev/usb-ffs/mtp/ 2>&1 | tr "\n" ";" | cut -c1-260)"
+		printf "MTP_GADGET_FUNCS=%s\n" "$(ls /config/usb_gadget/g1/functions/ 2>&1 | tr "\n" " " | cut -c1-260)"
+		echo "===== NFC HAL 阵营与 INfc/default 归属（两台 TMS 机型都不通，靠本行分清层级）====="
+		printf "NFC_HAL_BINS=%s\n" "$(ls -1 /vendor/bin/hw /odm/bin/hw 2>/dev/null | grep -i nfc-service | tr "\n" " ")"
+		printf "NFC_IFACE_DECL=%s\n" "$(grep -h -R "interface aidl android.hardware.nfc.INfc" /vendor/etc/init /odm/etc/init 2>/dev/null | tr "\n" ";")"
+		printf "NFC_INFC_OWNER=%s\n" "$(service list 2>/dev/null | grep -i -a nfc | tr "\n" ";" | cut -c1-240)"
+		printf "NFC_SVC_STATE=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.[a-zA-Z_.]*nfc[a-zA-Z_.]*.: \\[[a-z]*\\]" | tr "\n" ";")"
+		echo "===== NFC 兼容属性标签（无 label 时 nfc 域读不到，只会在 libc 留 Access denied）====="
+		printf "NFC_PROPVAL=%s\n" "$(getprop | grep -a -o -E "ro\\.vendor\\.nfc\\.[a-z_]*.: \\[[^]]*\\]" | tr "\n" ";")"
+		printf "NFC_PROPCTX=%s\n" "$(grep -h -R "ro.vendor.nfc" /vendor/etc/selinux/vendor_property_contexts /odm/etc/selinux/precompiled_property_contexts 2>/dev/null | tr "\n" ";")"
+		echo "===== TMS NCI 运行配置是否已播种（两台共同根因的直接判据）====="
+		printf "TMS_RUN_CONF=%s\n" "$(ls -l /data/vendor/nfc/ 2>&1 | grep -a -E "libnfc|total|No such|denied" | tr "\n" ";" | cut -c1-240)"
+		printf "TMS_SEED_SRC=%s\n" "$(ls -1 /odm/etc/libnfc-tms.conf /odm/etc/libnfc-tms_RF_EC2.conf /odm/etc/nfc/ 2>&1 | grep -aE "libnfc-tms|No such" | tr "\n" ";" | cut -c1-220)"
+		printf "TMS_SEED_RC=%s\n" "$(ls -l /odm/etc/init/nfc_tms_seed_config.rc /odm/etc/init/nfc_tms_symlink.rc 2>&1 | tr "\n" ";" | cut -c1-220)"
+		printf "TMS_NODE_ALIAS=%s\n" "$(ls -l /dev/thn31 /dev/tms_nfc /dev/st21nfc 2>&1 | tr "\n" ";" | cut -c1-220)"
+		printf "TMS_SKU_PROP=sku=%s product_sku=%s configFile=%s\n" \
+			"$(getprop ro.boot.hardware.sku)" "$(getprop ro.boot.product.hardware.sku)" \
+			"$(getprop persist.vendor.nfc.configFile_name)"
+		echo "===== TMS 控制面与 SE 侧（影响钱包/门禁，也影响 NFCEE 路由提交）====="
+		printf "TMS_SERVICES=%s\n" "$(service list 2>/dev/null | grep -a -i -E "tms|secure_element|nfc" | tr "\n" ";" | cut -c1-260)"
+		printf "SE_SVC_STATE=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.[a-z_.]*se[a-z_.]*.: \\[[a-z]*\\]" | tr "\n" ";" | cut -c1-200)"
+		printf "TMS_SUBDIRS=%s\n" "$(for d in /data/vendor/nfc /data/vendor/nfc/dispatch /data/vendor/nfc/feature /data/vendor/nfc/param /data/vendor/nfc_socket /data/nfc; do ls -ld $d 2>&1 | tr "\n" " "; echo "|"; done | cut -c1-320)"
+		printf "TMS_FW_FILES=%s\n" "$(ls -1 /odm/etc/nfc/ 2>/dev/null | grep -a -c -E "SEC_THN31|bin_")"
+		printf "TMS_TDT=%s\n" "$(ls -l /odm/etc/nfc/tdt/ /data/vendor/nfc/param/ 2>&1 | tr "\n" ";" | cut -c1-240)"
 		echo "===== 小爱 rc 与声学属性落点实读（用来区分“包旧”与“product 没刷新”）====="
 		if [ -r /odm/etc/init/xiaoai_wakeup_props.rc ]; then
 			echo "-- /odm/etc/init/xiaoai_wakeup_props.rc 正文:"
@@ -1221,6 +1256,12 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 		echo "===== 入口级判据：框架 feature 与 face 服务 ====="
 		printf "FACE_PM_FEATURES=%s\n" "$(pm list features 2>/dev/null | grep -i -E "face|biometric" | tr "\n" " ")"
 		printf "FACE_SERVICES=%s\n" "$(service list 2>/dev/null | grep -i face | tr "\n" " ")"
+		echo "===== 人脸模板持久化与 TEE 通道（定 501 是“没模板”还是“比对不过”的唯一硬判据）====="
+		printf "FACE_STORE=%s\n" "$(for d in /data/vendor_de/0/facedata /data/vendor_ce/0/facedata /data/vendor_de/0/faceunlock /data/vendor_de/0/faceunlock_ori /data/system/face; do ls -lR "$d" 2>&1 | tr "\n" " "; echo "|"; done | cut -c1-320)"
+		printf "FACE_TEE_NODES=%s\n" "$(ls -lZ /dev/smcinvoke /dev/rgaut* /dev/qseecom* /dev/smcink 2>&1 | tr "\n" ";" | cut -c1-240)"
+		printf "FACE_HAL_BINS=%s\n" "$(ls -1 /vendor/bin/hw /odm/bin/hw 2>/dev/null | grep -a -i -E "face|uff" | tr "\n" ";")"
+		printf "FACE_BACKEND_SVC=%s\n" "$(service list 2>/dev/null | grep -a -i -E "face|osense|uah|dccs|dcs" | tr "\n" ";" | cut -c1-240)"
+		printf "CAMERA_SVC=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.[a-z_.]*camera[a-z_.]*.: \\[[a-z]*\\]" | tr "\n" ";" | cut -c1-160)"
 		echo "===== 人脸 HAL 与 VINTF 声明 ====="
 		ls -1 /vendor/bin/hw 2>/dev/null | grep -i face
 		ls -1 /odm/bin/hw 2>/dev/null | grep -i face
@@ -1248,6 +1289,9 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 		printf "NFC_PKG=%s\n" "$(pm list packages 2>/dev/null | grep -i nfc | tr "\n" " ")"
 		printf "NFC_INIT_DEF=%s\n" "$(grep -h -R -o -E "service [^ ]*nfc[^ ]*|/dev/[a-z0-9_]*nfc[a-z0-9_]*" /vendor/etc/init /odm/etc/init 2>/dev/null | sort -u | tr "\n" " ")"
 		printf "NFC_SE=%s\n" "$(ls -1 /dev 2>/dev/null | grep -i -E "ese|se|smc|tms" | tr "\n" " ")"
+		echo "===== TMS 运行时目录与服务（与 50_landing 互相印证，缺哪层一眼看出）====="
+		printf "NFC_TMS_STATE=%s\n" "$(getprop | grep -a -o -E "(init\\.svc\\.[a-z_.]*(tms|nfc|secure_element)[a-z_.]*|ro\\.vendor\\.nfc\\.[a-z_]*): \\[[^]]*\\]" | tr "\n" ";" | cut -c1-260)"
+		printf "NFC_DATA_TREE=%s\n" "$(find /data/vendor/nfc /data/nfc -maxdepth 2 2>&1 | head -n 40 | tr "\n" ";" | cut -c1-300)"
 		true
 	'
 	lsglob 30_nfc_static.txt '/dev/*nfc*' '/odm/etc/vintf/manifest/*nfc*' '/vendor/etc/vintf/manifest/*nfc*' \
@@ -1320,6 +1364,11 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 		echo "===== MTP 前提（不切模式也能看的部分）====="
 		printf "usb: state=%s config=%s use_ffs_mtp=%s ramdump=%s\n" "$(getprop sys.usb.state)" "$(getprop sys.usb.config)" "$(getprop vendor.usb.use_ffs_mtp)" "$(getprop ro.boot.ramdump)"
 		printf "ffs_mtp_dir=%s gadget_mtp=%s mtp_proc=%s\n" "$(ls -d /dev/usb-ffs/mtp 2>/dev/null)" "$(ls -d /config/usb_gadget/g1/functions/mtp.gs0 2>/dev/null)" "$(pidof com.android.mtp 2>/dev/null)"
+		echo "===== MTP 装配明细（故意不屏蔽 stderr：区分“不存在”与“被拒”）====="
+		printf "USB_FFS_LS=%s\n" "$(ls -laZ /dev/usb-ffs/ /dev/usb-ffs/mtp/ 2>&1 | tr "\n" ";" | cut -c1-300)"
+		printf "USB_GADGET_TREE=%s\n" "$(ls -l /config/usb_gadget/g1/ /config/usb_gadget/g1/configs/b.1/ /config/usb_gadget/g1/functions/ 2>&1 | tr "\n" ";" | cut -c1-300)"
+		printf "USB_SVC=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.(usbd|vendor\\.usb[a-z-]*|[a-z_.]*gadget[a-z_.]*): \\[[^]]*\\]" | tr "\n" ";")"
+		printf "USB_STRINGS=%s\n" "$(cat /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration /config/usb_gadget/g1/UDC 2>&1 | tr "\n" ";")"
 		echo "===== 显示/亮度/刷新率 ====="
 		dumpsys display 2>/dev/null | grep -a -o -E "local:[0-9]+|supportedRefreshRates \\[[^]]*\\]|defaultModeId [0-9-]+|brightnessDefault [0-9.]+" | head -6
 		printf "dt2w=%s\n" "$(settings get secure double_tap_to_wake 2>/dev/null)"
@@ -1668,6 +1717,9 @@ win_head() {
 		printf '人脸 XML 与 TEE    : %s\n' \
 			"$(grep -a -E '^RUNTIME_DEVICE=|^SENTINEL_TEE\[|^SENTINEL_REGION\[' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-160 | tr '\n' ' ')"
 		printf 'MTP 翻转项         : %s\n' "$(grep -a -m1 '^SENTINEL_MTP=' "$CAP/50_landing.txt" 2>/dev/null)"
+		printf 'MTP 装配面实读     : %s\n' "$(grep -a -E '^MTPNODE |^MTP_FFS_LS=|^MTP_GADGET_FUNCS=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-150 | tr '\n' ';')"
+		printf '  本行故意保留 ls 的失败输出：出现 Permission denied 是 SELinux 拒读，不等于节点不存在。\n'
+		printf 'NFC HAL 阵营       : %s\n' "$(grep -a -E '^NFC_HAL_BINS=|^NFC_IFACE_DECL=|^NFC_SVC_STATE=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-170 | tr '\n' ';')"
 		printf 'LHDC/蓝牙 APEX     : %s\n' "$(grep -a -m1 '^SENTINEL_LHDC=' "$CAP/50_landing.txt" 2>/dev/null)"
 
 		printf '\n[1. 声音断续]\n'
@@ -1675,6 +1727,7 @@ win_head() {
 			"$(grep -a '^TICK pid ' "$TICKS" 2>/dev/null | grep -a -o -E 'audioserver=[0-9]+' | sort -u | grep -c .)" \
 			"$(grep -a '^TICK pid ' "$TICKS" 2>/dev/null | grep -a -o -E 'audio_hal=[0-9]+' | sort -u | grep -c .)"
 		printf '  只数 ^TICK pid 行（91_ticks.txt 另有 rss_kb 行也叫 audioserver=…，那是内存不是 pid）。\n'
+		printf '  audio_hal=0 先别当成 HAL 没跑：本行已按 audioserver/audiohalservice.qti 等名字探测，仍需看 98_auto_state 的 audio_procs 清单。\n'
 		printf '崩溃周期分析       : %s\n' "$(crash_loop_analysis)"
 		printf '  上面间隔接近整数秒（如 5s）就是 init 退避周期的崩溃环；崩溃环停止后本行应变成“未采到两次以上样本”。\n'
 		printf 'HAL 实例死亡次数   : %s  (“HAL instance died, audio server is restarting”)\n' \
@@ -1695,6 +1748,10 @@ win_head() {
 			"$(count_of 'checkAndSetVolume invalid volume index' "$LIVE_LOG")" \
 			"$(count_of 'parseAndSetVendorParameters' "$LIVE_LOG")"
 		printf '  这两族与包新旧无关：HyperOS 下发的按设备音量曲线与 vendor 参数底包 HAL 不认，是独立的卡顿诱因。\n'
+		printf '效果族细分         : 请求方=%s QcomEffectPresenter=%s 空间声属性被拒=%s\n' \
+			"$(grep -a 'could not create effect' "$LIVE_LOG" 2>/dev/null | grep -a -o -E 'timeLow [0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | sort | uniq -c | sort -rn | head -2 | tr '\n' ';')" \
+			"$(count_of 'QcomEffectPresenter' "$LIVE_LOG")" \
+			"$(count_of 'Access denied finding property .persist\.vendor\.audio\.spatial|Access denied finding property .ro\.vendor\.audio\.fweffect' "$LIVE_LOG")"
 		printf 'HAL 死法与底包崩溃环 : audio-hal 自 SIGKILL=%s lazy 拉起失败=%s qguard 链接失败=%s syshealthmon SIGSYS=%s\n' \
 			"$(count_of 'Service .vendor.audio-hal.*received SIGKILL' "$LIVE_LOG")" \
 			"$(count_of 'ctl\.interface_start.*(soundtrigger3|audio\.core\.IConfig|bluetooth\.audio)' "$LIVE_LOG")" \
@@ -1739,6 +1796,26 @@ win_head() {
 		printf 'oiface 不可用命中    : %s  (非 0 说明 system 侧 Oplus 人脸服务确实不存在)\n' \
 			"$(count_of "Can't find service|Can.t find service" "$CAP/92_face_log.txt")"
 		printf '复现窗口命中日志     : %s\n' "$(grep -a -m1 'FACE_SAMPLE' "$CAP/20_face_static.txt" 2>/dev/null)"
+		printf 'HAL 比对链         : 比对命令=%s errno501=%s ta_status失败=%s UNLOCK_FAILED=%s\n' \
+			"$(count_of 'FACE_TA_CMD_FACECORE_AUTHENTICATE_COMPARE' "$LIVE_LOG")" \
+			"$(count_of 'faceReeCompare] exit. errno=501' "$LIVE_LOG")" \
+			"$(count_of 'QseeCa_dmabuf.*ta->status' "$LIVE_LOG")" \
+			"$(count_of 'auth status UNLOCK FAILED' "$LIVE_LOG")"
+		printf '  比对命令>0 而 errno501 接近相等 ⇒ HAL 已跑到 TA 比对，卡在 TA 而不是入口/权限/摄像头。\n'
+		printf 'SmcInvoke 内存对象   : memobj_not_found=%s invalid_handle=%s（指纹侧同报但指纹能过 ⇒ 本族不是人脸 501 的根因）\n' \
+			"$(count_of 'SmcInvoke_MinkDescriptor: mem obj.*not found' "$LIVE_LOG")" \
+			"$(count_of 'SmcInvoke_MinkDescriptor: Invalid handle' "$LIVE_LOG")"
+		printf '框架↔HAL 错码对齐   : InvalidErrorMessage=%s Authenticated日志行=%s（与 accept 计数矛盾时要拓 6T 基线对拍）\n' \
+			"$(count_of 'FaceManager: Invalid error message' "$LIVE_LOG")" \
+			"$(count_of 'BiometricLogger: Authenticated! Modality: face' "$LIVE_LOG")"
+		printf '模板持久化与 TEE   : %s\n' "$(grep -a -E '^FACE_(STORE|TEE_NODES|BACKEND_SVC|HAL_BINS)=' "$CAP/20_face_static.txt" 2>/dev/null | cut -c1-165 | tr '\n' ';')"
+		printf '  FACE_STORE 为空/不存在 ⇒ 模板没落地（“没模板”）；有文件仍 501 ⇒ TA 比对本身失败。\n'
+		printf '后端缺失与权限     : osense=%s dcs=%s uad=%s face相关avc=%s camera服务=%s\n' \
+			"$(count_of "could not get service\(osensemanager\)" "$LIVE_LOG")" \
+			"$(count_of "can't get the commondcsservice" "$LIVE_LOG")" \
+			"$(count_of 'setUadthread.*ret = -1' "$LIVE_LOG")" \
+			"$(count_of 'avc.*hal_face' "$CAP/93_avc_log.txt")" \
+			"$(grep -a -m1 '^CAMERA_SVC=' "$CAP/20_face_static.txt" 2>/dev/null | cut -c1-120)"
 
 		printf '\n[3. NFC]\n'
 		printf 'mState(前/后)        : %s\n' "$(grep -a -o -E 'mState=[a-z_]+' "$CAP/30_nfc_static.txt" 2>/dev/null | head -n 3 | tr '\n' ' ')"
@@ -1750,23 +1827,66 @@ win_head() {
 			"$(count_of 'nfcManager_enableDiscovery' "$LIVE_LOG")" \
 			"$(count_of 'setReaderMode' "$LIVE_LOG")"
 		printf 'NFC 相关 avc         : %s\n' "$(count_of 'avc.*(nfc|Nfc|nci|tms)' "$CAP/93_avc_log.txt")"
+		printf 'NFC 传输层硬错     : cmd_timeout=%s NFCC_TIMEOUT=%s recovery=%s 看门狗=%s VS命令status8=%s EE路由超时=%s\n' \
+			"$(count_of 'nfc_ncif_cmd_timeout' "$LIVE_LOG")" \
+			"$(count_of 'NFA_DM_NFCC_TIMEOUT_EVT' "$LIVE_LOG")" \
+			"$(count_of 'toggle NFC state to recovery' "$LIVE_LOG")" \
+			"$(count_of 'NfcService: run: Watchdog triggered' "$LIVE_LOG")" \
+			"$(count_of 'nfaVSCallback: RSP status' "$LIVE_LOG")" \
+			"$(count_of 'commitRouting: timeout' "$LIVE_LOG")"
+		printf '  任一项非 0 就是控制器/传输层不响应，不是发现层配置问题；RF_INTF_ACTIVATED=%s（=0 表示从未真正贴过卡）。\n' \
+			"$(count_of 'RF_INTF_ACTIVATED' "$LIVE_LOG")"
+		printf 'INfc 归属与 HAL 阵营 : owner=%s bins=%s\n' \
+			"$(grep -a -m1 '^NFC_INFC_OWNER=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-170)" \
+			"$(grep -a -m1 '^NFC_HAL_BINS=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-150)"
+		printf 'INfc 接口声明(rc)    : %s\n' "$(grep -a -m1 '^NFC_IFACE_DECL=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-200)"
+		printf '  非目标厂商的 HAL 抢注 INfc/default 时，owner 会不是 tms；修复后 owner 应包含 nfc-service-tms。\n'
+		printf 'NFC 属性与标签       : %s\n' "$(grep -a -E '^NFC_PROP(VAL|CTX)=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-190 | tr '\n' ' ')"
+		printf 'TMS 配置落地       : %s\n' "$(grep -a -E '^TMS_(RUN_CONF|SEED_SRC|SEED_RC|NODE_ALIAS|SKU_PROP)=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-175 | tr '\n' ';')"
+		printf '  正例：/data/vendor/nfc/ 下有 libnfc-tms.conf 与 _RF_EC2.conf，/dev/thn31 是指向 tms_nfc 的软链。\n'
+		printf 'TMS 控制面与 SE    : %s\n' "$(grep -a -E '^(TMS_SERVICES|TMS_SUBDIRS|TMS_TDT|SE_SVC_STATE|NFC_DATA_TREE)=' "$CAP/50_landing.txt" "$CAP/30_nfc_static.txt" 2>/dev/null | cut -c1-160 | tr '\n' ';')"
+		printf 'NCI 模块加载         : NCI_HAL_MODULE期望=%s dlopen失败=%s conf读取失败=%s\n' \
+			"$(grep -a -m1 '^TMS_RUN_CONF=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-140)" \
+			"$(count_of 'dlopen.*nfc_nci|nfc_nci\.tmsnfc\.so' "$LIVE_LOG")" \
+			"$(count_of 'Cannot open config file|Using default value for all settings' "$LIVE_LOG")"
+		printf 'HAL 配置加载失败       : CannotOpenConfig=%s UsingDefault=%s dlopen失败=%s（非 0 即 conf 没读到或模块名不对）\n' \
+			"$(count_of 'Cannot open config file' "$LIVE_LOG")" \
+			"$(count_of 'Using default value for all settings' "$LIVE_LOG")" \
+			"$(count_of 'dlopen.*nfc_nci|nfc_nci.*not found' "$LIVE_LOG")"
 
 		printf '\n[4. 小爱免手唤醒]\n'
-		printf '路线开关真值         : xiaoai_cpu_kws=%s hold=%s gap=%s window=%s（空白=未注入，旧包属正常）\n' \
-			"$(prop_val 'xiaoai_cpu_kws')" "$(prop_val 'xiaoai_cpu_kws_hold_ms')" \
-			"$(prop_val 'xiaoai_cpu_kws_gap_ms')" "$(prop_val 'xiaoai_cpu_kws_window_sec')"
+		printf '构建期开关          : %s（xiaoai_cpu_kws/hold/gap/window 是 apply.sh 消费的输入键，getprop 查不到属正常，不参与判定，见 [0]）\n' \
+			"xiaoai_cpu_kws=$(prop_val 'xiaoai_cpu_kws') hold=$(prop_val 'xiaoai_cpu_kws_hold_ms') gap=$(prop_val 'xiaoai_cpu_kws_gap_ms') window=$(prop_val 'xiaoai_cpu_kws_window_sec')"
 		printf '唤醒窗口命中日志     : %s\n' "$(grep -a -m1 'XIAOAI_SAMPLE' "$CAP/40_xiaoai_static.txt" 2>/dev/null)"
 		printf 'ADSP 死路命中        : -22=%s set_custom_config=%s nonpersist=%s（非 0 说明仍在走 ADSP 路线）\n' \
 			"$(count_of 'status = -22' "$LIVE_LOG")" \
 			"$(count_of 'set_custom_config' "$LIVE_LOG")" "$(count_of 'nonpersist' "$LIVE_LOG")"
 		printf '投递入口命中         : %s  (ACTION_VOICE_TRIGGER_START_VOICEASSIST / PermissionVoiceService)\n' \
 			"$(count_of 'ACTION_VOICE_TRIGGER_START_VOICEASSIST|PermissionVoiceService' "$LIVE_LOG")"
+		printf 'ASR 文本样本         : %s\n' "$(grep -a -o -E '\"text\":\"[^\"]{0,24}\"' "$LIVE_LOG" 2>/dev/null | sort | uniq -c | sort -rn | head -5 | tr '\n' ';')"
+		printf '唤醒真值（关键）     : 比对通过=%s wakeup_real行=%s 投递VA成功=%s\n' \
+			"$(count_of 'isVoconWakeupPassed=true' "$LIVE_LOG")" \
+			"$(count_of 'type=wakeup_real' "$LIVE_LOG")" \
+			"$(count_of 'startFromVoiceTrigger' "$LIVE_LOG")"
+		printf '  只有“比对通过>0 且 投递成功>0”才能说唤醒链路真通了；suspect 计数只反映窗口空转，不是故障。\n'
+		printf 'CPU 前端引擎与节律   : 会话数=%s 采集start=%s 采集close=%s 失败日志=%s\n' \
+			"$(count_of 'audioflow new handle' "$LIVE_LOG")" \
+			"$(count_of 'startInput input .* source = 1999' "$LIVE_LOG")" \
+			"$(count_of 'closeInput' "$LIVE_LOG")" \
+			"$(count_of 'PortCpuKws|cpu kws re-arm failed|notify voiceassist failed' "$LIVE_LOG")"
+		printf '  会话数≈分钟数×(60/(window+gap))；每会话都在重建 PAL 采集图，并发播放时是额外噪声。\n'
+		printf 'ASR 回结果         : final行=%s 非空文本=%s（全为空或只等于唤醒词时要区分“只喊了唤醒词”与“指令被截”）\n' \
+			"$(count_of '"is_final":true' "$LIVE_LOG")" \
+			"$(grep -a -c -E '"is_final":true.*"text":"[^"]' "$LIVE_LOG")"
 		printf 'VT 包与开关          : %s\n' "$(grep -a -m1 -E 'codePath|versionName' "$CAP/40_xiaoai_static.txt" 2>/dev/null | cut -c1-160)"
 		printf 'odm 唤醒产物         : %s\n' \
 			"$(grep -a -E '^SENTINEL_RC\[[^]]*xiaoai_wakeup_props\.rc\]|^SENTINEL_MODEL' "$CAP/50_landing.txt" 2>/dev/null | tr '\n' ' ')"
 
 		printf '\n[5. 崩溃 / ANR / SELinux 收录]\n'
 		printf 'avc denied 合计      : %s\n' "$(count_of 'avc:[[:space:]]*[Dd]enied' "$LIVE_LOG")"
+		printf 'avc 归属分类         : %s\n' "$(grep -a -o -E 'scontext=u:r:[a-z_0-9]+' "$CAP/93_avc_log.txt" 2>/dev/null | sort | uniq -c | sort -rn | head -6 | tr '\n' ';')"
+		printf '  只看移植侧域（hal_*/system_server/cameraserver/nfc）；untrusted_app 与 ksu 不算移植缺陷。\n'
+		printf '取证干扰自测         : %s\n' "$(grep -a '^TICK self ' "$TICKS" 2>/dev/null | tail -n 2 | cut -c1-150 | tr '\n' ';')"
 		printf '崩溃与退避命中     : %s  (Fatal signal/SIGSEGV/SIGABRT/SIGSYS/CANNOT LINK/received SIGKILL/has died/Watchdog/ANR/updatable_crashing)\n' \
 			"$(count_of 'Fatal signal|SIGSEGV|SIGABRT|SIGSYS|CANNOT LINK|received SIGKILL|has died|Watchdog|ANR |updatable_crashing' "$LIVE_LOG")"
 		printf 'ANR / tombstone 清单 : 见 06_crash_evidence.txt；正文收录在 captures/zz_*\n'

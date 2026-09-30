@@ -228,8 +228,29 @@ rename_device_feature_xml() {
 			return 0
 		fi
 	elif [[ -e "$target_xml" ]]; then
-		err_print "机型 XML 新旧名同时存在，拒绝迁移：${source_xml#"$project_dir"/} ${target_xml#"$project_dir"/}"
-		exit 1
+		# 新旧名并存有两种成因，必须区分：
+		#  A) 上一次运行已改名成功，之后该分区被重新解包带回原包代号文件。
+		#     解包生成的 metadata 只登记原包名，所以残留的新名没有逐文件条目；
+		#     此时以原包名为准：删掉残留新名后继续正常迁移（保证可重复执行）。
+		#  B) metadata 登记的恰好是新名，或两个名字都登记 ⇒ 原包真有两个代号文件，
+		#     属真冲突，保持失败不静默丢弃任何一个。
+		local residual_contexts residual_source_named residual_target_named residual_target_name="${target_xml##*/}"
+		residual_contexts="$(get_part_contexts_path product)" || return 1
+		residual_source_named=0
+		residual_target_named=0
+		if grep -Eq "^/product/etc/device_features/${PORT_SOURCE_DEVICE_CODE}[^A-Za-z0-9_]" "$residual_contexts"; then
+			residual_source_named=1
+		fi
+		if grep -Eq "^/product/etc/device_features/${residual_target_name}[^A-Za-z0-9_]" "$residual_contexts"; then
+			residual_target_named=1
+		fi
+		if (( residual_source_named == 1 && residual_target_named == 0 )); then
+			remove_path_if_exists "$target_xml"
+			std_print "机型 XML 新名是上次运行的补丁残留（metadata 只登记原包名），已删除并按原包名重新迁移"
+		else
+			err_print "机型 XML 新旧名同时存在，拒绝迁移：${source_xml#"$project_dir"/} ${target_xml#"$project_dir"/}"
+			exit 1
+		fi
 	elif [[ ! -f "$source_xml" ]]; then
 		err_print "机型 XML 不是普通文件：$source_xml"
 		exit 1

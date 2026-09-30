@@ -28,7 +28,7 @@
 | 自动亮度接入（[`common/coloros_display`](../../common/coloros_display/README.md)，Profile `neo8`） | `odm`、`product`、`system`、`system_ext`、`vendor`、`my_product` | 用 my_product 的 P_1 面板表迁移显示 RRO（25602 android+oplus）与 FusionLight（Main_0_3、Main_2_3）；禁用 `high_pwm_rgb`。因缺 lux 表，暂不生成 `autoBrightness`（模块 warn 后保留底包 displayconfig）。需解包 `my_product`。 |
 | 开机亮度（[`common/fix_boot_brightness`](../../common/fix_boot_brightness/README.md)，Profile `neo8`） | `product` | 安装启动亮度 Overlay 并移除 `MiuiFrameworkResOverlay.apk`。Overlay 浮点值暂沿用 Ace 6T（0.394047439），待实机核对。 |
 | [`fix_refresh_rate_switch`](fix_refresh_rate_switch/README.md) | `product`、`system_ext` | DC/PWM 与刷新率切换修补，原假设的 165Hz 五档已由 Neo8 原系统真机确认（60/90/120/144/165），但面板尺寸与 Ace 6T 不同（2772 而非 2800），DC/PWM 补丁内容仍需实机核对。 |
-| [`fix_mtp_qti`](fix_mtp_qti/README.md) | `vendor`、`system` | Qti MTP 适配（两步必须成对）：置 `vendor.usb.use_ffs_mtp=0` 让 MTP 统一走 kernel `mtp.gs0`，与 HyperOS 框架一致。Neo8 原系统真机已确认前提：`vendor.usb.use_ffs_mtp=1`、`sys.usb.config/state=mtp,adb`、`configfs=1`、存在 `/dev/usb-ffs/mtp` 与 `ffs.mtp` gadget function。因 `common/fix_mtp`（换 system rc）在 Neo8 上是 no-op，机制/目标不同而独立成模块。**只做第一步会在真机上“USB 用途只剩仅充电”**：真机无 `ro.boot.ramdump`，而 HyperOS 原包 system rc 的 `mtp`/`mtp,adb` 装配分支被 MIUI 加了该门；底包对纯 mtp 又只写了 `use_ffs_mtp=1` 的 ffs 分支，两侧就都不挂 function。因此模块同时把两条触发器的门改为 `vendor.usb.use_ffs_mtp=0`（`ptp`/`ptp,adb` 本就无门）。枚举与读文件仍待 DSU 验证。 |
+| [`common/fix_mtp`](../../common/fix_mtp/README.md)（`gate` 模式） | `vendor`、`system` | Qti MTP 适配（两步必须成对）：维持底包原值 `vendor.usb.use_ffs_mtp=1`，让 MTP 走 `ffs.mtp`；并把 HyperOS system rc 的 `mtp`/`mtp,adb` 装配门收敛为 `=1`，由它负责 `write configuration` + `write UDC`（底包 `=1` 分支只挂 f1、不起 UDC）。Neo8 原系统真机已确认前提：`vendor.usb.use_ffs_mtp=1`、`sys.usb.config/state=mtp,adb`、`configfs=1`、存在 `/dev/usb-ffs/mtp` 与 `ffs.mtp` gadget function。不用 `replace` 覆盖模式：Neo8 底包没有可拿来覆盖的 configfs rc，拿一加 15 那份会丢掉原包 MIUI 的 `ramdump` mass_storage 救砖分支。**上一版的“置 `use_ffs_mtp=0` + 门改 `=0`”已被真机否证**：本机 `vendor_dlkm` 无 `usb_f_mtp.ko`，`mtp.gs0` 挂不上，两侧都不挂 function → `Config b/1 of g1 needs at least one function` / `g1: -22`。枚举与读文件仍待真机验证。 |
 
 ## 共享模块参数
 
@@ -66,17 +66,34 @@ Neo8 底包取证（`DNA_neo8`）确认控制器为青藤 **THN31（TMS 栈）**
 （OplusNFC 那类）：移植侧 `com.android.nfc` 为 MIUI 签名且 `sharedUserId=android.uid.nfc`、
 NCI 栈（`libnfc_xm_nci_jni.so`）打包在 APK 内部，外部签名且 v3 验签失败的通用 APK 会被
 PackageManager 拒装、也无法在不破签的前提下注入外部 NCI 库。故 TMS 桥是 HyperOS 上唯一
-签名安全路径。本次回传时 **NFC 开关是关着的**（`dumpsys nfc` 的 `mState=off`，贴卡采样
-`new_lines=243 nfc_hits=0` 因此无效），点亮仍需真机验证：请在设置里打开 NFC 后重跑采集并贴卡。
-基础读卡中概率、钱包/SE 低概率。
+签名安全路径。
 
-## 组合中暂停用的模块
+**2026-09-30 真机现状：NFC 仍未点亮，不得记为已修。** 开过开关的那轮回传显示框架自认
+`mState=on`、四个 NFC 服务 running、`/dev/tms_nfc` 与别名在位，但发现层全线失败：
+`startRfDiscovery: Wait for completion timeout`、`tech_mask = 00`、`nfc_ncif_cmd_timeout →
+NFA_DM_NFCC_TIMEOUT_EVT → recovery nfc`、`commitRouting: timeout waiting for NFA_EE_UPDATED_EVT`、
+`nfaVSCallback: RSP status: 8 to Android proprietary cmd 9`、`RF_INTF_ACTIVATED=0`。
+Neo8 比 Ace 6 多一层独有的伤害：底包额外带了一份 ST21 HAL（`vendor/bin/hw/android.hardware.nfc-service-st`，
+其 rc 声明 `interface aidl ...INfc/default`，且依赖 **V2** ndk 而小米侧是 **V1**），平时因 `/dev/st21nfc`
+不存在而退出，却被本包的节点别名救活，抢在 TMS 前注册 `INfc/default` 并与 TMS HAL 同开一个节点
+（真机两进程并存，ST boottime 早约 85ms）。`fix_nfc_tms_bridge` 已在“确实存在竞争者”时删其接口声明并置
+`disabled`。而 **两台共同根因已定位（2026-09-30 全树排查）**：HAL 只认固定名，读不到裸名 `libnfc-tms.conf`
+（底包只给 `_<project>` 后缀形态，裸名由 realme 原厂 system 侧 Oplus `NfcNci.apk` 用 `copyFile` 铺，而该 apk 与小米
+`Nfc_st` 同包名同 `android.uid.nfc`、还依赖 `com.oplus.accesscard`/`OplusFeatureConfigManager` 等，不能移植），
+于是设备节点回退到库内写死但底包不创建的 `/dev/thn31`，同时 `TMS_NFC_DEV_NODE`/`TMS_NFCEE_PL_*`/
+`TMS_SET_CONFIG_ALWAYS`/`PWR_OFF_LISTEN_TECH_MASK`/VS 专有配置全部丢失。现由 `fix_nfc_tms_bridge` 第 8/9 步补：
+`/dev/thn31` 别名 + 打包期生成 `/odm/etc/libnfc-tms*.conf` 裸名 + `nfc_tms_seed_config.rc` 在 `post-fs-data` 铺入
+`/data/vendor/nfc/`（project id 自探：Neo8 25602、Ace 6 24851）。**仍待真机确认，不得记为已修**；
+回传后若仍不通，按模块 README 的三个预定候选继续（`NCI_HAL_MODULE` 名不匹配、`NFA_STORAGE` 权限、`ITmsNfc` 上层）。
 
-- `common/fix_mtp`：Neo8 底包是 Qti USB（`vendor/etc/init/hw/init.qcom.usb.rc`），没有
-  该模块依赖的 `init.usb.configfs.rc`；且逐字比对证实 realme 原厂 system rc 与小米原包一致，
-  换 system rc 对 Neo8 是 **no-op**。MTP 由本目录 [`fix_mtp_qti`](fix_mtp_qti/README.md)
-  以“`vendor.usb.use_ffs_mtp=0` + 放开 HyperOS system rc 的 `ro.boot.ramdump` 门”两步适配，
-  不再使用 `common/fix_mtp`。
+## 共用模块在本机型的模式选择
+
+- `common/fix_mtp`：Neo8 走它的 **`gate` 模式**而不是默认的覆盖模式。底包是 Qti USB
+  （`vendor/etc/init/hw/init.qcom.usb.rc`），没有可拿来覆盖的 `init.usb.configfs.rc`；逐字比对又证实
+  realme 原厂 system rc 与小米原包一致，拿一加 15 内置那份覆盖会丢原包 MIUI 的 `ramdump` mass_storage
+  救砖分支。gate 模式维持 `vendor.usb.use_ffs_mtp=1`（ffs.mtp）并把 HyperOS system rc 的 mtp 装配门
+  收敛为 `=1`，由入口 `FIX_MTP_MODE=gate`、`FIX_MTP_FFS_VALUE=1` 驱动。上一版机型专属模块
+  `devices/realme_neo8/fix_mtp_qti`（含“置 0 统一到 kernel `mtp.gs0`”的错误方向）已删除并并回本模块。
 
 （Millet 核心桥原为暂停用；KMI 底包实测 `android16-6.12` 后与仓库预编译 KO 匹配，已接回组合，仍需刷机验证。）
 
@@ -87,12 +104,13 @@ PackageManager 拒装、也无法在不破签的前提下注入外部 NCI 库。
 
 | 差异 | 原因 |
 | --- | --- |
-| `devices/realme_neo8/fix_mtp_qti` 取代 `common/fix_mtp` | Neo8 底包是 Qti USB，没有 `init.usb.configfs.rc`，换 system rc 是 no-op（详上节）。 |
+| `common/fix_mtp` 用 `gate` 模式而非默认覆盖模式 | Neo8 底包是 Qti USB，没有可拿来覆盖的 `init.usb.configfs.rc`，覆盖会丢原包 MIUI 救砖分支；本机型 MTP 走 `ffs.mtp`（详上节）。模块本体共用，不新增机型专属副本。 |
 | `features/fix_nfc_tms_bridge` 取代 `features/fix_nci_nfc` | Neo8 控制器为青藤 THN31（TMS 栈），底包缺 NXP HAL 三项契约。 |
 | `devices/realme_neo8/fix_refresh_rate_switch` | 机型专属副本（面板 2772 而非 2800）。 |
 | `common/disable_oplus_crash_loop` 只在本组合启用 | 依据是 Neo8 真机取证（qguard / syshealthmon 崩溃环）；其他机型未取证，不默认引入。 |
 
-入口 `export` 集合与 6T 的差异也只剩 `FIX_MTP_SOURCE_RC`（6T 专有）；`FACE_UNLOCK_SUPPORT_TEE`
+入口 `export` 集合与 6T 的差异也只剩 MTP 模式参数：6T 提供 `FIX_MTP_SOURCE_RC`（底包 rc 路径），
+Neo8 提供 `FIX_MTP_MODE=gate` 与 `FIX_MTP_FFS_VALUE=1`；`FACE_UNLOCK_SUPPORT_TEE`
 已于 2026-09-30 从本组合移除，两边人脸参数路径一致。
 
 ## 2026-09-30 移植侧取证结论与已实施修复

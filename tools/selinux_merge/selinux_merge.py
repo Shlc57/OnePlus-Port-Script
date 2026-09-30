@@ -692,6 +692,11 @@ def merge_contexts(
     target_lines = target.splitlines()
     seen: dict[str, str] = {}
     managed_entries: list[str] = []
+    # 底包自己的 contexts 允许“同一路径的转义/未转义写法并存”（realme/QC 真机上就有
+    # `\.qcom` 与 `.qcom` 两行同义条目）：这类重复的标签完全相同，只差反斜杠。
+    # 按规范“比较路径时忽略转义差异、保留选中条目原形”，保留首条即可，不能当致命冲突。
+    # 标签或参数不同的重复仍走致命分支（去掉反斜杠后仍不相等）。
+    escape_duplicates = 0
     for raw in target_lines:
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
@@ -699,8 +704,14 @@ def merge_contexts(
         key = context_key(filename, stripped)
         normalized = " ".join(stripped.split())
         previous = seen.setdefault(key, normalized)
-        if previous != normalized:
-            raise MergeError(f"目标 {filename} 存在冲突条目：{key}")
+        if previous == normalized:
+            continue
+        if previous.replace("\\", "") == normalized.replace("\\", ""):
+            escape_duplicates += 1
+            continue
+        raise MergeError(f"目标 {filename} 存在冲突条目：{key}")
+    if escape_duplicates:
+        print(f"WARN {filename}: 底包同路径转义/未转义重复 {escape_duplicates} 条，保留首条原形")
     for body in managed_bodies:
         for raw in body.splitlines():
             stripped = raw.strip()
@@ -711,7 +722,7 @@ def merge_contexts(
             normalized = " ".join(stripped.split())
             previous = seen.setdefault(key, normalized)
             if previous != normalized:
-                raise MergeError(f"目标 {filename} 存在冲突条目：{key}")
+                raise MergeError(f"目标 {filename} 的托管片段存在冲突条目：{key}")
             managed_entries.append(stripped)
 
     additions: list[str] = []
@@ -779,6 +790,16 @@ def read_version_marker(path: Path, label: str) -> str:
     return value
 
 
+def optional_version_marker(path: Path, label: str) -> str | None:
+    """Return None when the marker file is absent (treated as cross-generation).
+
+    A present but malformed marker is a real anomaly and must still fail.
+    """
+    if not path.exists() and not path.is_symlink():
+        return None
+    return read_version_marker(path, label)
+
+
 def write_output_file(path: Path, content: str, label: str) -> None:
     if path.exists() or path.is_symlink():
         if path.is_symlink() or not path.is_file():
@@ -802,19 +823,25 @@ def merge_directories(target_dir: Path, source_dir: Path, output_dir: Path) -> N
     source_policy = source_dir / "vendor_sepolicy.cil"
     ensure_regular_file(target_policy, "底包 vendor policy")
     ensure_regular_file(source_policy, "原包 vendor policy")
+    # Version markers may legitimately differ across Android generations (e.g.
+    # an Android 15 bottom package merged with an Android 16 source package).
+    # Never bump the bottom markers: bottom CIL types are compiled against its
+    # own baseline, and fix_vendor_avc validates `${API_VERSION}` types from it.
+    # Instead, a mismatch downgrades to bottom-authoritative merging below.
+    version_mismatch = ""
     for version_filename in VERSION_FILES:
         target_version = read_version_marker(
             target_dir / version_filename,
             f"底包 {version_filename}",
         )
-        source_version = read_version_marker(
+        source_version = optional_version_marker(
             source_dir / version_filename,
             f"原包 {version_filename}",
         )
-        if target_version != source_version:
-            raise MergeError(
-                f"SELinux 版本标记不一致，拒绝跨 ABI 合并：{version_filename} "
-                f"（底包 {target_version}，原包 {source_version}）"
+        if source_version != target_version and not version_mismatch:
+            version_mismatch = (
+                f"{version_filename}（底包 {target_version}，"
+                f"原包 {source_version if source_version is not None else '缺失'}）"
             )
     target_policy_text = target_policy.read_text(encoding="utf-8")
     source_policy_text = source_policy.read_text(encoding="utf-8")
@@ -826,14 +853,21 @@ def merge_directories(target_dir: Path, source_dir: Path, output_dir: Path) -> N
     unmanaged_target_policy, _ = extract_managed_blocks(target_policy_text)
     target_types = policy_types(unmanaged_target_policy)
     cil_compatible = True
-    try:
-        validate_base_typeattrs(
-            split_cil_statements(target_policy_text),
-            split_cil_statements(source_policy_text),
-        )
-    except MergeError as error:
+    if version_mismatch:
         cil_compatible = False
-        print(f"WARN vendor_sepolicy.cil: {error}；保留底包 CIL，仅合并现有类型可承载的 contexts")
+        print(
+            f"WARN SELinux 版本标记跨代：{version_mismatch}；"
+            "保底包基线 CIL（不抬升底包版本标记），仅合并底包已有类型可承载的原包 contexts"
+        )
+    else:
+        try:
+            validate_base_typeattrs(
+                split_cil_statements(target_policy_text),
+                split_cil_statements(source_policy_text),
+            )
+        except MergeError as error:
+            cil_compatible = False
+            print(f"WARN vendor_sepolicy.cil: {error}；保留底包 CIL，仅合并现有类型可承载的 contexts")
 
     if cil_compatible:
         merged_policy, added, cil_conflicts, attributes = merge_cil(

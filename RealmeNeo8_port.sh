@@ -23,6 +23,9 @@ export PORT_DISPLAY_TARGET=canoe
 # 自动亮度接入 OP15/Ace 6T 同款 ColorOS displayconfig 方案：common/coloros_display 按
 # Neo8 Profile 用 my_product 的 P_1 官方表生成显示配置。Target 与 Ace 6T 同为 canoe，
 # 自动匹配会先命中 ace6t，因此必须显式锁定 neo8 Profile。
+# common/fix_mtp 的 gate 模式参数：本底包 MTP 走 FunctionFS（ffs.mtp），属性目标值为 1。
+export FIX_MTP_MODE=gate
+export FIX_MTP_FFS_VALUE=1
 export COLOROS_DISPLAY_PROFILE=neo8
 # 开机默认亮度由 common/fix_boot_brightness 的 Neo8 Profile 安装；Overlay 与校验文件都在
 # 模块 profiles/neo8/ 内。Overlay 浮点值暂沿用同 SoC 的 Ace 6T（0.394047439），待实机核对。
@@ -54,10 +57,12 @@ export WALLET_IDENTITY_PROPERTIES_FILE="$neo8_config_dir/wallet_identity.props"
 export LINEAR_HAPTIC_PROPERTIES_FILE="$neo8_config_dir/linear_haptic.props"
 export LINEAR_HAPTIC_MOTOR_TYPE=linear
 # MTP：Neo8 底包是 Qti USB（vendor/etc/init/hw/init.qcom.usb.rc），没有 common/fix_mtp
-# 依赖的 init.usb.configfs.rc；且逐字比对证实 realme 原厂 system rc 与小米原包一致，换
-# system rc 对 Neo8 是 no-op。真因是 vendor 走 ffs.mtp(use_ffs_mtp=1) 而 HyperOS 框架走
-# kernel mtp.gs0。由 devices/realme_neo8/fix_mtp_qti 置 vendor.usb.use_ffs_mtp=0 统一到
-# kernel mtp.gs0（详见该模块 README），故不接入 common/fix_mtp。
+# 覆盖模式依赖的底包 init.usb.configfs.rc；且逐字比对证实 realme 原厂 system rc 与小米原包
+# 一致，拿一加 15 那份覆盖会丢掉原包 MIUI 的 ramdump mass_storage 救砖分支。因此仍用
+# common/fix_mtp，但走它的 gate 模式：维持底包原值 vendor.usb.use_ffs_mtp=1（ffs.mtp）
+# 并把 HyperOS system rc 的 mtp 装配门收敛为 =1，由它起 UDC。
+# 真机已否证“统一到 kernel mtp.gs0”：本机 vendor_dlkm 无 usb_f_mtp.ko，置 =0 后两侧都不挂
+# function → gadget -22（详见 common/fix_mtp README 的 gate 模式一节）。
 # Millet 核心桥按 KMI 选择仓库内预编译 KO；Neo8 内核已底包实测：vendor_dlkm 全部 .ko
 # 与 boot/kernel vermagic 均为 android16-6.12（与 Ace 6T/一加 15 同 KMI），仓库有对应
 # prebuilt/android16-6.12/millet_core.ko，故启用 millet（仍需刷机验证）。
@@ -139,8 +144,9 @@ export DEVICE_PARAMS_SPOOF_JSON_ENUS='{
 
 declare -a neo8_modules=(
 	common/merge_mi_ext
-	# Qti MTP：置 vendor.usb.use_ffs_mtp=0，统一走 kernel mtp.gs0（common/fix_mtp 在此是 no-op）。
-	devices/realme_neo8/fix_mtp_qti
+	# Qti MTP：common/fix_mtp 的 gate 模式（维持 use_ffs_mtp=1 + 把 system rc 装配门收敛为 =1；
+	# 覆盖模式对 Neo8 不适用，且统一到 kernel mtp.gs0 已被真机 -22 否证）。
+	common/fix_mtp
 	common/fuck_oplus_hybridzram
 	common/disable_mi_vulkan
 	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。

@@ -1,0 +1,7 @@
+# 小米 NFC 上层兼容开关（ro.vendor.nfc.*）的 SELinux 标签。
+# 这些键由本补丁按 NFC_PROPERTIES_FILE 写入 odm/build.prop，但底包 property_contexts 里
+# 没有 ro.vendor.nfc. 前缀（只有 vendor.qti.nfc. 与 vendor.tms.nfc.），因此会落
+# default_prop，被 com.android.nfc（nfc 域）读取时静默拒绝：真机日志表现为
+# “Access denied finding property ro.vendor.nfc.mitouch/phonecase”，而 avc 里查不到条目。
+# 统一标到底包已有的 TMS NFC 属性类型 vendor_tms_nfc_prop，读取权限由策略片段授予 nfc 域。
+ro.vendor.nfc. u:object_r:vendor_tms_nfc_prop:s0

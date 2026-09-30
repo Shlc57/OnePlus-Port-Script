@@ -25,8 +25,8 @@ target_rc="$target_rc_dir/disable_oplus_crash_loop.rc"
 # 拉起，每 5 秒重拉一次，属纯 CPU 抖动源（真机 1 分钟 load 平均 9.3、峰值 11.2），还会把其他可更新
 # 服务的重启拖进指数退避；而 ADSP/modem 的 SSR 通知在内核侧 qcom_sysmon/qcom_pd_mapper，不受影响。
 declare -A service_binaries=(
-	[qguard]="/vendor/bin/qguard"
-	[syshealthmon-service]="/vendor/bin/vendor.qti.syshealthmon-service"
+	[qguard]="$project_dir/vendor/bin/qguard"
+	[syshealthmon-service]="$project_dir/vendor/bin/vendor.qti.syshealthmon-service"
 )
 declare -a target_services=()
 
@@ -46,7 +46,7 @@ for service_name in qguard syshealthmon-service; do
 		continue
 	fi
 	if [[ ! -f "${service_binaries[$service_name]}" ]]; then
-		warn_print "底包 service ${service_name} 的可执行文件不在预期路径：${service_binaries[$service_name]}（仍下发 disable，真机再核）"
+		warn_print "底包 service ${service_name} 的可执行文件不在预期路径：${service_binaries["$service_name"]#"$project_dir"/}（仍下发 disable，真机再核）"
 	fi
 	target_services+=("$service_name")
 done

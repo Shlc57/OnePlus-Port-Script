@@ -341,31 +341,88 @@ def test_policy_fragment_can_replace_legacy_provider_block() -> None:
     assert "new_type" in merged
 
 
-def test_version_markers_are_required_and_must_match() -> None:
+def make_merge_dirs(root: Path, target_version: str, source_version: str | None) -> tuple:
+    target = root / "target"
+    source = root / "source"
+    output = root / "output"
+    target.mkdir()
+    source.mkdir()
+    (target / "vendor_sepolicy.cil").write_text(
+        "(type target_domain)\n(typeattributeset base_typeattr_1_202404 (domain))\n",
+        encoding="utf-8",
+    )
+    (source / "vendor_sepolicy.cil").write_text(
+        "(type source_domain)\n(typeattributeset base_typeattr_1_202504 (domain))\n",
+        encoding="utf-8",
+    )
+    for directory, version in ((target, target_version), (source, source_version)):
+        if version is None:
+            continue
+        (directory / "plat_sepolicy_vers.txt").write_text(version + "\n", encoding="utf-8")
+        (directory / "genfs_labels_version.txt").write_text("1\n", encoding="utf-8")
+    (target / "vendor_service_contexts").write_text(
+        "service.kept u:object_r:target_service:s0\n", encoding="utf-8"
+    )
+    (source / "vendor_service_contexts").write_text(
+        "service.kept u:object_r:target_service:s0\n"
+        "service.new u:object_r:source_service:s0\n",
+        encoding="utf-8",
+    )
+    return target, source, output
+
+
+def test_cross_generation_marker_mismatch_downgrades() -> None:
+    """跨代（Android15 底包 + Android16 原包）不得硬拒：保底包基线 CIL，只并底包已有类型可承载的 contexts。"""
+    with tempfile.TemporaryDirectory() as temporary:
+        target, source, output = make_merge_dirs(Path(temporary), "202404", "202504")
+        merger.merge_directories(target, source, output)
+        # 不写合并后的 CIL，下游 merged_or_target 会回退到底包自己的策略
+        assert not (output / "vendor_sepolicy.cil").exists()
+        merged = (output / "vendor_service_contexts").read_text(encoding="utf-8")
+        assert "service.kept" in merged
+        assert "service.new" not in merged
+
+
+def test_missing_source_marker_also_downgrades() -> None:
+    """原包没有版本标记时同样走降级，不能当硬错误拦住整套移植。"""
+    with tempfile.TemporaryDirectory() as temporary:
+        target, source, output = make_merge_dirs(Path(temporary), "202404", None)
+        merger.merge_directories(target, source, output)
+        assert not (output / "vendor_sepolicy.cil").exists()
+
+
+def test_bottom_side_version_marker_is_still_required() -> None:
+    """底包缺版本标记仍必须失败：基线不能猜。"""
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        target = root / "target"
-        source = root / "source"
-        output = root / "output"
-        target.mkdir()
-        source.mkdir()
-        for directory, version in ((target, "202504"), (source, "202505")):
-            (directory / "vendor_sepolicy.cil").write_text(
-                "(typeattributeset base_typeattr_1_202504 (domain))\n",
-                encoding="utf-8",
-            )
-            (directory / "plat_sepolicy_vers.txt").write_text(
-                version + "\n", encoding="utf-8"
-            )
-            (directory / "genfs_labels_version.txt").write_text(
-                "1\n", encoding="utf-8"
-            )
+        target, source, output = make_merge_dirs(root, "202404", "202404")
+        (target / "plat_sepolicy_vers.txt").unlink()
         try:
             merger.merge_directories(target, source, output)
         except merger.MergeError as error:
-            assert "版本标记不一致" in str(error)
+            assert "plat_sepolicy_vers.txt" in str(error)
         else:
-            raise AssertionError("expected version mismatch to fail")
+            raise AssertionError("expected missing bottom version marker to fail")
+
+
+def test_target_escape_duplicate_entries_are_tolerated() -> None:
+    """底包同一规则的转义/未转义写法只能算重复，不能拦住合并；标签不同仍致命。"""
+    escaped = "/sys/soc/a\\.b/i2c-1/ufcs u:object_r:sysfs_wakeup:s0\n"
+    plain = "/sys/soc/a.b/i2c-1/ufcs u:object_r:sysfs_wakeup:s0\n"
+    merged, added, conflicts, unavailable = merger.merge_contexts(
+        escaped + plain, "", "vendor_file_contexts", None
+    )
+    # 不再报致命冲突；底包两行保持原形（我们不重写底包文件），但不能因此把来源条目再插一条
+    assert added == 0
+    assert conflicts == 0 and unavailable == 0
+    assert len([line for line in merged.splitlines() if line.strip()]) == 2
+    other_label = "/sys/soc/a.b/i2c-1/ufcs u:object_r:sysfs_other:s0\n"
+    try:
+        merger.merge_contexts(escaped + other_label, "", "vendor_file_contexts", None)
+    except merger.MergeError as error:
+        assert "存在冲突条目" in str(error)
+    else:
+        raise AssertionError("expected differing labels under one key to fail")
 
 
 if __name__ == "__main__":
@@ -383,5 +440,8 @@ if __name__ == "__main__":
     test_policy_fragments_share_one_managed_block_and_expand_api()
     test_policy_fragment_rejects_unresolved_variable()
     test_policy_fragment_can_replace_legacy_provider_block()
-    test_version_markers_are_required_and_must_match()
+    test_bottom_side_version_marker_is_still_required()
+    test_cross_generation_marker_mismatch_downgrades()
+    test_missing_source_marker_also_downgrades()
+    test_target_escape_duplicate_entries_are_tolerated()
     print("selinux_merge tests passed")

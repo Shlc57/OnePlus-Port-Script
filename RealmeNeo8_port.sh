@@ -68,14 +68,12 @@ export KMI='android16-6.12'
 export ULTRASONIC_FP_PROPERTIES_FILE="$neo8_config_dir/fingerprint.props"
 # Neo8 Oplus HBP 双击亮屏参数；初始值沿用同 SoC 触控栈，实机需校准。
 export OPLUS_DOUBLE_TAP_PROPERTIES_FILE="$neo8_config_dir/double_tap_wake.props"
-# 人脸解锁：Neo8 底包 face HAL（vendor.oplus.hardware.biometrics.face@1.0-service_uff）
-# 只提到 getAuthenticatorId，没有实现 AIDL face 的 setAuthenticator/resetAuthentication
-# 安全通路（算法库 libstfaceunlockocl_uff.so 在本地，但依赖 Oplus osense/uah 与 system 侧
-# com.oplus.facerecognition、oiface/oplusoiface 服务，这些随 ColorOS system 一起不存在）。
-# 沿用原包（nezha）XML 的 support_tee_face_unlock=true 会让 HyperOS 强制走 TEE 人脸，
-# 真机表现就是“能录入、解锁恒失败”（dumpsys face：sensorId=4 全部 wasSuccessful=false，
-# 而指纹 sensorId=1 全 true）。这里显式声明为 false，让框架走非 TEE 人脸通路。
-export FACE_UNLOCK_SUPPORT_TEE=false
+# 人脸：与一加 Ace 6T 同步，不声明 FACE_UNLOCK_SUPPORT_TEE（沿用原包机型 XML 的
+# support_tee_face_unlock=true）。原因：2026-09-30 两份 issue_trace 回传里 runtime 都是
+# true，说明“置 false 导致不给录入”从未被任何一次取证证实；而底包 HAL 只实现
+# getAuthenticatorId、缺 setAuthenticator/resetAuthentication 且依赖已随 ColorOS system
+# 消失的 com.oplus.facerecognition/oiface，属已知不可用，真机表现是“能录入、解锁被拒”
+# （dumpsys face prints accept=0 reject=2）。要恢复解锁得补 HAL，不靠改声明。
 
 # 真我 Neo8 目标设备参数展示（Settings 设备参数缓存）。
 # 以下均已由 Neo8 原系统真机采集核对：ro.soc.model=SM8845（第五代骁龙 8）、
@@ -147,6 +145,9 @@ declare -a neo8_modules=(
 	common/disable_mi_vulkan
 	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。
 	common/disable_hyperos_preread
+	# 底包 qguard 缺 libbase.so、syshealthmon-service 触 seccomp 收 SIGSYS，两者每 5 秒
+	# 被 init 重拉（真机 load 平均 9.3）；只在本机型引入，其他机型组合不受影响。
+	common/disable_oplus_crash_loop
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
 	common/disable_odm_imports

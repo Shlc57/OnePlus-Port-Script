@@ -609,6 +609,36 @@ else
 	fi
 	bash "$patcher_dir/patch_voicetrigger.sh" "$voice_trigger_apk"
 	std_print "VoiceTrigger.apk 已静态植入小爱唤醒修复"
+	# 产物落地校验：确认回编译后的 APK 里真的带 PortCpuKws，而不是只改了解包目录。
+	# 2026-09-30 Neo8 真机回传出现过 rc/模型都在位、但 APK 四个 dex 里 PortCpuKws 计数全 0
+	# 的情况（VT 因此仍走 ADSP 热唤醒，每 5 秒把 audio HAL 打死），所以这里硬失败。
+	if [[ "$xiaoai_cpu_kws" == true ]]; then
+		if ! python3 - "$voice_trigger_apk" <<'PY'
+import sys
+import zipfile
+
+apk = sys.argv[1]
+try:
+    with zipfile.ZipFile(apk) as archive:
+        dex_names = [n for n in archive.namelist() if n.startswith("classes") and n.endswith(".dex")]
+        hits = [n for n in dex_names if b"PortCpuKws" in archive.read(n)]
+except Exception as error:
+    print(f"VOICE_TRIGGER_APK_CHECK_ERROR {error}", file=sys.stderr)
+    raise SystemExit(2)
+if not dex_names or not hits:
+    print(
+        f"VOICE_TRIGGER_APK_CHECK_MISSING dex={len(dex_names)} hit={len(hits)}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print(f"VOICE_TRIGGER_APK_CHECK_OK {','.join(hits)}")
+PY
+		then
+			err_print "CPU FlexKws 未进入 VoiceTrigger.apk 产物（APK 内无 PortCpuKws），请从 INPUT 母本取回重打，别用旧产物继续出包"
+			exit 1
+		fi
+		std_print "✅ 已校验 CPU FlexKws 产物：VoiceTrigger.apk 内含 PortCpuKws"
+	fi
 fi
 
 std_print "仅确认两个 APK 的原 Signing Block 字节保留；未确认内容签名摘要有效"

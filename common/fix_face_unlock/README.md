@@ -16,7 +16,15 @@ Settings 录入逻辑位于本目录的 `patch_settings_apk.sh`。在 `OP15_port
 
 模块按移植前识别的原包代号修改 `product/etc/device_features/<原包代号>.xml`：当 `support_face_unlock_region_dom` 不包含 `ALL` 时，将其中所有 `item` 设为 `ALL`；`support_tee_face_unlock` 则按组合入口给出的目标值设置（`FACE_UNLOCK_SUPPORT_TEE`，默认 `true`）。
 
-`support_tee_face_unlock` 是 **HyperOS 框架侧的策略声明**，不是底包真值：该声明为 `true` 时框架要求走 TEE（安全）人脸通路，而部分 Oplus 底包的 face HAL 只实现了标准 AIDL face 的子集（例如仅有 `getAuthenticatorId`，没有 `setAuthenticator`/`resetAuthentication`，且依赖已随 ColorOS system 消失的私有服务）。这种组合下的典型症状是**能完成录入、但每次解锁都失败**（`dumpsys face` 里 face 会话全部 `wasSuccessful=false`，而指纹会话全 `true`），此时机型入口应显式 `export FACE_UNLOCK_SUPPORT_TEE=false`。判定依据只能来自目标底包：先查底包 face HAL 二进制是否实现 authenticator 接口，再看 DSU 上 `dumpsys face` 的成败记录；不得默认沿用原包 XML 的 `true`。传入非 `true`/`false` 的值会直接失败，改写后的最终校验也会按目标值双向把关。
+`support_tee_face_unlock` 是 **HyperOS 框架侧的策略声明**，不是底包真值：该声明为 `true` 时框架要求走 TEE（安全）人脸通路，而部分 Oplus 底包的 face HAL 只实现了标准 AIDL face 的子集（例如仅有 `getAuthenticatorId`，没有 `setAuthenticator`/`resetAuthentication`，且依赖已随 ColorOS system 消失的私有服务）。这种组合下的典型症状是**能完成录入、但每次解锁都失败**（`dumpsys face` 里 face 会话全部 `wasSuccessful=false`，而指纹会话全 `true`）。判定依据只能来自目标底包：先查底包 face HAL 二进制是否实现 authenticator 接口，再看 DSU 上 `dumpsys face` 的成败记录；不得默认沿用原包 XML 的 `true`。传入非 `true`/`false` 的值会直接失败，改写后的最终校验也会按目标值双向把关。
+
+但不要把“HAL 缺 authenticator / `oiface` 不存在”当成充分根因，也不要把置 `false` 当默认修法：2026-09-30 在
+一加 Ace 6T DSU 上实测到**完全同配置却能正常解锁**——同为 `support_tee_face_unlock=true`、`region_dom=ALL`、同一个
+`vendor.oplus.hardware.biometrics.face@1.0-service_uff`、`oiface`/`oplusoiface` 同样 `Can't find service`、
+`sys.miface.auth.package=noback`，但 `prints accept=1`、`authEndedFor(strength=4095, wasSuccessful=true)`。反之，真我 Neo8
+曾试过置 `false`，现均未获得取证支持（两份回传 runtime 都是 `true`），该覆盖已从入口移除。结论：置 `false` 仅在
+目标机现场先证实“入口与录入都仍在、仅解锁失败”后才可小步尝试，且必须验证“入口 + 录入 + 解锁”三项；同一底包族内
+不同机型的差异（face 硬件、算法库、私有服务注册）才是先要排除的对象，不能靠改声明一举解决。
 
 从 `mi_vendor` 迁移 `android.hardware.biometrics.face.xml` 到最终 `vendor` 后，Settings 会走标准 `FaceManager`。模块会在有效 Surface 上正式开始录入时先进入小米原有 acquired 19 步骤，使相机预览就绪后及时结束加载提示；随后把 `remaining>0` 的标准进度映射到同一路径，并调整五段圆环节奏。只有 `remaining=0` 才进入成功流程；如果底层只上报最终回调，也会跳过没有结束监听器的第 0 个圆环，避免模板已保存但页面停住。
 

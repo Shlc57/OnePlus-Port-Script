@@ -20,6 +20,12 @@ product 分区 APK 静态补丁在后）。
 `XIAOAI_CPU_KWS_HOLD_MS`、`XIAOAI_CPU_KWS_GAP_MS`、`XIAOAI_CPU_KWS_WINDOW_SEC`（后三个
 由机型 `.props` 的节奏键注入，`apply.sh` 校验后透传给 `patch_voicetrigger.sh`）。
 
+**产物哨兵（仅 `xiaoai_cpu_kws=true` 时生效）**：`patch_voicetrigger.sh` 返回后，`apply.sh` 会读回
+`product/app/VoiceTrigger/VoiceTrigger.apk` 里全部 `classes*.dex`，确认存在 `PortCpuKws`，否则硬失败。
+立论是 2026-09-30 Neo8 真机回传：`/odm/etc/init/xiaoai_wakeup_props.rc` 与唤醒模型都在位，但四个 dex 的
+`PortCpuKws` 计数全为 0，VT 因此仍跑 ADSP 热唤醒并每 5 秒把 audio HAL 打死。ADSP 路线的机型（一加 15 /
+Ace 6）不走这个分支，行为不变；读不到 dex（无 python3 或包内无 classes*.dex）也按失败处理，不静默跳过。
+
 ---
 
 ## ⚠️ 当前状态结论（2026-09-29，Ace 6T / SM8845 底包真机）

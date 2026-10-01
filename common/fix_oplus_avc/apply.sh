@@ -184,6 +184,8 @@ required_policy_types=(
     radio_prop
     config_prop
     system_prop
+    cameraserver
+    hal_face_oplus
 )
 for required_policy_type in "${required_policy_types[@]}"; do
     if ! grep -Fqx "(type $required_policy_type)" "$vendor_policy" && \
@@ -261,6 +263,7 @@ required_policy_rules=(
     '(allow vendor_init_202504 config_prop (property_service (set)))'
     '(allow platform_app system_prop (property_service (set)))'
     '(allow platform_app_36 system_prop (property_service (set)))'
+    '(allow cameraserver hal_face_oplus (dir (search)))'
 )
 for required_policy_rule in "${required_policy_rules[@]}"; do
     if ! grep -Fqx "$required_policy_rule" "$selinux_policy_fragment"; then

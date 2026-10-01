@@ -81,3 +81,7 @@
 (allow vendor_init_202504 config_prop (property_service (set)))
 (allow platform_app system_prop (property_service (set)))
 (allow platform_app_36 system_prop (property_service (set)))
+
+;; cameraserver 枚举 /proc 时 search face HAL 进程目录被拒（Neo8 与 6T DSU 实测，
+;; 不影响功能，仅消 avc 噪声）；补 cameraserver 对 hal_face_oplus 的 proc dir search。
+(allow cameraserver hal_face_oplus (dir (search)))

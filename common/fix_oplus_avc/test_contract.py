@@ -106,6 +106,7 @@ def test_ueventd_create_policy_contract() -> None:
         "(allow vendor_init_202504 config_prop (property_service (set)))",
         "(allow platform_app system_prop (property_service (set)))",
         "(allow platform_app_36 system_prop (property_service (set)))",
+        "(allow cameraserver hal_face_oplus (dir (search)))",
     ]
     assert statements[0].endswith("(blk_file (create getattr setattr)))")
     policy = POLICY.read_text(encoding="utf-8")

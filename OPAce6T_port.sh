@@ -120,6 +120,9 @@ declare -a ace6t_modules=(
 	common/disable_mi_vulkan
 	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。
 	common/disable_hyperos_preread
+	# 底包 qguard(class late_start)/syshealthmon(class hal)/fidoca 在移植 DSU 下 linker namespace
+	# 解析不到依赖、被反复重拉进 updatable 退避（6T 实测同样每 5 秒 CANNOT LINK），停掉止 CPU 抖动。
+	common/disable_oplus_crash_loop
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc
 	common/disable_odm_imports

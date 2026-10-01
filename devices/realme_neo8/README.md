@@ -99,15 +99,13 @@ Neo8 比 Ace 6 多一层独有的伤害：底包额外带了一份 ST21 HAL（`v
 
 ## 与一加 Ace 6T 的组合差异
 
-`RealmeNeo8_port.sh` 与 `OPAce6T_port.sh` 的模块**清单与执行顺序已逐项对齐**（含新加的
-`common/disable_oplus_crash_loop`），只剩下列因底包事实而必须不同的四项：
+`RealmeNeo8_port.sh` 与 `OPAce6T_port.sh` 的模块**清单与执行顺序已逐项对齐**（`common/disable_oplus_crash_loop` 已同步推广到 Ace 6T / Ace 6 / Neo8 三个组合入口，不再是本机差异），只剩下列因底包事实而必须不同的三项：
 
 | 差异 | 原因 |
 | --- | --- |
 | `common/fix_mtp` 用 `gate` 模式而非默认覆盖模式 | Neo8 底包是 Qti USB，没有可拿来覆盖的 `init.usb.configfs.rc`，覆盖会丢原包 MIUI 救砖分支；本机型 MTP 走 `ffs.mtp`（详上节）。模块本体共用，不新增机型专属副本。 |
 | `features/fix_nfc_tms_bridge` 取代 `features/fix_nci_nfc` | Neo8 控制器为青藤 THN31（TMS 栈），底包缺 NXP HAL 三项契约。 |
 | `devices/realme_neo8/fix_refresh_rate_switch` | 机型专属副本（面板 2772 而非 2800）。 |
-| `common/disable_oplus_crash_loop` 只在本组合启用 | 依据是 Neo8 真机取证（qguard / syshealthmon 崩溃环）；其他机型未取证，不默认引入。 |
 
 入口 `export` 集合与 6T 的差异也只剩 MTP 模式参数：6T 提供 `FIX_MTP_SOURCE_RC`（底包 rc 路径），
 Neo8 提供 `FIX_MTP_MODE=gate` 与 `FIX_MTP_FFS_VALUE=1`；`FACE_UNLOCK_SUPPORT_TEE`
@@ -132,6 +130,7 @@ Neo8 提供 `FIX_MTP_MODE=gate` 与 `FIX_MTP_FFS_VALUE=1`；`FACE_UNLOCK_SUPPORT
   `exited 4 times in 4 minutes` 各 45 次），`sys.init.updatable_crashing_process_name` 就是 `syshealthmon-service`；
   同机 1 分钟 load 平均 9.3、峰值 11.2（MemAvailable 仍 4.6GB）。ADSP/modem 的 SSR 通知在内核侧
   `qcom_sysmon`/`qcom_pd_mapper`，**不受本修复影响**。新增 `common/disable_oplus_crash_loop` 摘掉它们，**只写进 Neo8 组合**。
+  （2026-10-02 更新：本补丁已推广到 6T 与 Ace 6 三个组合；并从 disable 清单里移除同名误判的 fidoca，只处理 qguard 与 syshealthmon-service——详见 [补丁 README](../../common/disable_oplus_crash_loop/README.md)）。
 - **与包版本无关、也仍在声音上的两族失败**（本轮只记录、不改代码，无可靠单变量判据）：
   `APM_AudioPolicyManager: [TF-OTHERS] checkAndSetVolume invalid volume index range in the curve` 6650 次，
   `DeviceHalAidl: parseAndSetVendorParameters Failed` 3852 次，被拒的是 HyperOS 下发的按设备音量曲线与通话参数
@@ -185,7 +184,7 @@ ANR traces、pstore/console-ramoops 关键字命中、ramdump 清单）+ 补丁�
 - 唤醒侧：`PortCpuKws=2`，`VT_AudioFlow: start` / `onEnoughData true` / `keyPhrase=小爱同学` 全链路通，
   `LOAD_PHRASE_MODEL=0`、`-22=0`、`HAL instance died=0`，audioserver pid 多次采样不变，`Hal write jitter ave=0.59ms`。
 - 已知仍在本机的问题：`qguard`（缺 `libbase.so`）与 `syshealthmon-service`（`blocked syscall: lseek` → SIGSYS）
-  严格 5 秒重拉、`updatable_crashing_process_name=qguard`，原因是 `disable_oplus_crash_loop` 尚未挂进 6T 组合。
+  严格 5 秒重拉、`updatable_crashing_process_name=qguard`，原因是 `disable_oplus_crash_loop` 尚未挂进 6T 组合（2026-10-02 已挂进，本条保留为当时事实）。
 - 仍未闭环：NFC 发现链健康（`NFA_RF_DISCOVERY_STARTED_EVT status=0`、`pollTech=0x2f`）但无卡被激活；
   MTP 切到了 `mtp` 而主机枚举未确认；双击亮屏与钱包 SE 未采到有效事件。
 

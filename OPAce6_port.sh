@@ -125,8 +125,11 @@ declare -a ace6_modules=(
 	common/disable_mi_vulkan
 	# HyperOS iorapd 依赖底包内核没有的 /dev/iorap_dev，不关会无限重启环。
 	common/disable_hyperos_preread
-	# 底包 qguard 缺 libbase.so、syshealthmon-service 触 seccomp 收 SIGSYS，两者每 5 秒被 init
-	# 重拉成崩溃环；只读预检后按需下发 disable，服务不存在则整体跳过（与真我 Neo8 同款处理）。
+	# 底包 qguard(class late_start)/syshealthmon(class hal) 在移植 DSU 下 linker namespace 解析不到
+	# 依赖或被自带 seccomp 挡住，被 init 每 5 秒重拉进 updatable 退避，停掉止 CPU 抖动；只读预检，服务不存在则整体跳过。
+	# 不处理同名 fidoca：底包 Oplus FIDO HAL 服务名就是 fidoca 且工作正常（真机 running+已注册 IFidoDaemon），
+	# 早前取证看到的 CANNOT LINK 属于 Xiaomi vendor.mfidoca（fix_mi_account 引入、rc 自带 oneshot+disabled），
+	# 不是崩溃环也不是同名服务，详见 common/disable_oplus_crash_loop/README.md。
 	common/disable_oplus_crash_loop
 	features/fuck_audio_appname
 	features/fix_oplus_lhdc

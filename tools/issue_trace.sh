@@ -2,11 +2,13 @@
 # HyperOS 移植现象取证脚本 —— MT 管理器可直接执行，不依赖 adb / 电脑，全程只读
 # （唯一写入物是输出目录与压缩包；不 pm disable、不改设置、不重启服务、不 mount、不截图）。
 #
-# 用途：在移植后的澎湃系统（DSU 或已刷机）上，为四类现场问题抓「能定性」的证据并打包回传：
-#   1) audio  声音断断续续（时有时无）
-#   2) face   人脸入口 / 录入被拒 / 能录入但解不开
-#   3) nfc    NFC 无响应 / 读卡中概率
-#   4) xiaoai 小爱免手唤醒不生效 / 误唤醒
+# 用途：在移植后的澎湃系统（DSU 或已刷机）上，为六类现场问题抓「能定性」的证据并打包回传：
+#   1) audio    声音断断续续（时有时无）
+#   2) face     人脸入口 / 录入被拒 / 能录入但解不开
+#   3) nfc      NFC 无响应 / 读卡中概率
+#   4) xiaoai   小爱免手唤醒不生效 / 误唤醒
+#   5) fp       指纹入口消失 / 无法录入 / 解锁失败（含 AOSP feature 声明在位性硬判据）
+#   6) camera   相机提示与机型不匹配 / 打不开 / 预览黑屏
 #
 # 与 tools/device_probe.sh 的分工（不合并的理由）：device_probe 采「原系统静态硬件事实」，
 # 快照即够；本脚本采「移植后运行时现象」，必须整段连续 logcat + 周期性状态快照共用同一条
@@ -24,10 +26,10 @@
 # 把本文件丢进 /sdcard/Download → MT 管理器里长按 → 打开方式 → Shell 执行，等它打印出
 # 「回传文件」那一行，把同目录下的 issue_trace_now.zip（设备无 zip 时会是 .tar.gz）发回即可。
 # 已在真机（Ace 6T DSU，HyperOS 移植包）跑通：全程约 6-8 分钟，无 zip 时自动退到 tar.gz。
-# 默认已包含：自动探针（开 NFC、切 USB、亮/息屏、拉起安全页与小爱、按音量键、开钱包）
-# + 历史崩溃层（dropbox 正文、tombstones/ANR 全文、pstore/console-ramoops、ramdump 清单）
+# 默认已包含：自动探针（开 NFC、切 USB、亮/息屏、拉起安全页与小爱、按音量键、开钱包、
+# 拉起指纹设置页与系统相机）+ 历史崩溃层（dropbox 正文、tombstones/ANR 全文、pstore/console-ramoops、ramdump 清单）
 # + 补丁落地哨兵 + 声卡/内核/内存/进程快照 + 整段连续 logcat。
-# 只有三件事脚本替不了：正对手机解锁、把卡贴背部、开口喊「小爱同学」（没做也不会报错）。
+# 脚本替不了的：正对手机解锁、把卡贴背部、开口喊「小爱同学」、看屏上文案（没做也不会报错）。
 #
 # 维护者用的只读模式：`--no-auto`（不触发任何探针、不改设备状态），配合 `--no-pause` 可最速出快照。
 #
@@ -109,12 +111,14 @@ TICK_INTERVAL=5
 MAX_LOG_MB=120
 FILTER_MAX_LINES=400
 GRAB_MAX_KB=2048
-ONLY='audio,face,nfc,xiaoai'
+ONLY='audio,face,nfc,xiaoai,fp,camera'
 ONLY_DEFAULT=1
 ON_AUDIO=0
 ON_FACE=0
 ON_NFC=0
 ON_XIAOAI=0
+ON_FP=0
+ON_CAMERA=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	--tag | -t)
@@ -177,12 +181,12 @@ while [ "$#" -gt 0 ]; do
 		AUTO=0
 		;;
 	--full)
-		# 远端测试者的一键全量采集：自动探针 + 重项 + 四场景 + 加长窗口。
+		# 远端测试者的一键全量采集：自动探针 + 重项 + 六场景 + 加长窗口。
 		AUTO=1
 		HEAVY=1
 		SCENARIO_SECS=60
 		TICK_INTERVAL=5
-		ONLY='audio,face,nfc,xiaoai'
+		ONLY='audio,face,nfc,xiaoai,fp,camera'
 		ONLY_DEFAULT=0
 		;;
 	-h | --help)
@@ -194,7 +198,7 @@ while [ "$#" -gt 0 ]; do
 		echo '  --no-pause  跳过复现窗口，只取静态快照（最快）'
 		echo '  --no-heavy  跳过 ANR / tombstone / dmesg / meminfo / top 等重项'
 		echo '  --pack      只把上次结果与已编辑的 MANUAL.txt 重新打包'
-		echo '  场景       audio|face|nfc|xiaoai（可逗号分隔或写成位置参数）'
+		echo '  场景       audio|face|nfc|xiaoai|fp|camera（可逗号分隔或写成位置参数；fingerprint/camera 别名也接受）'
 		exit 0
 		;;
 	-*)
@@ -214,8 +218,12 @@ case "$ONLY" in *audio*) ON_AUDIO=1 ;; esac
 case "$ONLY" in *face*) ON_FACE=1 ;; esac
 case "$ONLY" in *nfc*) ON_NFC=1 ;; esac
 case "$ONLY" in *xiaoai*) ON_XIAOAI=1 ;; esac
-if [ "$ON_AUDIO" -eq 0 ] && [ "$ON_FACE" -eq 0 ] && [ "$ON_NFC" -eq 0 ] && [ "$ON_XIAOAI" -eq 0 ]; then
-	echo 'FAIL: --only 里没有可识别场景（audio/face/nfc/xiaoai）。' >&2
+# fp 单独匹配会与 fingerprint 冲突（fingerprint 里没有子串 fp），因此两种写法都接。
+case "$ONLY" in *fp* | *fingerprint*) ON_FP=1 ;; esac
+case "$ONLY" in *camera* | *cam*) ON_CAMERA=1 ;; esac
+if [ "$ON_AUDIO" -eq 0 ] && [ "$ON_FACE" -eq 0 ] && [ "$ON_NFC" -eq 0 ] && [ "$ON_XIAOAI" -eq 0 ] &&
+	[ "$ON_FP" -eq 0 ] && [ "$ON_CAMERA" -eq 0 ]; then
+	echo 'FAIL: --only 里没有可识别场景（audio/face/nfc/xiaoai/fp/camera）。' >&2
 	exit 2
 fi
 
@@ -434,6 +442,16 @@ probe_snapshot() {
 			"$(pidof_one 'audioserver')" "$(pidof_one 'android.hardware.audio.service-aidl android.hardware.audio.service audiohalservice.qti')" \
 			"$(getprop init.svc.iorapd 2>/dev/null)" "$(getprop init.svc.qguard 2>/dev/null)"
 		printf 'vt: pid=%s dt2w=%s\n' "$(pidof_one 'com.miui.voicetrigger')" "$(qset get secure double_tap_to_wake)"
+		# 指纹与相机的前后快照相减：入口在不在（feature 行、service 行）与相机是否真在前台。
+		printf 'fp: feature_lines=%s service_lines=%s init_svc=%s fod=%s\n' \
+			"$(pm list features 2>/dev/null | grep -a -c -i fingerprint)" \
+			"$(service list 2>/dev/null | grep -a -c -i fingerprint)" \
+			"$(getprop 2>/dev/null | grep -a -i 'init.svc.*fingerprint' | tr "\n" ";" | cut -c1-120)" \
+			"$(getprop ro.hardware.fp.fod 2>/dev/null)"
+		printf 'camera: resumed=%s pid=%s hal=%s\n' \
+			"$(dsys activity activities | grep -a -m1 -E 'mResumedActivity|ResumedActivity' | tr -d "\r" | cut -c1-90)" \
+			"$(pidof_one 'com.android.camera com.miui.camera')" \
+			"$(dsys media.camera | grep -a -m1 -i 'Number of camera devices')"
 		true
 	} >>"$CAP/98_auto_state.txt" 2>&1
 }
@@ -851,7 +869,7 @@ sample_window() {
 	} >>"$dst" 2>&1
 }
 
-# 单趟 awk 把连续日志切成五个主题桶（每桶限行）：对几十 MB 日志跑 6 遍 grep 在手机上有
+# 单趟 awk 把连续日志切成七个主题桶（每桶限行）：对几十 MB 日志跑多遍 grep 在手机上有
 # 分钟级开销，曾经因此让尾段没跑完就被回传。切片总命中数同时写入每桶开头。
 slice_log() {
 	if ! has awk || [ ! -s "$LIVE_LOG" ]; then
@@ -860,12 +878,14 @@ slice_log() {
 	fi
 	awk -v cap="$FILTER_MAX_LINES" -v dir="$CAP" '
 		BEGIN {
-			audio_n = kws_n = face_n = nfc_n = avc_n = bad_n = 0
-			audio_w = kws_w = face_w = nfc_w = avc_w = bad_w = 0
+			audio_n = kws_n = face_n = nfc_n = avc_n = bad_n = fp_n = cam_n = 0
+			audio_w = kws_w = face_w = nfc_w = avc_w = bad_w = fp_w = cam_w = 0
 			audio = "appname=|Bad parameter|BAD_VALUE|underrun|out of sync|BUFFER TIMEOUT|AudioFlinger|audioserver|audiohal|audio-hal|HAL instance died|HAL driver died|PAL:|AGM:|StreamHal|EffectsFactoryHalAidl|could not create effect|parseAndSetVendorParameters|checkAndSetVolume|MiSound|Spatializer|ctl.interface_start"
 			kws = "STHAL|SoundTrigger|LOAD_PHRASE_MODEL|START_RECOGNITION|status = -22|createMmapBuffer|gsl_|set_custom_config|nonpersist|AudioFlow|FlexKws|voiceassist|voicetrigger|get tags from gkv"
 			face = "FaceService|FaceManager|Biometric|AuthSession|oiface|oplusoiface|miface|face_hal|setAuthenticator|resetAuthentication|wasSuccessful|hal_face_oplus"
 			nfc = "NfcService|NfaNfc|nfc_nci|nci_rx|nci_tx|rfintf|NfcTag|NfcDispatcher|SecureElement|secure_element|getMIID|tms_nfc|st21nfc|startRfDiscovery|enableDiscovery|setReaderMode"
+			fp = "Fingerprint|fingerprint|FingerprintService|FingerprintProvider|FingerprintManager|BiometricScheduler|BiometricLogger|hal_fingerprint|IFingerprintService|gxzw|Gxzw|ultrasonic|Ultrasonic|FodIcon|fod|Fod|fidoca|ufps"
+			cam = "CamConfig|CameraConfigUtil|ModelConfig|CameraDeviceUtils|MiuiCamera|CameraService|CameraProvider2|CameraHolder|ICameraProvider|cameraserver|CHIUSECASE|CamX|vendor.qti.hardware.camera|not support device|device not match|机型不匹配|不支持本机机型|Camera.*not (support|found|avail)|openCamera"
 			bad = "Fatal signal|beginning of crash|libc +:|DEBUG +:|tombstone|SIGSEGV|SIGABRT|SIGSYS|CANNOT LINK|updatable_crashing|has died|qguard|syshealthmon|Watchdog|ANR |received SIGKILL"
 		}
 		{
@@ -879,13 +899,15 @@ slice_log() {
 			if (line ~ kws) { kws_n++; if (kws_w < cap) { print line > (dir "/92_xiaoai_log.txt"); kws_w++ } }
 			if (line ~ face) { face_n++; if (face_w < cap) { print line > (dir "/92_face_log.txt"); face_w++ } }
 			if (line ~ nfc) { nfc_n++; if (nfc_w < cap) { print line > (dir "/92_nfc_log.txt"); nfc_w++ } }
+			if (line ~ fp) { fp_n++; if (fp_w < cap) { print line > (dir "/92_fp_log.txt"); fp_w++ } }
+			if (line ~ cam) { cam_n++; if (cam_w < cap) { print line > (dir "/92_camera_log.txt"); cam_w++ } }
 			if (line ~ bad) { bad_n++; if (bad_w < cap) { print line > (dir "/94_crash_log.txt"); bad_w++ } }
 			# 所有桶都写满就提前退出：几十 MB 日志全扫一遍会让收尾超过测试者耐心。
-			if (audio_w >= cap && kws_w >= cap && face_w >= cap && nfc_w >= cap && bad_w >= cap && avc_w >= cap) { early = 1; exit }
+			if (audio_w >= cap && kws_w >= cap && face_w >= cap && nfc_w >= cap && bad_w >= cap && avc_w >= cap && fp_w >= cap && cam_w >= cap) { early = 1; exit }
 		}
 		END {
-			printf "SLICE_TOTALS audio=%s xiaoai=%s face=%s nfc=%s avc=%s crash=%s early_exit=%s\n", \
-				audio_n, kws_n, face_n, nfc_n, avc_n, bad_n, (early ? "yes" : "no") > (dir "/92_slice_totals.txt")
+			printf "SLICE_TOTALS audio=%s xiaoai=%s face=%s nfc=%s fp=%s camera=%s avc=%s crash=%s early_exit=%s\n", \
+				audio_n, kws_n, face_n, nfc_n, fp_n, cam_n, avc_n, bad_n, (early ? "yes" : "no") > (dir "/92_slice_totals.txt")
 		}
 	' "$LIVE_LOG" 2>>"$CAP/99_notes.txt"
 	{
@@ -1272,6 +1294,59 @@ if [ "$PACK_ONLY" -eq 0 ]; then
 	'
 	probe_path 20_face_static.txt /vendor/bin/hw /odm/bin/hw /product/etc/device_features /vendor/etc/permissions
 
+	# ---- 25 指纹现场（入口在不在的硬判据是 AOSP feature 声明，不是属性与 HAL）
+	# 背景：这个声明必须落在被 PackageManager 扫描的 /system|/system_ext|/product|/vendor|/odm|/oem 下。移植后：
+	#   • 原包 HyperOS（OS4.0.0.27）把它放在 vendor/product（旧原包 .15 是放 system）；
+	#   • 底包把它放在 my_product，而 fstab 只 bind 到 /my_product，该路径 **不被扫描**。
+	# 两者叠加 → 五个可扫分区全无声明 → “指纹入口整个消失”。这里逐个标 FOUND/ABSENT，一次看清缺哪层。
+	capn 25_fp_static.txt 220 dumpsys fingerprint
+	capn 25_fp_static.txt 150 dumpsys biometric
+	cap 25_fp_static.txt sh -c '
+		echo "===== 入口级硬判据：AOSP 指纹 feature 声明在位性 ====="
+		for f in /vendor/etc/permissions/android.hardware.fingerprint.xml /odm/etc/permissions/android.hardware.fingerprint.xml /product/etc/permissions/android.hardware.fingerprint.xml /system_ext/etc/permissions/android.hardware.fingerprint.xml /system/etc/permissions/android.hardware.fingerprint.xml; do
+			if [ -r "$f" ]; then
+				printf "FP_FEATURE[%s]=FOUND %s\n" "$f" "$(grep -a -o -E "feature name=\"[^\"]*\"" "$f" | tr "\n" ";")"
+			else
+				printf "FP_FEATURE[%s]=ABSENT\n" "$f"
+			fi
+		done
+		printf "FP_PM_FEATURES=%s\n" "$(pm list features 2>/dev/null | grep -i -E "fingerprint|biometric" | tr "\n" " ")"
+		printf "FP_HAS_FEATURE_LINES=%s\n" "$(pm list features 2>/dev/null | grep -a -c -i "android.hardware.fingerprint")"
+		printf "FP_SERVICE_LIST=%s\n" "$(service list 2>/dev/null | grep -i -E "fingerprint|biometric" | tr "\n" ";" | cut -c1-240)"
+		printf "FP_INIT_SVC=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.[a-z_.]*(fingerprint|fido|biometric)[a-z_.]*.: \\[[a-z_-]*\\]" | tr "\n" ";" | cut -c1-240)"
+		printf "FP_HAL_PROPS=%s\n" "$(getprop | grep -a -i -E "fp\\.|sys\\.fp|hardware\\.fp|ultrasonic|gxzw|fod" | tr "\n" ";" | cut -c1-360)"
+		printf "FP_HAL_BINS=%s\n" "$(ls -1 /vendor/bin/hw /odm/bin/hw 2>/dev/null | grep -i -E "fingerprint|fidoca|gxzw|ufpsid" | tr "\n" ";" | cut -c1-240)"
+		printf "FP_VINTF=%s\n" "$(grep -h -R -o -E "android\\.hardware\\.biometrics\\.fingerprint[^\" ]*|IFingerprint[^\" ]*" /vendor/etc/vintf /odm/etc/vintf 2>/dev/null | sort -u | tr "\n" ";" | cut -c1-240)"
+		printf "FP_DEV_NODES=%s\n" "$(ls -l /dev 2>/dev/null | grep -i -E "fingerprint|goodix|egis|fpc|ufps" | tr "\n" ";" | cut -c1-220)"
+		printf "FP_DATA=%s\n" "$(for d in /data/system/fingerprint /data/vendor/fingerprint /data/vendor_de/0/fingerprint /data/vendor_ce/0/fingerprint; do ls -l "$d" 2>&1 | tr "\n" " "; echo "|"; done | cut -c1-320)"
+		printf "OPLUS_FP_FEATURES=%s\n" "$(grep -h -R -o -E "feature name=\"[a-z_.0-9]*(fp|fingerprint)[a-z_.0-9]*\"" /vendor/etc/permissions /odm/etc/permissions 2>/dev/null | tr "\n" ";" | cut -c1-240)"
+		printf "FP_SETTINGS_ENTRY=%s\n" "$(dumpsys package com.android.settings 2>/dev/null | grep -a -i fingerprint | grep -a -E "name=|enabled setting" | head -n 14 | tr "\n" ";" | cut -c1-300)"
+		true
+	'
+	probe_path 25_fp_static.txt /vendor/etc/permissions /odm/etc/permissions /product/etc/permissions /data/system/fingerprint
+
+	# ---- 27 相机现场（HAL 能力、feature 声明、按机型代号匹配的配置表）
+	# “与机型不匹配”文案不能直接抓到（字符串在 APK 里），所以这里采的是“它按哪个键查配置”：
+	# 身份属性、camera feature xml、/odm/etc/<代号>_* 前缀文件与配置目录里的代号命中数。
+	capn 27_camera_static.txt 300 dumpsys media.camera
+	cap 27_camera_static.txt sh -c '
+		echo "===== 相机侧身份与声明 ====="
+		dev=$(getprop ro.product.device); [ -n "$dev" ] || dev=NONE
+		printf "CAM_ID device=%s model=%s name=%s cert=%s market=%s build_product=%s\n" "$dev" "$(getprop ro.product.model)" "$(getprop ro.product.name)" "$(getprop ro.product.cert)" "$(getprop ro.vendor.oplus.market.name)" "$(getprop ro.build.product)"
+		printf "CAM_PM_FEATURES=%s\n" "$(pm list features 2>/dev/null | grep -i camera | tr "\n" " ")"
+		printf "CAM_FEATURE_XML=%s\n" "$(ls -1 /vendor/etc/permissions /odm/etc/permissions /product/etc/permissions 2>/dev/null | grep -i camera | tr "\n" ";" | cut -c1-260)"
+		printf "CAM_PKGS=%s\n" "$(pm list packages 2>/dev/null | grep -i camera | tr "\n" ";" | cut -c1-260)"
+		printf "CAM_SVC_STATE=%s\n" "$(getprop | grep -a -o -E "init\\.svc\\.[a-z_.]*camera[a-z_.]*.: \\[[a-z_]*\\]" | tr "\n" ";" | cut -c1-200)"
+		printf "CAM_PROVIDER_IFACES=%s\n" "$(service list 2>/dev/null | grep -a -i camera | tr "\n" ";" | cut -c1-200)"
+		printf "CAM_HAL_BINS=%s\n" "$(ls -1 /vendor/bin/hw /odm/bin/hw 2>/dev/null | grep -i camera | tr "\n" ";" | cut -c1-200)"
+		printf "CAM_CONFIG_COUNTS=%s\n" "$(for d in /vendor/etc/camera /odm/etc/camera /odm/etc/camera/config /product/etc/camera; do printf "%s:%s " "$d" "$(ls -1 "$d" 2>/dev/null | grep -c .)"; done | cut -c1-240)"
+		printf "CAM_DEVICE_PREFIX=%s\n" "$(ls -1 /odm/etc /vendor/etc 2>/dev/null | grep -a -E "^${dev}_" | tr "\n" ";" | cut -c1-200)"
+		printf "CAM_NEZHA_PREFIX=%s\n" "$(ls -1 /odm/etc /vendor/etc 2>/dev/null | grep -a -E "^nezha_" | tr "\n" ";" | cut -c1-200)"
+		printf "CAM_CODENAME_HITS=%s\n" "$(grep -h -R -a -o -E "nezha|OP6113L1|PLQ110" /vendor/etc/camera /odm/etc/camera /product/etc/camera 2>/dev/null | sort | uniq -c | sort -rn | head -n 6 | tr "\n" ";" | cut -c1-240)"
+		true
+	'
+	probe_path 27_camera_static.txt /vendor/etc/camera /odm/etc/camera /product/etc/camera /vendor/etc/permissions
+
 	# ---- 30 NFC 现场（阵营、服务、节点、开关）
 	cap 30_nfc_static.txt dumpsys nfc
 	capn 30_nfc_static.txt 45 sh -c 'dumpsys nfc 2>&1 | sed -n "1,40p"'
@@ -1523,6 +1598,91 @@ win_head() {
 			printf 'FACE_PRINTS_after=%s\n' "$(dumpsys face 2>/dev/null | grep -m1 -a 'prints' | tr -d '\r')"
 		} >>"$CAP/20_face_static.txt" 2>&1
 		probe_snapshot post_face
+	fi
+
+	# ---- 指纹：入口是否存在、录入与按压解锁
+	if [ "$ON_FP" -eq 1 ]; then
+		win_head '指纹入口与录入'
+		fp_feat_before=$(pm list features 2>/dev/null | grep -a -c -i 'android.hardware.fingerprint')
+		if [ "$AUTO" -eq 1 ]; then
+			printf '\n[自动 fp] %s 秒：脚本会拉起「设置 → 密码与安全」并尝试直接进指纹页；请你**点开指纹相关项**并停在报错/缺失处。\n' "$SCENARIO_SECS"
+			printf '  根本看不到指纹入口也要写进 MANUAL.txt——它区分「feature/能力缺失」与「HAL 通路不通」。\n'
+			probe_snapshot pre_fp
+			probe_do am start -a android.settings.SECURITY_SETTINGS
+			sleep_for 3 '尝试直接拉起指纹设置页...'
+			# 两个候选组件名都试（HyperOS/MIUI 与 AOSP 写法不同），失败只会记成 skip，不影响采集。
+			# 组件名里的 $ 必须保持字面（AOSP 嵌套 Activity 写法），所以用单引号不展开。
+			# shellcheck disable=SC2016
+			probe_do am start -n 'com.android.settings/.Settings$FingerprintSettingsActivity'
+			probe_do am start -n 'com.android.settings/.FingerprintSettings'
+		else
+			printf '\n[场景 fp] 接下来 %s 秒：\n' "$SCENARIO_SECS"
+			printf '  1) 前半段：进「设置 → 密码与安全 / 指纹与解锁」看有没有指纹项；有就走进录入流程，被拒时把屏上文案逐字抄进 MANUAL.txt；\n'
+			printf '  2) 后半段：若已录入，锁屏后用手指按压屏下指纹区 3 次，记录是否震动/出图标/报错。\n'
+		fi
+		fp_half=$((SCENARIO_SECS / 2))
+		[ "$fp_half" -ge 1 ] || fp_half=1
+		base=$(baseline_lines)
+		win_start=$(now_ts)
+		if [ "$AUTO" -eq 1 ]; then
+			sleep_for "$((SCENARIO_SECS - 6))" '停在指纹页/录入流程里...'
+		elif sleep_for "$fp_half" '走进指纹页并停在报错处...'; then
+			sleep_for "$((SCENARIO_SECS - fp_half))" '锁屏后按压屏下指纹中...'
+		else
+			printf '  （本次跳过交互窗口，只留静态快照。）\n'
+		fi
+		sample_window 25_fp_static.txt FP \
+			'Fingerprint|fingerprint|FingerprintService|FingerprintProvider|FingerprintManager|BiometricScheduler|BiometricLogger|hasFeature|FeatureParser|hal_fingerprint|IFingerprintService|gxzw|Gxzw|ultrasonic|fod|Fod|fidoca|ERROR_|not supported|unsupported|Can.t find service' \
+			'FP 复现窗口（入口+录入+按压解锁）' "$base" "$win_start"
+		{
+			printf '\nFP_HAS_FEATURE_LINES_before=%s\n' "${fp_feat_before:-0}"
+			printf 'FP_HAS_FEATURE_LINES_after=%s\n' "$(pm list features 2>/dev/null | grep -a -c -i 'android.hardware.fingerprint')"
+			printf 'FP_SERVICE_after=%s\n' "$(service list 2>/dev/null | grep -a -i fingerprint | tr '\n' ';' | cut -c1-200)"
+			# 路径是固定的系统目录（非用户输入），因此 ls -l 的 SC2012 不适用。
+			# shellcheck disable=SC2012
+			printf 'FP_ENROLL_DATA=%s\n' "$(ls -l /data/system/fingerprint 2>&1 | head -n 6 | tr '\n' ';' | cut -c1-220)"
+			printf 'FP_AUTH_RESULT=%s\n' "$(dsys biometric | grep -a -E 'authEnded|authenticationSucceeded' | tail -n 4 | tr '\n' '|' | cut -c1-240)"
+		} >>"$CAP/25_fp_static.txt" 2>&1
+		probe_snapshot post_fp
+	fi
+
+	# ---- 相机：机型不匹配 / 打不开 / 预览黑屏
+	if [ "$ON_CAMERA" -eq 1 ]; then
+		win_head '相机：机型不匹配与预览'
+		cam_dev_before=$(dsys media.camera | grep -a -m1 -i 'Number of camera devices' | tr -d '\r')
+		if [ "$AUTO" -eq 1 ]; then
+			printf '\n[自动 camera] %s 秒：脚本会拉起系统相机；请看屏上是否弹提示，并把**提示原文**抄进 MANUAL.txt。\n' "$SCENARIO_SECS"
+			probe_snapshot pre_camera
+			probe_do am start -a android.media.action.STILL_IMAGE_CAMERA
+			sleep_for 4 '等相机初始化或报错...'
+			probe_do am start -n com.android.camera/.Camera
+			sleep_for 8 '停在取景界面观察（能拍就拍两张、切换前后摄）...'
+			probe_do input keyevent 4
+		else
+			printf '\n[场景 camera] 接下来 %s 秒：\n' "$SCENARIO_SECS"
+			printf '  1) 打开系统相机；若弹「与机型不匹配」，把文案逐字抄进 MANUAL.txt，并写清点确定/取消后分别发生什么；\n'
+			printf '  2) 能进取景界面的话，前后摄切换 2 次、拍照 2 张，观察是否黑屏/卡住/闪退。\n'
+		fi
+		base=$(baseline_lines)
+		win_start=$(now_ts)
+		if [ "$AUTO" -eq 1 ]; then
+			sleep_for "$((SCENARIO_SECS - 14))" '继续在相机界面观察...'
+		elif pause_for "相机界面观察中..."; then
+			:
+		else
+			printf '  （本次跳过交互窗口，只留静态快照。）\n'
+		fi
+		sample_window 27_camera_static.txt CAMERA \
+			'CamConfig|CameraConfigUtil|ModelConfig|CameraDeviceUtils|MiuiCamera|CameraService|CameraProvider|ICameraProvider|cameraserver|CHIUSECASE|CamX|openCamera|getCameraCharacteristics|not support|not match|机型|FAIL' \
+			'CAMERA 复现窗口（拉起+切换+拍照）' "$base" "$win_start"
+		{
+			printf '\nCAM_DEVICES_before=%s\n' "${cam_dev_before:-未读到}"
+			printf 'CAM_DEVICES_after=%s\n' "$(dsys media.camera | grep -a -m1 -i 'Number of camera devices' | tr -d '\r')"
+			printf 'CAM_FOREGROUND=%s\n' "$(dsys activity activities | grep -a -m1 -E 'mResumedActivity|ResumedActivity' | tr -d '\r' | cut -c1-150)"
+			printf 'CAM_PID=%s\n' "$(pidof_one 'com.android.camera com.miui.camera')"
+			printf 'CAM_CRASH_OR_ANR=%s\n' "$(grep -a -c -E 'Fatal signal.*(camera|Camera)|ANR in com\.[a-z.]*camera' "$LIVE_LOG" 2>/dev/null)"
+		} >>"$CAP/27_camera_static.txt" 2>&1
+		probe_snapshot post_camera
 	fi
 
 	# ---- NFC 贴卡
@@ -1894,13 +2054,40 @@ win_head() {
 		printf '历史崩溃层         : dropbox 正文摘录=%s 条（条目名见 09_history_crash.txt），全部收录正文见 captures/zz_*\n' \
 			"$(count_of '^----- /data/system/dropbox/' "$CAP/09_history_crash.txt")"
 		printf '  若本行与 tombstone/ANR 清单全为空，说明开机至今没发生过 native 崩溃；非空则逐条对照日志时间轴。\n'
-		printf '\n[6. 本次采集覆盖度自检]\n'
+		printf '\n[6. 指纹入口与解锁]\n'
+		printf 'AOSP feature 声明   : %s\n' "$(grep -a '^FP_FEATURE\[' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-115 | tr '\n' ';')"
+		printf '  五个可扫路径全 ABSENT ⇒ hasFeature=false，Settings 必然不显示入口（与属性、HAL 无关，先补声明再谈其他）；至少一个 FOUND 才算在位。\n'
+		printf '框架 feature 行      : %s\n' "$(grep -a -m1 '^FP_PM_FEATURES=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-200)"
+		printf '服务/VINTF/init_svc  : %s\n' "$(grep -a -E '^FP_(SERVICE_LIST|VINTF|INIT_SVC)=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-150 | tr '\n' ';')"
+		printf 'HAL 与落点属性      : %s\n' "$(grep -a -E '^FP_(HAL_BINS|HAL_PROPS|DEV_NODES)=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-165 | tr '\n' ';')"
+		printf 'Oplus 私有指纹声明  : %s\n' "$(grep -a -m1 '^OPLUS_FP_FEATURES=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-220)"
+		printf 'Settings 入口项      : %s\n' "$(grep -a -m1 '^FP_SETTINGS_ENTRY=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-260)"
+		printf '录入数据与认证轨迹  : %s\n' "$(grep -a -E '^FP_(ENROLL_DATA|HAS_FEATURE_LINES_before|HAS_FEATURE_LINES_after|AUTH_RESULT)=' "$CAP/25_fp_static.txt" 2>/dev/null | cut -c1-150 | tr '\n' ' ')"
+		printf '指纹日志主题命中    : %s  (92_fp_log.txt；按压无反应时看这里有没 FingerprintService/HAL 记录)\n' \
+			"$(count_of 'Fingerprint|fingerprint|gxzw|ultrasonic' "$CAP/92_fp_log.txt")"
+		printf '指纹相关 avc        : %s\n' "$(count_of 'avc.*(fingerprint|biometric|gxzw|fido)' "$CAP/93_avc_log.txt")"
+		printf '运行时代号与能力 XML : %s\n' "$(grep -a -m1 -E '^RUNTIME_DEVICE=' "$CAP/50_landing.txt" 2>/dev/null | cut -c1-200)"
+
+		printf '\n[7. 相机]\n'
+		printf '相机侧身份          : %s\n' "$(grep -a -m1 '^CAM_ID ' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-200)"
+		printf 'HAL 设备数(前/后)   : %s\n' "$(grep -a -E '^CAM_DEVICES_(before|after)=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-110 | tr '\n' ' ')"
+		printf '  设备数为 0/未读到 ⇒ HAL 根本没起来，与“机型不匹配”是两类问题，先分开处理。\n'
+		printf 'camera feature xml  : %s\n' "$(grep -a -m1 '^CAM_FEATURE_XML=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-220)"
+		printf '框架 camera feature : %s\n' "$(grep -a -m1 '^CAM_PM_FEATURES=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-200)"
+		printf '相机包与服务        : %s\n' "$(grep -a -E '^CAM_(PKGS|SVC_STATE|PROVIDER_IFACES|HAL_BINS)=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-135 | tr '\n' ';')"
+		printf '配置表与代号命中    : %s\n' "$(grep -a -E '^CAM_(CONFIG_COUNTS|DEVICE_PREFIX|NEZHA_PREFIX|CODENAME_HITS)=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-145 | tr '\n' ';')"
+		printf '  NEZHA_PREFIX 有、DEVICE_PREFIX 空 ⇒ 配置表仍按原包代号命名，运行时代号变了就查不到（相机文案的头号嫌疑）。\n'
+		printf '前台与进程          : %s\n' "$(grep -a -E '^CAM_(FOREGROUND|PID|CRASH_OR_ANR)=' "$CAP/27_camera_static.txt" 2>/dev/null | cut -c1-135 | tr '\n' ' ')"
+		printf '相机日志主题命中    : %s  (92_camera_log.txt)\n' \
+			"$(count_of 'CamConfig|CameraConfigUtil|ModelConfig|CameraProvider|cameraserver|openCamera|not support|not match' "$CAP/92_camera_log.txt")"
+
+		printf '\n[8. 本次采集覆盖度自检]\n'
 		printf '重项与模式         : 交互窗口=%s，重项=%s，自动探针=%s（auto=1 会临时改 NFC/USB 状态并尽量还原）\n' \
 			"$([ "$NO_PAUSE" -eq 1 ] && echo '否（--no-pause，只有静态快照）' || echo '是')" \
 			"$([ "$HEAVY" -eq 1 ] && echo '是（含 ANR/tombstone/dmesg/top/meminfo）' || echo '否（--no-heavy）')" \
 			"$([ "$AUTO" -eq 1 ] && echo 1 || echo 0)"
 		printf 'uid                  : %s（非 0 时多数证据会缺失）\n' "$(id -u 2>/dev/null)"
-		printf '下一步定位顺序建议   : 91_ticks.txt（时间轴）→ 92_audio_log.txt / 92_xiaoai_log.txt（同一时刻对齐）→\n'
+		printf '下一步定位顺序建议   : 91_ticks.txt（时间轴）→ 92_audio_log.txt / 92_xiaoai_log.txt / 92_fp_log.txt / 92_camera_log.txt（同一时刻对齐）→\n'
 		printf '                      06_crash_evidence.txt 与 captures/zz_*（硬证据）→ 50_landing.txt（包版本）→ 05_kernel.txt。\n'
 		true
 	} >"$TRACE_DIR/SUMMARY.txt" 2>&1
@@ -1908,12 +2095,14 @@ win_head() {
 	# ---- 自动探针结果追加到 SUMMARY（--auto / --full 时才有内容）
 	if [ "$AUTO" -eq 1 ]; then
 		{
-			printf '\n[7. 自动探针与前后快照]\n'
+			printf '\n[9. 自动探针与前后快照]\n'
 			printf '探针动作       : %s\n' "$(grep -a 'PROBE ' "$CAP/97_probe_log.txt" 2>/dev/null | sed -E 's/^[0-9-]+ [0-9:]+ //' | head -n 40 | tr '\n' '|' | cut -c1-360)"
 			printf '原始状态       : %s\n' "$(grep -a -m1 -E '^nfc_on=' "$CAP/97_probe_log.txt" 2>/dev/null)"
 			printf '人脸计数轨迹   : %s\n' "$(grep -a -E '^face:|^bio_last:' "$CAP/98_auto_state.txt" 2>/dev/null | cut -c1-150 | uniq | tr '\n' ' ' | cut -c1-500)"
 			printf 'NFC/VT 轨迹    : %s\n' "$(grep -a -E '^nfc:|^vt:' "$CAP/98_auto_state.txt" 2>/dev/null | cut -c1-140 | uniq | tr '\n' ' ' | cut -c1-500)"
 			printf 'USB/MTP 轨迹   : %s\n' "$(grep -a -E '^usb:|^audio_svc:' "$CAP/98_auto_state.txt" 2>/dev/null | cut -c1-150 | uniq | tr '\n' ' ' | cut -c1-500)"
+			printf '指纹轨迹       : %s\n' "$(grep -a -E '^fp:' "$CAP/98_auto_state.txt" 2>/dev/null | cut -c1-150 | uniq | tr '\n' ' ' | cut -c1-500)"
+			printf '相机轨迹       : %s\n' "$(grep -a -E '^camera:' "$CAP/98_auto_state.txt" 2>/dev/null | cut -c1-150 | uniq | tr '\n' ' ' | cut -c1-500)"
 			printf '深度核查       : captures/65_deep_state.txt（身份硬判据 / 人脸服务 / NFC 轮询掩码 / MTP 前提 / 显示档位 / 音频抖动 / 底包环境）\n'
 			printf '探针明细       : captures/97_probe_log.txt、快照明细 captures/98_auto_state.txt\n'
 			true
@@ -1946,6 +2135,21 @@ win_head() {
 之前录的那条人脸数据现在还在吗(被清空了/提示已存在/没有) =
 解锁时屏幕提示的确切文案 =
 按压指纹能否解锁(用来排除电源键与屏下指纹通路问题) =
+
+[指纹]
+设置里有没有指纹入口(「密码与安全」/「指纹与解锁」里有无指纹项或添加按钮) =
+入口完全没有时，锁屏按压屏下指纹区有无反应(无反应/出图标但不通过/震动后失败) =
+能否进入录入流程(能录到哪一步，还是点入口就报错) =
+屏上确切文案(逐字抄，含「与机型不匹配」这类提示的完整句子) =
+之前录过的指纹数据现在还在吗(提示已存在/被清空/没有) =
+人脸或密码能否正常解锁(用来区分「只有指纹坏」还是「生物识别整体坏」) =
+
+[相机]
+打开相机后第一屏发生什么(正常取景/黑屏/弹提示框) =
+提示框的确切文案与按钮(逐字抄，例如「与机型不匹配」加确定/取消) =
+点确定或取消后能否再打开(立刻退出/停在预览/一直黑屏) =
+前后摄切换与拍照是否正常(能拍出照片吗) =
+微信/扫码等第三方调用相机能否出画面(区分系统相机问题与 HAL 通路问题) =
 
 [NFC]
 设置里 NFC 开关能否打开(打开后是否自动回弹关闭) =

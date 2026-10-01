@@ -56,7 +56,7 @@
 | `config/wallet_identity.props`（经 `WALLET_IDENTITY_PROPERTIES_FILE`） | `features/fix_coloros_wallet` | ColorOS 钱包身份真值：`device=OP6113L1`、`model=PLQ110`、`cuptsm=ONEPLUS\|ESE\|01\|27`、`oplusrom=V16.1.0`、`.display=16.1`，均取自 DNA_ace6 底包（cuptsm 尾号 01\|27 不同于 Ace 6T 的 01\|02）。prebuilt 五件套为共享产物，缺失则整体跳过。 | DNA_ace6 底包实测 |
 | `RUNTIME_DEVICE_CODE=OP6113L1` + `XIAOAI_VOICEASSIST_DEVICE_CODE=OP6113L1` | `common/fix_device_identity`、`common/fix_face_unlock`、`features/fix_xiaoai_wakeup` | 启用钱包后 odm.device→OP6113L1，`fix_device_identity` 把原包机型 XML 改名为 `OP6113L1.xml`；`fix_face_unlock` 与小爱白名单都跟这个运行时代号。 | 代号取自 DNA_ace6 底包 fingerprint.json；boot 后需复核运行时 Build.DEVICE |
 | `KMI=android15-6.6` | `features/oplus_millet_core_bridge` | 底包 vendor_dlkm `.ko` vermagic 实测 `6.6.89-android15-8-o-…-4k`（android15-6.6 族），选择本仓库已编译的 6.6 KO。KO 只匹配内核 vermagic，与 Android 版本无关。 | KMI 已底包实测；加载待刷机验证 |
-| （无参数文件） | `common/disable_oplus_crash_loop` | 停掉底包 qguard / syshealthmon-service 崩溃环；只读预检，服务不存在则整体跳过（与真我 Neo8 同款）。 | 与 Neo8 对齐引入 |
+| （无参数文件） | `common/disable_oplus_crash_loop` | 停掉底包 qguard / syshealthmon-service 崩溃环；不处理同名 fidoca（底包 Oplus FIDO HAL 服务名恰为 fidoca、正常运行；Xiaomi `vendor.mfidoca` 由 `fix_mi_account` 的 `oneshot`+`disabled` 已止环，详见补丁 README）。只读预检，服务不存在则整体跳过（与真我 Neo8 / Ace 6T 同款）。 | 与 Neo8 / Ace 6T 对齐引入 |
 
 这些参数依赖实际运行设备，不能从小米原包推断。更换底包、面板、指纹模组、触控驱动或 SKU 后必须重新核对，不能直接照搬一加 15、一加 Ace 6T 或其他机型。
 

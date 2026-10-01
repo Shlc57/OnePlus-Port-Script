@@ -95,6 +95,11 @@ CONTEXT_MARKERS = (
     (LEGACY_CONTEXT_BEGIN_MARKER, LEGACY_CONTEXT_END_MARKER),
 )
 TEMPLATE_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+# ``system_app_202504``、``vendor_init_202404`` 之类带平台代次后缀的名字由
+# ``mapping/<api>.cil`` 与 ``plat_pub_versioned.cil`` 声明，只有与目标
+# ``plat_sepolicy_vers.txt`` 同号的那些才会被链接。片段里的后缀必须来自
+# ${API_VERSION} 展开；字面残留的异代名字在设备上会是未声明引用。
+API_VERSIONED_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+?_(20[0-9]{4})\b")
 
 
 @dataclass(frozen=True)
@@ -235,6 +240,30 @@ def expand_fragment_template(fragment: str, api_version: str) -> str:
     if "${" in expanded:
         raise MergeError("SELinux 片段包含未解析的变量")
     return expanded
+
+
+def validate_fragment_api(expanded: str, api_version: str, label: str) -> None:
+    """Reject fragment text that still names a foreign platform generation.
+
+    Only the target ``api_version`` mapping is linked on device, so a leftover
+    literal suffix such as ``system_app_202504`` on a 202404 baseline leaves an
+    undefined reference.  init then fails to build the whole policy and the
+    boot falls back to fastboot, so this must abort instead of being merged.
+    """
+
+    foreign = sorted({
+        match.group(0)
+        for line in expanded.splitlines()
+        # CIL 注释（;; 与 #）只用于说明取证来源，可能提到异代名字；只有规则体参与校验。
+        if line.lstrip()[:2] != ";;" and not line.lstrip().startswith("#")
+        for match in API_VERSIONED_NAME_RE.finditer(line)
+        if match.group(1) != api_version
+    })
+    if foreign:
+        raise MergeError(
+            f"{label} 引用了非目标 SELinux 平台代次（{api_version}）的类型："
+            f"{', '.join(foreign[:8])}；请改用 ${{API_VERSION}}"
+        )
 
 
 def split_cil_statements(policy: str) -> list[Statement]:
@@ -584,8 +613,9 @@ def merge_policy_fragments(
         policy, _ = extract_managed_blocks(policy, (marker_pair,))
     target, old_bodies = extract_managed_blocks(policy)
     candidate_bodies: list[str] = list(old_bodies)
-    for fragment in fragments:
+    for index, fragment in enumerate(fragments, start=1):
         expanded = expand_fragment_template(fragment, api_version)
+        validate_fragment_api(expanded, api_version, f"SELinux 片段 {index}")
         fragment_without_markers, fragment_bodies = extract_managed_blocks(expanded)
         candidate_bodies.extend(fragment_bodies)
         # A normal fragment has no marker; a mixed fragment may contain both

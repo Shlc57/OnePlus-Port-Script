@@ -323,6 +323,32 @@ def test_policy_fragment_rejects_unresolved_variable() -> None:
         raise AssertionError("expected unresolved variable to fail")
 
 
+def test_policy_fragment_rejects_foreign_platform_generation() -> None:
+    """A literal suffix from another generation must abort instead of merging.
+
+    Only ``mapping/202404.cil`` is linked for a 202404 baseline, so a harvested
+    ``system_app_202504`` leaves an undefined reference; init then fails to build
+    the whole policy and the boot falls back to fastboot.
+    """
+
+    foreign = "(allow system_app_202504 hal_bluetooth_default (binder (call)))\n"
+    try:
+        merger.merge_policy_fragments("", [foreign], "202404")
+    except merger.MergeError as error:
+        assert "非目标 SELinux 平台代次" in str(error)
+        assert "system_app_202504" in str(error)
+    else:
+        raise AssertionError("expected foreign platform generation to fail")
+
+    # The same statement spelled through the template is accepted on either
+    # baseline, which is what keeps one shared fragment valid for all devices.
+    templated = "(allow system_app_${API_VERSION} hal_bluetooth_default (binder (call)))\n"
+    for api_version in ("202404", "202504"):
+        merged, added, _, _ = merger.merge_policy_fragments("", [templated], api_version)
+        assert f"system_app_{api_version}" in merged
+        assert added == 1
+
+
 def test_policy_fragment_can_replace_legacy_provider_block() -> None:
     target = (
         "(type old_domain)\n"
@@ -439,6 +465,7 @@ if __name__ == "__main__":
     test_directory_merge_writes_expected_files()
     test_policy_fragments_share_one_managed_block_and_expand_api()
     test_policy_fragment_rejects_unresolved_variable()
+    test_policy_fragment_rejects_foreign_platform_generation()
     test_policy_fragment_can_replace_legacy_provider_block()
     test_bottom_side_version_marker_is_still_required()
     test_cross_generation_marker_mismatch_downgrades()

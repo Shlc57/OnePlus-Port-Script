@@ -199,6 +199,9 @@ if ! grep -Fqx "(typeattribute domain)" "$vendor_versioned_policy"; then
     err_print "目标策略缺少 gameopt /proc 枚举所需 domain 属性"
     exit 1
 fi
+# 契约里的 ${API_VERSION} 必须保持字面不展开：下面是对未展开片段文件的 grep -Fqx 比对，
+# 真实代次号由 tools/selinux_merge 在合并期按底包 plat_sepolicy_vers.txt 填入。
+# shellcheck disable=SC2016
 required_policy_rules=(
     '(allow ueventd oppo_block_device (blk_file (create getattr setattr)))'
     '(allow oppo_block_device tmpfs (filesystem (associate)))'
@@ -242,25 +245,25 @@ required_policy_rules=(
     '(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))'
     '(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))'
     '(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))'
-    '(allow system_app_202504 hal_bluetooth_default (binder (call)))'
-    '(allow system_app_202504 hal_bootctl_default (binder (call)))'
-    '(allow system_app_202504 hal_contexthub_default (binder (call)))'
-    '(allow system_app_202504 vendor_hal_gatekeeper_qti (binder (call)))'
-    '(allow system_app_202504 vendor_hal_gnss_qti (binder (call)))'
-    '(allow shell_202504 vendor_hal_perf_default (binder (call)))'
+    '(allow system_app_${API_VERSION} hal_bluetooth_default (binder (call)))'
+    '(allow system_app_${API_VERSION} hal_bootctl_default (binder (call)))'
+    '(allow system_app_${API_VERSION} hal_contexthub_default (binder (call)))'
+    '(allow system_app_${API_VERSION} vendor_hal_gatekeeper_qti (binder (call)))'
+    '(allow system_app_${API_VERSION} vendor_hal_gnss_qti (binder (call)))'
+    '(allow shell_${API_VERSION} vendor_hal_perf_default (binder (call)))'
     '(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))'
     '(allow updater zygote (unix_stream_socket (getopt)))'
     '(allow traceur_app zygote (unix_stream_socket (getopt)))'
     '(allow priv_app zygote (unix_stream_socket (getopt)))'
     '(allow mediaprovider zygote (unix_stream_socket (getopt)))'
-    '(allow shell_202504 zygote (unix_stream_socket (getopt)))'
+    '(allow shell_${API_VERSION} zygote (unix_stream_socket (getopt)))'
     '(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))'
     '(allow untrusted_app_30 zygote (unix_stream_socket (getopt)))'
-    '(allow vendor_init_202504 radio_prop (property_service (set)))'
+    '(allow vendor_init_${API_VERSION} radio_prop (property_service (set)))'
     '(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))'
     '(allow vendor_qti_init_shell vendor_oplus_prop (property_service (set)))'
     '(allow mdm_feature vendor_oplus_prop (property_service (set)))'
-    '(allow vendor_init_202504 config_prop (property_service (set)))'
+    '(allow vendor_init_${API_VERSION} config_prop (property_service (set)))'
     '(allow platform_app system_prop (property_service (set)))'
     '(allow platform_app_36 system_prop (property_service (set)))'
     '(allow cameraserver hal_face_oplus (dir (search)))'
@@ -274,6 +277,15 @@ done
 if (( $(grep -Ec '^[[:space:]]*\(' "$selinux_policy_fragment") != ${#required_policy_rules[@]} )); then
     err_print "Oplus reserve SELinux 片段包含非预期规则"
     exit 1
+fi
+# plat 代次名只能由 ${API_VERSION} 在合并期展开；规则体里出现字面 _20xx04 后缀意味着
+# 该规则是从别的代次机器上抓的，在基线不同的机型上会成为未声明引用，设备 init 合成
+# sepolicy 整体失败后启动直接回落 fastboot。CIL 注释（;; / #）只说明取证来源，不参与校验。
+fragment_rules="$(grep -vE '^[[:space:]]*(;;|#)' "$selinux_policy_fragment")"
+if printf '%s\n' "$fragment_rules" | grep -qE '[A-Za-z0-9_.-]+_20[0-9]{4}'; then
+	err_print "SELinux 片段规则含字面版本后缀，必须改用 \${API_VERSION}：$(
+		printf '%s\n' "$fragment_rules" | grep -oE '[A-Za-z0-9_.-]+_20[0-9]{4}' | sort -u | tr '\n' ' ')"
+	exit 1
 fi
 
 merge_one_contexts() {

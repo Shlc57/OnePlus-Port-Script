@@ -170,11 +170,16 @@ rg --files -g '*.sh' -0 | xargs -0 -n1 bash -n
 PYTHONDONTWRITEBYTECODE=1 python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("tools/partition_metadata.py").read_text(encoding="utf-8"))'
 bash tools/test_config_profiles.sh
 bash tools/test_file_operations.sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/test_temp_file_cleanup.py
 PYTHONDONTWRITEBYTECODE=1 python3 features/fix_xiaoai_wakeup/test_cpu_kws_edits.py
 ```
 
 `tools/test_file_operations.sh` 覆盖 `replace_file_if_different` 的模式保持与幂等契约；修改
 `tools/tools.sh` 的安全文件操作接口后必须继续通过。
+
+`tools/test_temp_file_cleanup.py` 扫描全部 `apply.sh`，要求每个 `mktemp` 结果都进入某条回收
+路径（`temporary_files`/`temporary_directories` 追加块，或含 `rm`/`mv`/`find -delete`/
+`remove_path_if_exists`/`_install_generated_file` 的语句）；新增或改名临时文件后必须继续通过。
 
 `features/fix_xiaoai_wakeup/test_cpu_kws_edits.py` 覆盖 CPU FlexKws 前端六处锚点的植入、
 默认与机型节奏值（`--hold-ms/--gap-ms/--window-sec`）落点、重复执行幂等（文件零变化）、

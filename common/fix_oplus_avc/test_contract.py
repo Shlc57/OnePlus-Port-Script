@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static contract tests for the OnePlus 15 reserve block-device contexts."""
 
+import re
 from pathlib import Path
 
 
@@ -85,25 +86,25 @@ def test_ueventd_create_policy_contract() -> None:
         "(allow vendor_timeservice_app zygote (unix_stream_socket (getopt)))",
         "(allow hal_graphics_composer_default vendor_smmu_proxy_device (chr_file (ioctl)))",
         "(allowx hal_graphics_composer_default vendor_smmu_proxy_device (ioctl chr_file (0x5500)))",
-        "(allow system_app_202504 hal_bluetooth_default (binder (call)))",
-        "(allow system_app_202504 hal_bootctl_default (binder (call)))",
-        "(allow system_app_202504 hal_contexthub_default (binder (call)))",
-        "(allow system_app_202504 vendor_hal_gatekeeper_qti (binder (call)))",
-        "(allow system_app_202504 vendor_hal_gnss_qti (binder (call)))",
-        "(allow shell_202504 vendor_hal_perf_default (binder (call)))",
+        "(allow system_app_${API_VERSION} hal_bluetooth_default (binder (call)))",
+        "(allow system_app_${API_VERSION} hal_bootctl_default (binder (call)))",
+        "(allow system_app_${API_VERSION} hal_contexthub_default (binder (call)))",
+        "(allow system_app_${API_VERSION} vendor_hal_gatekeeper_qti (binder (call)))",
+        "(allow system_app_${API_VERSION} vendor_hal_gnss_qti (binder (call)))",
+        "(allow shell_${API_VERSION} vendor_hal_perf_default (binder (call)))",
         "(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))",
         "(allow updater zygote (unix_stream_socket (getopt)))",
         "(allow traceur_app zygote (unix_stream_socket (getopt)))",
         "(allow priv_app zygote (unix_stream_socket (getopt)))",
         "(allow mediaprovider zygote (unix_stream_socket (getopt)))",
-        "(allow shell_202504 zygote (unix_stream_socket (getopt)))",
+        "(allow shell_${API_VERSION} zygote (unix_stream_socket (getopt)))",
         "(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))",
         "(allow untrusted_app_30 zygote (unix_stream_socket (getopt)))",
-        "(allow vendor_init_202504 radio_prop (property_service (set)))",
+        "(allow vendor_init_${API_VERSION} radio_prop (property_service (set)))",
         "(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))",
         "(allow vendor_qti_init_shell vendor_oplus_prop (property_service (set)))",
         "(allow mdm_feature vendor_oplus_prop (property_service (set)))",
-        "(allow vendor_init_202504 config_prop (property_service (set)))",
+        "(allow vendor_init_${API_VERSION} config_prop (property_service (set)))",
         "(allow platform_app system_prop (property_service (set)))",
         "(allow platform_app_36 system_prop (property_service (set)))",
         "(allow cameraserver hal_face_oplus (dir (search)))",
@@ -121,7 +122,7 @@ def test_ueventd_create_policy_contract() -> None:
     assert "(allow qsguard kmsg_device (chr_file (write)))" in policy
     assert "(allow servicemanager vendor_hal_sensorscalibrate_qti_default (binder (call)))" in policy
     assert "(allow cameramind_app vendor_hal_perf_default (binder (call)))" in policy
-    assert "(allow system_app_202504 hal_bluetooth_default (binder (call)))" in policy
+    assert "(allow system_app_${API_VERSION} hal_bluetooth_default (binder (call)))" in policy
     assert "(allow permissioncontroller_app zygote (unix_stream_socket (getopt)))" in policy
     assert "(allow untrusted_app_34 zygote (unix_stream_socket (getopt)))" in policy
     assert "(allow vendor_qti_init_shell vendor_bluetooth_prop (property_service (set)))" in policy
@@ -135,6 +136,15 @@ def test_ueventd_create_policy_contract() -> None:
     assert "    oppo_block_device\n" in apply_source
     assert "typeattribute domain" in apply_source
     assert "system_ext_sepolicy.cil" in apply_source
+    # plat 代次名必须由 ${API_VERSION} 在合并期展开：规则体里的字面后缀（曾经为抓取自
+    # 202504 机器的 system_app_202504 等）在低基线机型上不会有任何声明，会让
+    # 设备 init 合成 sepolicy 失败并把启动打回 fastboot。CIL 注释不参与该校验。
+    fragment_rules = "\n".join(
+        line for line in policy.splitlines() if not line.lstrip().startswith((";;", "#"))
+    )
+    assert not re.search(r"[A-Za-z0-9_.-]+_20[0-9]{4}", fragment_rules), "片段规则残留字面平台代次后缀"
+    assert "${API_VERSION}" in fragment_rules
+    assert "片段规则含字面版本后缀" in apply_source
 
 
 def test_op15_order() -> None:

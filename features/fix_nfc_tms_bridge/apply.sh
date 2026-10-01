@@ -264,6 +264,7 @@ temporary_files+=(
 	"$temporary_odm_contexts"
 	"$temporary_odm_fsconfig"
 	"$temporary_mi_nfc_patch"
+	"$temporary_nfc_prop_label"
 )
 
 # =====================================================================

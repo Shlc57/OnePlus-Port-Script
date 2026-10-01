@@ -31,6 +31,10 @@ ro.build.version.ota
 
 同一份一加 15 Enforcing DSU `dmesg.log` 还记录了 `system_app` 到蓝牙、bootctl、contexthub、gatekeeper、GNSS HAL 的 Binder 调用，`shell` 到 perf HAL 的调用，以及多个 app domain 对 zygote USAP socket 的 `getopt`。模块按日志中的单一 source/target/class/permission 增加对应 allow；不包含 `crash_dump -> init` 的 `ptrace`，因为目标平台明确以 `neverallow` 禁止该组合。日志中的 property setter 会先在 `coloros_display` bundle 恢复专用标签，再由本模块只给记录到的 setter 域授权，避免对 `vendor_default_prop` 放宽。
 
+### plat 代次名必须走 `${API_VERSION}`
+
+上述日志是在 SELinux 基线 202504 的机器上取的，因此 `system_app`、`shell`、`vendor_init` 这类 plat domain 在片段里一律写成 `system_app_${API_VERSION}` 等形式，由 `tools/selinux_merge` 在合并期按目标 `vendor/etc/selinux/plat_sepolicy_vers.txt` 展开。写成字面后缀（例如 `system_app_202504`）会在基线更低的机型上留下未声明的引用：设备只会链接与该代次同号的 `mapping/<api>.cil` 与 `plat_pub_versioned.cil`，其余异代名字无从解析，init 合成 sepolicy 会整体失败，表现为开机刚上第一屏就重启并回落 fastboot。片段自身由 `apply.sh` 校验（出现字面 `_20xx04` 后缀即 fail-fast 退出），合并接口再校验一次展开结果，因此 `common/fix_oplus_avc`、`common/fix_mi_account` 等共享片段在所有机型上保持一致。
+
 另补 `cameraserver` 对 `hal_face_oplus` 的 `/proc` 目录 `search`（Neo8 与 6T DSU 实测：cameraserver 枚举 face HAL 进程目录被 `denied {search}`；不影响功能，仅消 avc 噪声）。`cameraserver` 声明在 `plat_pub_versioned.cil`、`hal_face_oplus` 声明在 `vendor_sepolicy.cil`，二者在目标策略缺失时 `required_policy_types` 校验会 fail-fast 退出，不会写入半坏策略。
 
 ## 执行
